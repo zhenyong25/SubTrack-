@@ -46,7 +46,7 @@ const getLogoUrl = (name: string) => {
 const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, initialData, savedCards }) => {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('SGD');
   const [cycle, setCycle] = useState<BillingCycle>(BillingCycle.Monthly);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   

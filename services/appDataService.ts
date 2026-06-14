@@ -119,7 +119,7 @@ const toIsoDate = (value: string) => {
 
 export const createDefaultProfile = (): UserProfile => ({
   name: '',
-  currency: 'USD',
+  currency: 'SGD',
   isLoggedIn: false,
   friends: [],
   notificationDays: 3,
@@ -136,7 +136,7 @@ const getSupabaseUserId = async (): Promise<string | null> => {
 const mapProfileRow = (row: ProfileRow | null, friends: Friend[], isLoggedIn: boolean): UserProfile => ({
   name: row?.name || '',
   photoUrl: row?.photo_url || undefined,
-  currency: row?.currency || 'USD',
+  currency: row?.currency || 'SGD',
   isLoggedIn,
   friends,
   notificationDays: row?.notification_days ?? 3,

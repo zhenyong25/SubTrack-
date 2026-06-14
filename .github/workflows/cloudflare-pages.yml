@@ -12,6 +12,8 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
     permissions:
       contents: read
@@ -38,6 +40,14 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_PAGES_PROJECT_NAME" ]; then
             echo "Missing repository variable CLOUDFLARE_PAGES_PROJECT_NAME"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Missing secret CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "Missing secret CLOUDFLARE_API_TOKEN"
             exit 1
           fi
 

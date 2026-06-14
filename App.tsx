@@ -40,7 +40,7 @@ function App() {
   // User Profile State
   const [userProfile, setUserProfile] = useState<UserProfile>({ 
       name: '', 
-      currency: 'USD', 
+      currency: 'SGD', 
       isLoggedIn: false, 
       friends: [],
       notificationDays: 3,
