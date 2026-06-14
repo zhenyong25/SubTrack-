@@ -513,11 +513,12 @@ function App() {
         </button>
       </nav>
 
-      {/* Floating Add Button (Only on Subscriptions Tab) */}
-      {activeTab === Tab.Subscriptions && (
+      {/* Floating Add Button (Dashboard and Subscriptions) */}
+      {(activeTab === Tab.Dashboard || activeTab === Tab.Subscriptions) && (
         <button 
           onClick={() => { setIsAdding(true); setEditingSub(undefined); }}
           className="fixed bottom-24 right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
+          aria-label="Add subscription"
         >
           <Plus size={24} />
         </button>
