@@ -2,11 +2,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Subscription, Friend } from '../types';
 import { generateNaughtyReminder } from '../services/geminiService';
-import { getFriends } from '../services/storageService';
 import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell, RotateCcw, PlayCircle } from 'lucide-react';
 
 interface SubscriptionDetailProps {
   subscription: Subscription;
+  friends: Friend[];
   onUpdate: (updated: Subscription) => void;
   onDelete: (id: string) => void;
   onEdit: (sub: Subscription) => void;
@@ -33,23 +33,20 @@ const getLogoUrl = (name: string) => {
     return `https://logo.clearbit.com/${cleanName}.com`;
 };
 
-const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, onUpdate, onDelete, onEdit, onClone, onClose, onShowToast }) => {
+const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, friends, onUpdate, onDelete, onEdit, onClone, onClose, onShowToast }) => {
   const [loadingNudge, setLoadingNudge] = useState<string | null>(null);
   const [nudgeMessage, setNudgeMessage] = useState<string | null>(null);
-  const [availableFriends, setAvailableFriends] = useState<Friend[]>([]);
   const [showFriendSelector, setShowFriendSelector] = useState(false);
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   
   // State for Month Navigation (defaults to current month)
   const [currentHistoryDate, setCurrentHistoryDate] = useState(new Date());
 
-  useEffect(() => {
-      setAvailableFriends(getFriends());
-  }, []);
-
   const sharedPeople = useMemo(() => {
       return subscription.sharedWith || [];
   }, [subscription]);
+
+  const availableFriends = friends;
 
   const logoUrl = getLogoUrl(subscription.name);
 

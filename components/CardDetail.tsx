@@ -88,8 +88,8 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, subscriptions, baseCurren
                 {card.id !== 'new' && (
                     <div className="mb-6">
                         <h4 className="text-xs font-bold text-secondary uppercase mb-3">12-Month Spending History</h4>
-                        <div className="h-40 w-full bg-background rounded-xl p-2 border border-border">
-                            <ResponsiveContainer width="100%" height="100%">
+                        <div className="h-40 w-full min-w-0 bg-background rounded-xl p-2 border border-border">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                 <BarChart data={historyData}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.3} />
                                     <XAxis dataKey="name" hide />

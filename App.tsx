@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { Bell, Sun, Moon, CheckCircle, Plus } from 'lucide-react';
+import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import SubscriptionList from './components/SubscriptionList';
 import AddSubscription from './components/AddSubscription';
@@ -8,7 +10,8 @@ import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import CardDetail from './components/CardDetail';
 import { Subscription, BillingCycle, UserProfile, PaymentCard } from './types';
-import { getSubscriptions, saveSubscriptions, calculateNextPayment, isUpcoming, getCards, saveCards, getUrgencyLevel } from './services/storageService';
+import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
+import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveCards, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import AppLogo from './components/AppLogo';
 
 enum Tab {
@@ -27,6 +30,9 @@ function App() {
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(isSupabaseConfigured());
+  const [session, setSession] = useState<Session | null>(null);
   
   // Card Management State
   const [addingCard, setAddingCard] = useState<PaymentCard | null>(null);
@@ -43,7 +49,7 @@ function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  // Load data and theme on mount
+  // Load auth state, data and theme on mount
   useEffect(() => {
     // Theme
     const savedTheme = localStorage.getItem('subtrack_theme');
@@ -55,35 +61,34 @@ function App() {
       document.documentElement.classList.add('dark');
     }
 
-    // User Profile
-    const savedProfile = localStorage.getItem('subtrack_profile');
-    if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile));
-    } else {
-        const savedCurrency = localStorage.getItem('subtrack_currency');
-        if (savedCurrency) setUserProfile(prev => ({ ...prev, currency: savedCurrency || 'USD' }));
-    }
+    let authSubscription: { unsubscribe: () => void } | null = null;
+    let alive = true;
 
-    // Subscriptions
-    const loadedSubs = getSubscriptions();
-    const updated = loadedSubs.map(sub => {
-      let next = sub.nextPaymentDate;
-      if (!sub.status) sub.status = 'Active';
-
-      if (new Date(next) < new Date() && sub.status === 'Active') {
-         if (sub.billingCycle !== BillingCycle.FreeTrial) {
-            next = calculateNextPayment(sub.firstPaymentDate, sub.billingCycle);
-         }
+    const bootstrapAuth = async () => {
+      if (!isSupabaseConfigured()) {
+        setAuthChecking(false);
+        return;
       }
-      return { ...sub, nextPaymentDate: next };
-    });
 
-    setSubscriptions(updated);
-    saveSubscriptions(updated);
+      const client = getSupabaseClient();
+      if (!client) {
+        setAuthChecking(false);
+        return;
+      }
 
-    // Cards
-    const loadedCards = getCards();
-    setCards(loadedCards);
+      const currentSession = await getSupabaseSession();
+      if (!alive) return;
+
+      setSession(currentSession);
+      setAuthChecking(false);
+
+      const { data } = client.auth.onAuthStateChange((_event, nextSession) => {
+        setSession(nextSession);
+      });
+      authSubscription = data.subscription;
+    };
+
+    void bootstrapAuth();
 
     // Click outside handler for notifications
     const handleClickOutside = (event: MouseEvent) => {
@@ -92,8 +97,77 @@ function App() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      alive = false;
+      authSubscription?.unsubscribe();
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapData = async () => {
+      if (authChecking) return;
+
+      if (isSupabaseConfigured() && !session) {
+        setUserProfile(createDefaultProfile());
+        setSubscriptions([]);
+        setCards([]);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+
+      try {
+        const loaded = await loadAppData();
+        const updated = loaded.subscriptions.map(sub => {
+          let next = sub.nextPaymentDate;
+          if (!sub.status) sub.status = 'Active';
+
+          if (new Date(next) < new Date() && sub.status === 'Active') {
+            if (sub.billingCycle !== BillingCycle.FreeTrial) {
+              next = calculateNextPayment(sub.firstPaymentDate, sub.billingCycle);
+            }
+          }
+          return { ...sub, nextPaymentDate: next };
+        });
+
+        if (cancelled) return;
+
+        const sessionEmail = session?.user.email;
+        const sessionPhoto =
+          session?.user.user_metadata?.avatar_url ||
+          session?.user.user_metadata?.picture ||
+          undefined;
+
+        setUserProfile({
+          ...loaded.profile,
+          email: sessionEmail || loaded.profile.email,
+          photoUrl: loaded.profile.photoUrl || sessionPhoto,
+          isLoggedIn: Boolean(session || loaded.userId),
+        });
+        setSubscriptions(updated);
+        setCards(loaded.cards);
+
+        if (loaded.userId) {
+          void saveProfile({ ...loaded.profile, isLoggedIn: true });
+          void saveSubscriptions(updated);
+        }
+      } catch (error) {
+        console.error('Failed to load app data', error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void bootstrapData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authChecking, session]);
 
   const showToast = (msg: string) => {
       setToastMessage(msg);
@@ -114,8 +188,20 @@ function App() {
 
   const handleUpdateProfile = (profile: UserProfile) => {
       setUserProfile(profile);
-      localStorage.setItem('subtrack_profile', JSON.stringify(profile));
-      localStorage.setItem('subtrack_currency', profile.currency); // Keep sync
+      void saveProfile(profile);
+  };
+
+  const handleSignOut = async () => {
+      await supabaseSignOut();
+      setSession(null);
+      setSubscriptions([]);
+      setCards([]);
+      setUserProfile(createDefaultProfile());
+      setSelectedSubId(null);
+      setEditingSub(undefined);
+      setIsAdding(false);
+      setActiveTab(Tab.Dashboard);
+      showToast('Signed out.');
   };
 
   const handleCurrencyChange = (curr: string) => {
@@ -130,7 +216,7 @@ function App() {
         if (!cards.find(c => c.id === newCard.id)) {
             updatedCards = [...cards, newCard];
             setCards(updatedCards);
-            saveCards(updatedCards);
+            void saveCards(updatedCards);
         }
     }
 
@@ -138,7 +224,7 @@ function App() {
     if (editingSub) {
         const updatedList = subscriptions.map(s => s.id === editingSub.id ? { ...data, id: editingSub.id, nextPaymentDate: editingSub.nextPaymentDate } : s);
         setSubscriptions(updatedList);
-        saveSubscriptions(updatedList);
+        void saveSubscriptions(updatedList);
         showToast(`Updated ${data.name}`);
     } else {
         const newSub: Subscription = {
@@ -148,7 +234,7 @@ function App() {
         };
         const updatedList = [...subscriptions, newSub];
         setSubscriptions(updatedList);
-        saveSubscriptions(updatedList);
+        void saveSubscriptions(updatedList);
         showToast(`Added ${newSub.name}`);
     }
     
@@ -170,7 +256,7 @@ function App() {
       };
       const updatedList = [...subscriptions, newSub];
       setSubscriptions(updatedList);
-      saveSubscriptions(updatedList);
+      void saveSubscriptions(updatedList);
       setSelectedSubId(newSub.id); // Switch view to new sub
       showToast(`${newSub.name} renewed!`);
   };
@@ -191,18 +277,18 @@ function App() {
     if (confirm("Are you sure you want to delete this subscription permanently?")) {
       const updated = subscriptions.filter(s => s.id !== id);
       setSubscriptions(updated);
-      saveSubscriptions(updated);
+      void saveSubscriptions(updated);
       setSelectedSubId(null);
       showToast("Subscription deleted.");
     }
   };
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
       if(confirm("This will wipe all your subscriptions and cards. Are you sure?")) {
           setSubscriptions([]);
           setCards([]);
-          saveSubscriptions([]);
-          saveCards([]);
+          setUserProfile(createDefaultProfile());
+          await clearStoredAppData();
           showToast("All data cleared.");
       }
   };
@@ -210,7 +296,7 @@ function App() {
   const handleUpdateCard = (updatedCard: PaymentCard) => {
       const updatedCards = cards.map(c => c.id === updatedCard.id ? updatedCard : c);
       setCards(updatedCards);
-      saveCards(updatedCards);
+      void saveCards(updatedCards);
       showToast("Card details updated");
   };
 
@@ -233,7 +319,7 @@ function App() {
           const realNewCard = { ...card, id: crypto.randomUUID() };
           const newCards = [...cards, realNewCard];
           setCards(newCards);
-          saveCards(newCards);
+          void saveCards(newCards);
           showToast("New card added");
       } else {
           // Update existing
@@ -261,6 +347,36 @@ function App() {
 
   const selectedSub = subscriptions.find(s => s.id === selectedSubId);
   const upcomingNotifications = getUpcomingNotifications();
+
+  if (authChecking || (isSupabaseConfigured() && session && isLoading)) {
+    return (
+      <div className="min-h-screen bg-background text-textMain flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <AppLogo />
+          </div>
+          <p className="text-sm font-semibold">Loading SubTrack...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSupabaseConfigured() && !session) {
+    return <AuthScreen onAuthenticated={() => setAuthChecking(true)} />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background text-textMain flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <AppLogo />
+          </div>
+          <p className="text-sm font-semibold">Loading SubTrack...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background min-h-screen text-textMain font-sans selection:bg-primary selection:text-white transition-colors duration-300">
@@ -347,7 +463,7 @@ function App() {
         )}
         
         {activeTab === Tab.Subscriptions && (
-          <SubscriptionList 
+            <SubscriptionList 
             subscriptions={subscriptions} 
             baseCurrency={userProfile.currency}
             onCurrencyChange={handleCurrencyChange}
@@ -363,6 +479,7 @@ function App() {
                 onToggleTheme={toggleTheme}
                 isDark={isDark}
                 onClearData={handleClearData}
+                onSignOut={handleSignOut}
                 subscriptions={subscriptions}
             />
         )}
@@ -410,10 +527,11 @@ function App() {
       {selectedSub && (
           <SubscriptionDetail 
               subscription={selectedSub}
+              friends={userProfile.friends}
               onUpdate={(updated) => {
                   const updatedList = subscriptions.map(s => s.id === updated.id ? updated : s);
                   setSubscriptions(updatedList);
-                  saveSubscriptions(updatedList);
+                  void saveSubscriptions(updatedList);
               }}
               onDelete={handleDelete}
               onEdit={handleStartEdit}

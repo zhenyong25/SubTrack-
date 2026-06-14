@@ -332,8 +332,8 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                   <button onClick={() => setSelectedYear(y => y + 1)} className="p-1 hover:text-primary"><ChevronRight size={16}/></button>
               </div>
           </div>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-56 w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={yearlyChartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
                     <XAxis 
@@ -446,9 +446,9 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       {/* Spending by Category Chart */}
       <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Spending by Category</h3>
-        <div className="h-64 w-full">
+        <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
                   data={categoryData}

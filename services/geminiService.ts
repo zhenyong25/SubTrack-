@@ -2,9 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AiSuggestion } from "../types";
 
-// Ensure API Key is available
 const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const getAiClient = () => {
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 export const POPULAR_SUBSCRIPTIONS: AiSuggestion[] = [
   { name: "Netflix Standard", estimatedPrice: 15.49, category: "Entertainment", billingCycle: "Monthly", currency: "USD" },
@@ -24,6 +26,9 @@ export const getSubscriptionSuggestions = async (query: string): Promise<AiSugge
   }
 
   try {
+    const ai = getAiClient();
+    if (!ai) return POPULAR_SUBSCRIPTIONS;
+
     const model = "gemini-2.5-flash";
     const prompt = `Generate a list of popular subscription services related to: "${query}". 
     If the query is empty or generic, provide a diverse mix of popular global subscriptions.
@@ -72,6 +77,9 @@ export const parseInvoiceText = async (text: string): Promise<{
   if (!apiKey) throw new Error("API Key required");
 
   try {
+    const ai = getAiClient();
+    if (!ai) throw new Error("API Key required");
+
     const model = "gemini-2.5-flash";
     const prompt = `Extract subscription details from the following invoice or email text. 
     Return a JSON object with name, price (number), currency (code like USD, EUR), billingCycle (Monthly, Yearly), and firstPaymentDate (YYYY-MM-DD).
@@ -111,6 +119,9 @@ export const generateNaughtyReminder = async (serviceName: string, personName: s
     if (!apiKey) return `Hey ${personName}, pay me ${price} for ${serviceName} please!`;
 
     try {
+        const ai = getAiClient();
+        if (!ai) return `Hey ${personName}, pay me ${price} for ${serviceName} please!`;
+
         const model = "gemini-2.5-flash";
         const prompt = `Write a short, funny, passive-aggressive, "evil Duolingo owl" style notification message reminding ${personName} that they still haven't paid me ${price} for our shared ${serviceName} subscription. It should be dramatic but friendly. Max 30 words.`;
         
@@ -129,6 +140,9 @@ export const generateAppLogo = async (prompt: string): Promise<string | null> =>
   if (!apiKey) return null;
 
   try {
+    const ai = getAiClient();
+    if (!ai) return null;
+
     // Nano Banana / Flash Image model
     const model = 'gemini-2.5-flash-image';
     const finalPrompt = `A high quality, modern, minimalist mobile app icon for a subscription tracker app. 
