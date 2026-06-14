@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, CURRENCIES, Friend } from '../types';
-import { User, Trash2, Download, Moon, Sun, Monitor, Save, Users, Plus, X, Loader2, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
+import { UserProfile, CURRENCIES, Friend, PaymentCard } from '../types';
+import { User, Trash2, Download, Moon, Sun, Save, Users, Plus, X, Loader2, AlertTriangle, Settings as SettingsIcon, CreditCard, Pencil } from 'lucide-react';
 import { exportSubscriptionsToCSV, getCurrencySymbol } from '../services/storageService';
 import { saveFriends } from '../services/appDataService';
+import CardLogo from './CardLogo';
 
 interface SettingsProps {
     currentProfile: UserProfile;
@@ -12,9 +13,12 @@ interface SettingsProps {
     onClearData: () => void;
     onSignOut: () => void;
     subscriptions: any[];
+    cards: PaymentCard[];
+    onAddCard: () => void;
+    onEditCard: (card: PaymentCard) => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, onToggleTheme, isDark, onClearData, onSignOut, subscriptions }) => {
+const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, onToggleTheme, isDark, onClearData, onSignOut, subscriptions, cards, onAddCard, onEditCard }) => {
     const [name, setName] = useState(currentProfile.name);
     const [currency, setCurrency] = useState(currentProfile.currency);
     const [notificationDays, setNotificationDays] = useState(currentProfile.notificationDays || 3);
@@ -190,8 +194,8 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
             </div>
 
-             {/* Friend List Manager */}
-             <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            {/* Friend List Manager */}
+            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center mb-4 text-primary">
                     <Users size={20} className="mr-2" />
                     <h3 className="font-bold text-lg">Friends</h3>
@@ -240,6 +244,54 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         </div>
                     ))}
                     {friends.length === 0 && <p className="text-xs text-secondary text-center py-2">No friends added yet.</p>}
+                </div>
+            </div>
+
+            {/* Payment Methods */}
+            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center text-primary">
+                        <CreditCard size={20} className="mr-2" />
+                        <h3 className="font-bold text-lg">Payment Methods</h3>
+                    </div>
+                    <button
+                        onClick={onAddCard}
+                        className="bg-primary/10 text-primary px-3 py-2 rounded-lg hover:bg-primary hover:text-white transition-colors flex items-center text-sm font-semibold"
+                    >
+                        <Plus size={16} className="mr-1" /> Add
+                    </button>
+                </div>
+                <p className="text-xs text-secondary mb-4">Add cards or bank accounts here, then select them when you create a subscription. For bank accounts, use the card type you prefer, or keep it as Other.</p>
+
+                <div className="space-y-2">
+                    {cards.map(card => (
+                        <div key={card.id} className="bg-background p-3 rounded-lg border border-border flex items-center justify-between gap-3">
+                            <div className="flex items-center min-w-0">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white mr-3 shrink-0" style={{ backgroundColor: card.color || '#1e293b' }}>
+                                    <CardLogo type={card.type} name={card.name} />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-bold text-textMain truncate">{card.name}</p>
+                                    <p className="text-[10px] text-secondary truncate">{card.type} • •••• {card.last4Digits || '0000'}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => onEditCard(card)}
+                                className="text-xs font-bold text-primary hover:underline flex items-center shrink-0"
+                            >
+                                <Pencil size={14} className="mr-1" /> Edit
+                            </button>
+                        </div>
+                    ))}
+                    {cards.length === 0 && (
+                        <div className="bg-background p-4 rounded-lg border border-dashed border-border text-center">
+                            <p className="text-sm text-textMain font-medium">No payment methods yet</p>
+                            <p className="text-xs text-secondary mt-1">Add a card or bank account to link subscriptions to it.</p>
+                            <button onClick={onAddCard} className="mt-3 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                Add Payment Method
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 

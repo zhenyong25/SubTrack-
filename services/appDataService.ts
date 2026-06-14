@@ -7,6 +7,11 @@ const SUBSCRIPTIONS_STORAGE_KEY = 'subtrack_data_v1';
 const CARDS_STORAGE_KEY = 'subtrack_cards_v1';
 const FRIENDS_STORAGE_KEY = 'subtrack_friends_v1';
 
+const normalizeCurrency = (currency?: string | null) => {
+  if (!currency || currency === 'USD') return 'SGD';
+  return currency;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
@@ -136,7 +141,7 @@ const getSupabaseUserId = async (): Promise<string | null> => {
 const mapProfileRow = (row: ProfileRow | null, friends: Friend[], isLoggedIn: boolean): UserProfile => ({
   name: row?.name || '',
   photoUrl: row?.photo_url || undefined,
-  currency: row?.currency || 'SGD',
+  currency: normalizeCurrency(row?.currency),
   isLoggedIn,
   friends,
   notificationDays: row?.notification_days ?? 3,
@@ -220,12 +225,16 @@ const mapFriendToRow = (friend: Friend, userId: string): FriendshipRow => ({
 
 const loadLocalData = (): LoadedAppData => {
   const profile = readLocalJson<UserProfile>(PROFILE_STORAGE_KEY, createDefaultProfile());
+  const normalizedProfile = {
+    ...profile,
+    currency: normalizeCurrency(profile.currency),
+  };
   const subscriptions = readLocalJson<Subscription[]>(SUBSCRIPTIONS_STORAGE_KEY, []);
   const cards = readLocalJson<PaymentCard[]>(CARDS_STORAGE_KEY, []);
-  const friends = readLocalJson<Friend[]>(FRIENDS_STORAGE_KEY, profile.friends || []);
+  const friends = readLocalJson<Friend[]>(FRIENDS_STORAGE_KEY, normalizedProfile.friends || []);
 
   return {
-    profile: { ...profile, friends },
+    profile: { ...normalizedProfile, friends },
     subscriptions,
     cards,
     friends,
@@ -261,7 +270,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     };
   });
 
-  if (!profileResult.data) {
+  if (!profileResult.data || profileResult.data.currency === 'USD') {
     await supabase
       .from('profiles')
       .upsert({

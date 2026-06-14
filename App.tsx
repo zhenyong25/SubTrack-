@@ -312,6 +312,10 @@ function App() {
       setAddingCard(newCardTemplate);
   };
 
+  const handleEditCardStart = (card: PaymentCard) => {
+      setAddingCard(card);
+  };
+
   // Save new or existing card from modal
   const handleSaveCardFromModal = (card: PaymentCard) => {
       if (card.id === 'new') {
@@ -481,6 +485,9 @@ function App() {
                 onClearData={handleClearData}
                 onSignOut={handleSignOut}
                 subscriptions={subscriptions}
+                cards={cards}
+                onAddCard={handleAddNewCardStart}
+                onEditCard={handleEditCardStart}
             />
         )}
       </main>
