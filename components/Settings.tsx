@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, CURRENCIES, Friend } from '../types';
-import { User, Trash2, Download, Moon, Sun, Monitor, Save, Users, Bell, LogIn, Plus, X, Search, Loader2, Check } from 'lucide-react';
-import { exportSubscriptionsToCSV, getFriends, saveFriends } from '../services/storageService';
+import { User, Trash2, Download, Moon, Sun, Monitor, Save, Users, Plus, X, Loader2, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
+import { exportSubscriptionsToCSV, getFriends, saveFriends, getCurrencySymbol } from '../services/storageService';
 
 interface SettingsProps {
     currentProfile: UserProfile;
@@ -17,12 +16,15 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
     const [name, setName] = useState(currentProfile.name);
     const [currency, setCurrency] = useState(currentProfile.currency);
     const [notificationDays, setNotificationDays] = useState(currentProfile.notificationDays || 3);
+    
     const [saved, setSaved] = useState(false);
 
     // Friend Management State
     const [friends, setFriends] = useState<Friend[]>([]);
     const [friendInput, setFriendInput] = useState('');
     const [isSearchingFriend, setIsSearchingFriend] = useState(false);
+    
+    const [confirmClear, setConfirmClear] = useState(false);
 
     useEffect(() => {
         setName(currentProfile.name);
@@ -40,7 +42,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             name, 
             currency,
             notificationDays,
-            friends: updatedFriends
+            friends: updatedFriends,
         });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -154,9 +156,12 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
             </div>
 
-            {/* Profile Settings */}
+            {/* App Settings */}
             <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
-                 <h3 className="font-bold text-lg text-textMain mb-4">Preferences</h3>
+                 <div className="flex items-center mb-4 text-primary">
+                    <SettingsIcon size={20} className="mr-2" />
+                    <h3 className="font-bold text-lg">App Settings</h3>
+                </div>
                 <div className="space-y-4">
                     <div>
                         <label className="block text-xs font-semibold text-secondary uppercase mb-1">Display Name</label>
@@ -170,13 +175,15 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                     </div>
                     <div>
                          <label className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
-                         <select 
-                            value={currency}
-                            onChange={(e) => setCurrency(e.target.value)}
-                            className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none"
-                         >
-                            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                         </select>
+                         <div className="relative">
+                            <select 
+                                value={currency}
+                                onChange={(e) => setCurrency(e.target.value)}
+                                className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none appearance-none"
+                            >
+                                {CURRENCIES.map(c => <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>)}
+                            </select>
+                         </div>
                     </div>
                      <div>
                          <label className="block text-xs font-semibold text-secondary uppercase mb-1">Notification Threshold (Days)</label>
@@ -191,6 +198,16 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                             <span className="text-sm font-bold w-6">{notificationDays}</span>
                          </div>
                          <p className="text-[10px] text-secondary">Alert me when a bill is due in {notificationDays} days.</p>
+                    </div>
+
+                    <div className="flex justify-between items-center py-3 border-t border-border mt-2">
+                        <span className="text-sm font-medium text-textMain">Theme Mode</span>
+                        <button 
+                            onClick={onToggleTheme}
+                            className="bg-background border border-border p-2 rounded-lg text-secondary hover:text-textMain transition-colors flex items-center"
+                        >
+                            {isDark ? <><Moon size={16} className="mr-2" /> Dark</> : <><Sun size={16} className="mr-2" /> Light</>}
+                        </button>
                     </div>
 
                     <button 
@@ -255,25 +272,6 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
             </div>
 
-
-            {/* Appearance */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
-                <div className="flex items-center mb-4 text-primary">
-                    <Monitor size={20} className="mr-2" />
-                    <h3 className="font-bold text-lg">App Settings</h3>
-                </div>
-                
-                <div className="flex justify-between items-center py-2">
-                    <span className="text-sm font-medium text-textMain">Theme Mode</span>
-                    <button 
-                        onClick={onToggleTheme}
-                        className="bg-background border border-border p-2 rounded-lg text-secondary hover:text-textMain transition-colors flex items-center"
-                    >
-                        {isDark ? <><Moon size={16} className="mr-2" /> Dark</> : <><Sun size={16} className="mr-2" /> Light</>}
-                    </button>
-                </div>
-            </div>
-
             {/* Data Management */}
             <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
                  <div className="flex items-center mb-4 text-primary">
@@ -289,14 +287,38 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         <Download size={18} className="mr-2" /> Export to CSV
                     </button>
                     
-                    <button 
-                        onClick={onClearData}
-                        className="w-full border border-red-200 bg-red-50 text-red-600 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-400 font-medium py-3 rounded-lg flex items-center justify-center transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
-                    >
-                        <Trash2 size={18} className="mr-2" /> Clear All Data
-                    </button>
+                    {!confirmClear ? (
+                        <button 
+                            onClick={() => setConfirmClear(true)}
+                            className="w-full border border-red-200 bg-red-50 text-red-600 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-400 font-medium py-3 rounded-lg flex items-center justify-center transition-colors hover:bg-red-100 dark:hover:bg-red-900/20"
+                        >
+                            <Trash2 size={18} className="mr-2" /> Clear All Data
+                        </button>
+                    ) : (
+                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 p-4 rounded-lg animate-scale-in">
+                            <div className="flex items-center text-red-600 dark:text-red-400 mb-2">
+                                <AlertTriangle size={20} className="mr-2" />
+                                <span className="font-bold text-sm">Warning: Irreversible!</span>
+                            </div>
+                            <p className="text-xs text-secondary mb-3">This will delete all subscriptions, cards, and settings permanently.</p>
+                            <div className="flex space-x-2">
+                                <button 
+                                    onClick={() => setConfirmClear(false)}
+                                    className="flex-1 bg-background border border-border py-2 rounded text-sm font-bold text-textMain"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={onClearData}
+                                    className="flex-1 bg-red-600 text-white py-2 rounded text-sm font-bold hover:bg-red-700"
+                                >
+                                    Confirm Delete
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <p className="text-[10px] text-center text-secondary">
-                        Version 1.2.0 • Storage: Local
+                        Version 1.4.0 • Storage: Local
                     </p>
                 </div>
             </div>

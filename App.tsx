@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, List, Plus, Bell, Sun, Moon, CheckCircle, Settings as SettingsIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bell, Sun, Moon, CheckCircle, Plus } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import SubscriptionList from './components/SubscriptionList';
 import AddSubscription from './components/AddSubscription';
@@ -8,7 +8,8 @@ import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import CardDetail from './components/CardDetail';
 import { Subscription, BillingCycle, UserProfile, PaymentCard } from './types';
-import { getSubscriptions, saveSubscriptions, calculateNextPayment, isUpcoming, getCards, saveCards } from './services/storageService';
+import { getSubscriptions, saveSubscriptions, calculateNextPayment, isUpcoming, getCards, saveCards, getUrgencyLevel } from './services/storageService';
+import AppLogo from './components/AppLogo';
 
 enum Tab {
   Dashboard = 'Dashboard',
@@ -24,7 +25,7 @@ function App() {
   
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [cards, setCards] = useState<PaymentCard[]>([]);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
   
   // Card Management State
@@ -36,10 +37,11 @@ function App() {
       currency: 'USD', 
       isLoggedIn: false, 
       friends: [],
-      notificationDays: 3 
+      notificationDays: 3,
   });
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
 
   // Load data and theme on mount
   useEffect(() => {
@@ -83,20 +85,15 @@ function App() {
     const loadedCards = getCards();
     setCards(loadedCards);
 
-    // Request Notification permission
-    if ("Notification" in window) {
-      if (Notification.permission === 'granted') {
-        setNotificationsEnabled(true);
+    // Click outside handler for notifications
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
       }
-    }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Check notifications whenever subs or profile changes
-  useEffect(() => {
-      if (notificationsEnabled) {
-          checkDueDates(subscriptions);
-      }
-  }, [subscriptions, userProfile.notificationDays, notificationsEnabled]);
 
   const showToast = (msg: string) => {
       setToastMessage(msg);
@@ -123,28 +120,6 @@ function App() {
 
   const handleCurrencyChange = (curr: string) => {
     handleUpdateProfile({ ...userProfile, currency: curr });
-  };
-
-  const enableNotifications = async () => {
-    if (!("Notification" in window)) {
-      alert("This browser does not support desktop notifications");
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      setNotificationsEnabled(true);
-      checkDueDates(subscriptions);
-    }
-  };
-
-  const checkDueDates = (subs: Subscription[]) => {
-    const threshold = userProfile.notificationDays || 3;
-    const dueSoon = subs.filter(s => s.status === 'Active' && isUpcoming(s.nextPaymentDate, threshold));
-    
-    // Simple debounce check (in a real app, track sent notifications to avoid spam)
-    if (dueSoon.length > 0) {
-      // Logic to not spam if already notified today could go here
-    }
   };
 
   const handleAddOrUpdateSubscription = (data: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => {
@@ -181,6 +156,23 @@ function App() {
     setEditingSub(undefined);
     if(editingSub) setSelectedSubId(editingSub.id);
     else setActiveTab(Tab.Subscriptions);
+  };
+
+  const handleCloneSubscription = (originalSub: Subscription) => {
+      const newSub: Subscription = {
+          ...originalSub,
+          id: crypto.randomUUID(),
+          firstPaymentDate: new Date().toISOString(),
+          nextPaymentDate: calculateNextPayment(new Date().toISOString(), originalSub.billingCycle),
+          status: 'Active',
+          cancellationDate: undefined,
+          paymentHistory: {} // Start fresh history
+      };
+      const updatedList = [...subscriptions, newSub];
+      setSubscriptions(updatedList);
+      saveSubscriptions(updatedList);
+      setSelectedSubId(newSub.id); // Switch view to new sub
+      showToast(`${newSub.name} renewed!`);
   };
 
   const handleStartEdit = (sub: Subscription) => {
@@ -250,6 +242,12 @@ function App() {
       setAddingCard(null);
   };
 
+  const getUpcomingNotifications = () => {
+      return subscriptions
+          .filter(s => s.status === 'Active' && isUpcoming(s.nextPaymentDate, userProfile.notificationDays))
+          .sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
+  };
+
   if (isAdding) {
     return (
       <AddSubscription 
@@ -262,15 +260,19 @@ function App() {
   }
 
   const selectedSub = subscriptions.find(s => s.id === selectedSubId);
+  const upcomingNotifications = getUpcomingNotifications();
 
   return (
     <div className="bg-background min-h-screen text-textMain font-sans selection:bg-primary selection:text-white transition-colors duration-300">
       {/* Header */}
       <header className="fixed top-0 w-full z-20 bg-background/90 backdrop-blur-md border-b border-border px-6 py-4 flex justify-between items-center transition-colors duration-300">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
-          {userProfile.name ? `${userProfile.name}'s SubTrack` : 'SubTrack'}
-        </h1>
         <div className="flex items-center space-x-3">
+             <AppLogo />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
+               {userProfile.name ? `${userProfile.name}'s SubTrack` : 'SubTrack'}
+            </h1>
+        </div>
+        <div className="flex items-center space-x-3 relative" ref={notificationRef}>
             <button 
             onClick={toggleTheme}
             className="p-2 rounded-full text-secondary hover:text-textMain transition-colors"
@@ -279,43 +281,81 @@ function App() {
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
             <button 
-            onClick={enableNotifications}
-            className={`p-2 rounded-full transition-colors ${notificationsEnabled ? 'text-primary bg-primary/10' : 'text-secondary hover:text-textMain'}`}
-            title={notificationsEnabled ? "Notifications On" : "Enable Notifications"}
+            onClick={() => setShowNotifications(!showNotifications)}
+            className={`p-2 rounded-full transition-colors relative ${showNotifications || upcomingNotifications.length > 0 ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
+            title="Notifications"
             >
             <Bell size={20} />
+            {upcomingNotifications.length > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-background"></span>
+            )}
             </button>
+
+            {/* Notification Dropdown */}
+            {showNotifications && (
+                <div className="absolute top-12 right-0 w-72 bg-surface border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-scale-in">
+                    <div className="bg-background px-4 py-3 border-b border-border flex justify-between items-center">
+                        <span className="text-sm font-bold text-textMain">Upcoming Bills</span>
+                        <span className="text-[10px] text-secondary bg-background border border-border px-2 py-0.5 rounded-full">{upcomingNotifications.length}</span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                        {upcomingNotifications.length > 0 ? (
+                            upcomingNotifications.map(sub => {
+                                const urgency = getUrgencyLevel(sub.nextPaymentDate);
+                                return (
+                                    <div key={sub.id} className="p-3 border-b border-border/50 hover:bg-background/50 transition-colors flex items-center space-x-3">
+                                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: urgency === 'critical' ? '#ef4444' : '#f59e0b' }}></div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-textMain truncate">{sub.name}</p>
+                                            <p className="text-xs text-secondary">Due {new Date(sub.nextPaymentDate).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-bold">{sub.price.toFixed(2)}</p>
+                                            <p className="text-[10px] text-secondary">{sub.currency}</p>
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        ) : (
+                            <div className="p-6 text-center text-secondary">
+                                <CheckCircle size={24} className="mx-auto mb-2 opacity-50" />
+                                <p className="text-xs">All bills paid for now!</p>
+                            </div>
+                        )}
+                    </div>
+                    {upcomingNotifications.length > 0 && (
+                        <div className="p-2 bg-background border-t border-border text-center">
+                            <p className="text-[10px] text-secondary">Alerts set to {userProfile.notificationDays} days before due.</p>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="pt-24 px-4 max-w-2xl mx-auto min-h-screen pb-24">
-        <div className="mb-6 flex items-center justify-between">
-           <h2 className="text-3xl font-bold text-textMain">{activeTab}</h2>
-           {activeTab === Tab.Subscriptions && (
-             <span className="bg-surface px-3 py-1 rounded-full text-xs font-mono text-secondary border border-border">
-               {subscriptions.filter(s => s.status === 'Active').length} Active
-             </span>
-           )}
-        </div>
-
+      {/* Main Content */}
+      <main className="pt-24 px-4 pb-24 max-w-2xl mx-auto">
         {activeTab === Tab.Dashboard && (
-            <Dashboard 
-                subscriptions={subscriptions} 
-                cards={cards}
-                baseCurrency={userProfile.currency}
-                onCurrencyChange={handleCurrencyChange}
-                onUpdateCard={handleUpdateCard}
-                onAddCard={handleAddNewCardStart}
-            />
+          <Dashboard 
+            subscriptions={subscriptions} 
+            cards={cards}
+            baseCurrency={userProfile.currency}
+            onCurrencyChange={handleCurrencyChange}
+            onUpdateCard={handleUpdateCard}
+            onAddCard={handleAddNewCardStart}
+          />
         )}
+        
         {activeTab === Tab.Subscriptions && (
           <SubscriptionList 
             subscriptions={subscriptions} 
+            baseCurrency={userProfile.currency}
+            onCurrencyChange={handleCurrencyChange}
             onDelete={handleDelete}
             onSelect={(sub) => setSelectedSubId(sub.id)}
-           />
+          />
         )}
+
         {activeTab === Tab.Settings && (
             <Settings 
                 currentProfile={userProfile}
@@ -328,79 +368,79 @@ function App() {
         )}
       </main>
 
-      {/* Floating Add Button */}
-      {!selectedSubId && activeTab !== Tab.Settings && (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="fixed bottom-24 right-6 bg-primary hover:bg-indigo-500 text-white w-14 h-14 rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center z-30 transition-transform hover:scale-105 active:scale-95"
-          >
-            <Plus size={28} />
-          </button>
+      {/* Navigation Tabs */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-8 z-40">
+        <button 
+          onClick={() => setActiveTab(Tab.Dashboard)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Dashboard ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Dashboard ? 'bg-primary/10' : 'bg-transparent'}`}>
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab(Tab.Subscriptions)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Subscriptions ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+           <div className={`p-1 rounded-lg ${activeTab === Tab.Subscriptions ? 'bg-primary/10' : 'bg-transparent'}`}>
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15V6" /><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /><path d="M12 12H3" /><path d="M16 6H3" /><path d="M12 18H3" /></svg>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab(Tab.Settings)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Settings ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+           <div className={`p-1 rounded-lg ${activeTab === Tab.Settings ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+          </div>
+        </button>
+      </nav>
+
+      {/* Floating Add Button (Only on Subscriptions Tab) */}
+      {activeTab === Tab.Subscriptions && (
+        <button 
+          onClick={() => { setIsAdding(true); setEditingSub(undefined); }}
+          className="fixed bottom-24 right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
+        >
+          <Plus size={24} />
+        </button>
       )}
 
-      {/* Detail View Modal */}
+      {/* Detail Modal */}
       {selectedSub && (
           <SubscriptionDetail 
               subscription={selectedSub}
               onUpdate={(updated) => {
-                  const newList = subscriptions.map(s => s.id === updated.id ? updated : s);
-                  setSubscriptions(newList);
-                  saveSubscriptions(newList);
+                  const updatedList = subscriptions.map(s => s.id === updated.id ? updated : s);
+                  setSubscriptions(updatedList);
+                  saveSubscriptions(updatedList);
               }}
-              onEdit={handleStartEdit}
               onDelete={handleDelete}
+              onEdit={handleStartEdit}
+              onClone={handleCloneSubscription}
               onClose={() => setSelectedSubId(null)}
               onShowToast={showToast}
           />
       )}
 
-      {/* Add Card Modal */}
+      {/* Card Detail / Add Modal */}
       {addingCard && (
-          <CardDetail
-            card={addingCard}
-            subscriptions={subscriptions}
-            baseCurrency={userProfile.currency}
-            onUpdate={handleSaveCardFromModal}
-            onClose={() => setAddingCard(null)}
+          <CardDetail 
+              card={addingCard}
+              subscriptions={subscriptions}
+              baseCurrency={userProfile.currency}
+              onUpdate={handleSaveCardFromModal}
+              onClose={() => setAddingCard(null)}
           />
       )}
 
       {/* Toast Notification */}
       {toastMessage && (
-          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-surface border border-emerald-500/20 shadow-xl rounded-full px-6 py-3 flex items-center space-x-3 z-50 animate-fade-in">
-              <CheckCircle size={20} className="text-emerald-500" />
-              <span className="text-sm font-bold text-textMain">{toastMessage}</span>
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-surface border border-primary/20 text-textMain px-4 py-2 rounded-full shadow-lg z-50 animate-slide-up flex items-center">
+              <CheckCircle size={16} className="text-primary mr-2" />
+              <span className="text-sm font-bold">{toastMessage}</span>
           </div>
       )}
-
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 w-full bg-surface/90 backdrop-blur-lg border-t border-border pb-safe pt-2 z-20 transition-colors duration-300">
-        <div className="flex justify-around items-center max-w-2xl mx-auto h-16">
-          <button 
-            onClick={() => setActiveTab(Tab.Dashboard)}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === Tab.Dashboard ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
-          >
-            <LayoutDashboard size={22} strokeWidth={activeTab === Tab.Dashboard ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Dashboard</span>
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab(Tab.Subscriptions)}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === Tab.Subscriptions ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
-          >
-            <List size={22} strokeWidth={activeTab === Tab.Subscriptions ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Subscriptions</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab(Tab.Settings)}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === Tab.Settings ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
-          >
-            <SettingsIcon size={22} strokeWidth={activeTab === Tab.Settings ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Settings</span>
-          </button>
-        </div>
-      </nav>
     </div>
   );
 }

@@ -19,6 +19,22 @@ const EXCHANGE_RATES: Record<string, number> = {
   'SGD': 1.36
 };
 
+export const getCurrencySymbol = (code: string): string => {
+    const symbols: Record<string, string> = {
+        'USD': '$',
+        'EUR': '€',
+        'GBP': '£',
+        'JPY': '¥',
+        'CAD': '$',
+        'AUD': '$',
+        'INR': '₹',
+        'CNY': '¥',
+        'MYR': 'RM',
+        'SGD': '$'
+    };
+    return symbols[code] || code;
+};
+
 export const getSubscriptions = (): Subscription[] => {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
@@ -190,55 +206,63 @@ export const exportSubscriptionsToCSV = (subs: Subscription[]) => {
 
 // --- CHART DATA HELPERS ---
 
-export const getProjectionData = (subs: Subscription[], baseCurrency: string) => {
-  const today = new Date();
-  const data = [];
-
-  for (let i = 0; i < 12; i++) {
-    // Create date for the 1st of each future month
-    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+export const getYearlyExpenseData = (subs: Subscription[], year: number, baseCurrency: string) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // X-Axis Label: Just Month (e.g., "Oct")
-    const monthKey = d.toLocaleString('default', { month: 'short' }); 
-    
-    // Tooltip Label: Month + Year (e.g., "Oct 24")
-    const tooltipLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
-
-    let total = 0;
+    // Initialize buckets
+    const data = months.map(m => ({ name: m, total: 0 }));
 
     subs.forEach(sub => {
-      if (sub.status !== 'Active') return;
-      if (sub.billingCycle === BillingCycle.FreeTrial) return;
+        if (sub.billingCycle === BillingCycle.FreeTrial) return;
 
-      // Base price in target currency
-      const price = convertCurrency(sub.price, sub.currency, baseCurrency);
-      
-      // Calculate share
-      const splitCount = sub.sharedCount && sub.sharedCount > 0 ? sub.sharedCount : 1;
-      const myShare = price / splitCount;
+        const subStartDate = new Date(sub.firstPaymentDate);
+        // If cancellation date exists, use it, otherwise assume infinity (active)
+        const subEndDate = sub.status === 'Past' && sub.cancellationDate 
+            ? new Date(sub.cancellationDate) 
+            : new Date(9999, 11, 31); 
+        
+        // Loop through each month of the target year
+        for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
+            // Create a specific date for Month Year (start of month)
+            const monthStart = new Date(year, monthIdx, 1);
+            // End of month
+            const monthEnd = new Date(year, monthIdx + 1, 0);
 
-      if (sub.billingCycle === BillingCycle.Monthly) {
-        // Monthly subs appear every month
-        total += myShare;
-      } else if (sub.billingCycle === BillingCycle.Yearly) {
-        // Yearly subs only appear if the renewal month matches the bucket month
-        const nextPay = new Date(sub.nextPaymentDate);
-        if (nextPay.getMonth() === d.getMonth()) {
-            total += myShare;
+            // 1. Must have started before or during this month
+            // 2. Must not have been cancelled before this month
+            
+            // Check start: Start Date month/year must be <= Current month/year
+            if (new Date(subStartDate.getFullYear(), subStartDate.getMonth(), 1) > monthStart) continue;
+
+            // Check end: If cancelled, cancellation date must be >= start of this month
+            if (subEndDate < monthStart) continue;
+
+            let costToAdd = 0;
+            const splitCount = sub.sharedCount && sub.sharedCount > 0 ? sub.sharedCount : 1;
+            const price = convertCurrency(sub.price / splitCount, sub.currency, baseCurrency);
+
+            if (sub.billingCycle === BillingCycle.Monthly) {
+                // Occurs every month
+                costToAdd = price;
+            } else if (sub.billingCycle === BillingCycle.Yearly) {
+                // Occurs only if month matches start month (Renewal)
+                if (subStartDate.getMonth() === monthIdx) {
+                    costToAdd = price;
+                }
+            } else if (sub.billingCycle === BillingCycle.Weekly) {
+                 // Approx cost
+                 costToAdd = price * 4.3;
+            } else if (sub.billingCycle === BillingCycle.Daily) {
+                 const daysInMonth = monthEnd.getDate();
+                 costToAdd = price * daysInMonth;
+            }
+
+            data[monthIdx].total += costToAdd;
         }
-      } else if (sub.billingCycle === BillingCycle.Weekly) {
-         // Approx 4.3 weeks a month
-         total += myShare * 4.3; 
-      } else if (sub.billingCycle === BillingCycle.Daily) {
-         const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-         total += myShare * daysInMonth;
-      }
     });
-
-    data.push({ name: monthKey, tooltipLabel: tooltipLabel, total: parseFloat(total.toFixed(2)) });
-  }
-  return data;
-};
+    
+    return data.map(d => ({ ...d, total: parseFloat(d.total.toFixed(2)) }));
+}
 
 export const getPaymentDistribution = (subs: Subscription[], baseCurrency: string) => {
   // Buckets for Day 1 to 31
@@ -269,24 +293,29 @@ export const getCardSpendingHistory = (subs: Subscription[], cardName: string, b
   // Go back 12 months
   for (let i = 11; i >= 0; i--) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-    const monthKey = d.toLocaleString('default', { month: 'short' }); // Just month for small charts
+    const monthKey = d.toLocaleString('default', { month: 'short' }); 
+    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+
     let total = 0;
 
     subs.forEach(sub => {
-       if (sub.status !== 'Active') return;
-       // Match by name or potentially ID if we had it fully linked, for now assume name matching for stats
+       // Match by name
        if (sub.cardName !== cardName) return; 
 
-       // Calculate if this sub occurred in this month 'd'
+       const subStartDate = new Date(sub.firstPaymentDate);
+       const subEndDate = sub.status === 'Past' && sub.cancellationDate 
+            ? new Date(sub.cancellationDate) 
+            : new Date(9999, 11, 31); 
+
+       if (new Date(subStartDate.getFullYear(), subStartDate.getMonth(), 1) > monthStart) return;
+       if (subEndDate < monthStart) return;
+
        const price = convertCurrency(sub.price / (sub.sharedCount||1), sub.currency, baseCurrency);
        
        if (sub.billingCycle === BillingCycle.Monthly) {
-          // It occurs every month
           total += price;
        } else if (sub.billingCycle === BillingCycle.Yearly) {
-          // Check if renewal month matches
-          const renewalMonth = new Date(sub.firstPaymentDate).getMonth();
-          if (renewalMonth === d.getMonth()) total += price;
+          if (new Date(sub.firstPaymentDate).getMonth() === d.getMonth()) total += price;
        }
     });
 

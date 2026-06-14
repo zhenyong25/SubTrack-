@@ -3,22 +3,42 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Subscription, Friend } from '../types';
 import { generateNaughtyReminder } from '../services/geminiService';
 import { getFriends } from '../services/storageService';
-import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell } from 'lucide-react';
+import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell, RotateCcw, PlayCircle } from 'lucide-react';
 
 interface SubscriptionDetailProps {
   subscription: Subscription;
   onUpdate: (updated: Subscription) => void;
   onDelete: (id: string) => void;
   onEdit: (sub: Subscription) => void;
+  onClone: (sub: Subscription) => void;
   onClose: () => void;
   onShowToast: (msg: string) => void;
 }
 
-const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, onUpdate, onDelete, onEdit, onClose, onShowToast }) => {
+const getLogoUrl = (name: string) => {
+    const cleanName = name.toLowerCase().replace(/\s+/g, '').replace(/premium|plus|pro|standard|family|student|individual|plan/g, '');
+    const domainMap: Record<string, string> = {
+        'netflix': 'netflix.com', 'spotify': 'spotify.com', 'youtube': 'youtube.com', 'amazon': 'amazon.com', 'prime': 'amazon.com',
+        'disney': 'disneyplus.com', 'hulu': 'hulu.com', 'hbo': 'hbo.com', 'max': 'max.com', 'apple': 'apple.com', 'icloud': 'apple.com',
+        'google': 'google.com', 'dropbox': 'dropbox.com', 'slack': 'slack.com', 'adobe': 'adobe.com', 'chatgpt': 'openai.com',
+        'openai': 'openai.com', 'github': 'github.com', 'playstation': 'playstation.com', 'xbox': 'xbox.com', 'nintendo': 'nintendo.com',
+        'steam': 'steampowered.com', 'twitch': 'twitch.tv', 'duolingo': 'duolingo.com', 'canva': 'canva.com', 'notion': 'notion.so',
+        'medium': 'medium.com', 'x': 'twitter.com', 'twitter': 'twitter.com', 'linkedin': 'linkedin.com', 'zoom': 'zoom.us',
+        'discord': 'discord.com', 'figma': 'figma.com', 'tinder': 'tinder.com', 'bumble': 'bumble.com', 'hinge': 'hinge.co',
+        'audible': 'audible.com', 'evernote': 'evernote.com', 'midjourney': 'midjourney.com', 'claude': 'anthropic.com'
+    };
+    for(const key in domainMap) {
+        if(cleanName.includes(key)) return `https://logo.clearbit.com/${domainMap[key]}`;
+    }
+    return `https://logo.clearbit.com/${cleanName}.com`;
+};
+
+const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, onUpdate, onDelete, onEdit, onClone, onClose, onShowToast }) => {
   const [loadingNudge, setLoadingNudge] = useState<string | null>(null);
   const [nudgeMessage, setNudgeMessage] = useState<string | null>(null);
   const [availableFriends, setAvailableFriends] = useState<Friend[]>([]);
   const [showFriendSelector, setShowFriendSelector] = useState(false);
+  const [showReactivateModal, setShowReactivateModal] = useState(false);
   
   // State for Month Navigation (defaults to current month)
   const [currentHistoryDate, setCurrentHistoryDate] = useState(new Date());
@@ -30,6 +50,8 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
   const sharedPeople = useMemo(() => {
       return subscription.sharedWith || [];
   }, [subscription]);
+
+  const logoUrl = getLogoUrl(subscription.name);
 
   const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
   const formatMonth = (date: Date) => date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -53,14 +75,38 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
       }
   };
 
-  const toggleActiveStatus = () => {
-      const newStatus = subscription.status === 'Active' ? 'Past' : 'Active';
+  const handleStatusToggle = () => {
+      if (subscription.status === 'Active') {
+          // Cancelling
+          if (confirm("Cancel this subscription? It will be moved to Past and expenses will stop accumulating from today.")) {
+             onUpdate({
+                ...subscription,
+                status: 'Past',
+                cancellationDate: new Date().toISOString()
+             });
+             onShowToast("Subscription Cancelled");
+          }
+      } else {
+          // Reactivating - Show options
+          setShowReactivateModal(true);
+      }
+  }
+
+  const handleResumeExisting = () => {
       onUpdate({
           ...subscription,
-          status: newStatus
+          status: 'Active',
+          cancellationDate: undefined // Clear cancellation
       });
-      onShowToast(`Subscription marked as ${newStatus}`);
-  }
+      setShowReactivateModal(false);
+      onShowToast("Resumed existing subscription");
+  };
+
+  const handleStartNewCycle = () => {
+      onClone(subscription);
+      setShowReactivateModal(false);
+      onShowToast("Started new subscription cycle!");
+  };
 
   const handleNudge = async (person: string) => {
       setLoadingNudge(person);
@@ -113,7 +159,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
             </button>
             <div className="flex items-center space-x-2">
                 <button 
-                    onClick={toggleActiveStatus}
+                    onClick={handleStatusToggle}
                     className={`text-xs px-3 py-1 rounded-full font-bold border transition-colors ${subscription.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-secondary/10 text-secondary border-secondary/20'}`}
                 >
                     {subscription.status === 'Active' ? 'ACTIVE' : 'PAST / CANCELLED'}
@@ -131,16 +177,30 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
             {/* Main Info */}
             <div className="flex flex-col items-center mb-8 mt-4">
                 <div 
-                    className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white shadow-lg mb-4"
-                    style={{ backgroundColor: subscription.color }}
+                    className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mb-4 overflow-hidden bg-surface border border-border"
+                    style={{ boxShadow: `0 10px 30px -10px ${subscription.color || 'rgba(0,0,0,0.1)'}` }}
                 >
-                    {subscription.name.charAt(0).toUpperCase()}
+                    <img 
+                        src={logoUrl} 
+                        alt={subscription.name} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.parentElement!.style.backgroundColor = subscription.color;
+                            e.currentTarget.parentElement!.innerText = subscription.name.charAt(0).toUpperCase();
+                        }}
+                    />
                 </div>
                 <h2 className="text-2xl font-bold text-textMain">{subscription.name}</h2>
                 <div className="flex items-baseline mt-1">
                     <span className="text-3xl font-bold text-textMain">{subscription.price.toFixed(2)}</span>
                     <span className="text-sm font-semibold text-secondary ml-1">{subscription.currency} / {subscription.billingCycle}</span>
                 </div>
+                {subscription.status === 'Past' && subscription.cancellationDate && (
+                    <p className="text-xs text-red-500 mt-1 font-medium">
+                        Ended on {new Date(subscription.cancellationDate).toLocaleDateString()}
+                    </p>
+                )}
                 <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm text-secondary">
                     <span className="bg-surface px-3 py-1 rounded-lg border border-border flex items-center">
                         <CreditCard size={14} className="mr-2" /> 
@@ -163,7 +223,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
                         onClick={() => setShowFriendSelector(!showFriendSelector)}
                         className="text-primary text-xs font-bold flex items-center hover:underline"
                     >
-                        <Plus size={14} className="mr-1" /> Add Person
+                        <Plus size={14} className="mr-2" /> Add Person
                     </button>
                 </div>
 
@@ -272,6 +332,38 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, o
                 </div>
             </div>
         </div>
+
+        {/* Reactivation Modal */}
+        {showReactivateModal && (
+             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
+                <div className="bg-surface w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-scale-in border border-border">
+                    <h3 className="text-lg font-bold text-textMain mb-2">Resuming Subscription?</h3>
+                    <p className="text-sm text-secondary mb-6">
+                        Are you continuing the same billing cycle (mistake) or starting a fresh one (after a gap)?
+                    </p>
+                    <div className="space-y-3">
+                         <button 
+                            onClick={handleStartNewCycle}
+                            className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:opacity-90 flex items-center justify-center"
+                        >
+                            <PlayCircle size={18} className="mr-2" /> Start New Cycle (Gap)
+                        </button>
+                        <button 
+                            onClick={handleResumeExisting}
+                            className="w-full bg-surface border border-border text-textMain py-3 rounded-xl font-bold hover:bg-background flex items-center justify-center"
+                        >
+                            <RotateCcw size={18} className="mr-2" /> Continue Existing
+                        </button>
+                        <button 
+                            onClick={() => setShowReactivateModal(false)}
+                            className="w-full text-secondary py-2 text-sm hover:text-textMain"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Nudge Modal */}
         {nudgeMessage && (

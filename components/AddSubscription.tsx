@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Subscription, BillingCycle, AiSuggestion, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard } from '../types';
 import { getSubscriptionSuggestions, POPULAR_SUBSCRIPTIONS } from '../services/geminiService';
 import { Sparkles, X, Plus, Loader2, Check, DollarSign, Calendar, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
+import { getCurrencySymbol } from '../services/storageService';
 
 interface AddSubscriptionProps {
   onSave: (sub: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => void;
@@ -22,6 +23,25 @@ const CARD_TYPES: { type: CardType, label: string }[] = [
     { type: 'GooglePay', label: 'Google Pay' },
     { type: 'Other', label: 'Other' },
 ];
+
+const getLogoUrl = (name: string) => {
+    if (!name) return '';
+    const cleanName = name.toLowerCase().replace(/\s+/g, '').replace(/premium|plus|pro|standard|family|student|individual|plan/g, '');
+    const domainMap: Record<string, string> = {
+        'netflix': 'netflix.com', 'spotify': 'spotify.com', 'youtube': 'youtube.com', 'amazon': 'amazon.com', 'prime': 'amazon.com',
+        'disney': 'disneyplus.com', 'hulu': 'hulu.com', 'hbo': 'hbo.com', 'max': 'max.com', 'apple': 'apple.com', 'icloud': 'apple.com',
+        'google': 'google.com', 'dropbox': 'dropbox.com', 'slack': 'slack.com', 'adobe': 'adobe.com', 'chatgpt': 'openai.com',
+        'openai': 'openai.com', 'github': 'github.com', 'playstation': 'playstation.com', 'xbox': 'xbox.com', 'nintendo': 'nintendo.com',
+        'steam': 'steampowered.com', 'twitch': 'twitch.tv', 'duolingo': 'duolingo.com', 'canva': 'canva.com', 'notion': 'notion.so',
+        'medium': 'medium.com', 'x': 'twitter.com', 'twitter': 'twitter.com', 'linkedin': 'linkedin.com', 'zoom': 'zoom.us',
+        'discord': 'discord.com', 'figma': 'figma.com', 'tinder': 'tinder.com', 'bumble': 'bumble.com', 'hinge': 'hinge.co',
+        'audible': 'audible.com', 'evernote': 'evernote.com', 'midjourney': 'midjourney.com', 'claude': 'anthropic.com'
+    };
+    for(const key in domainMap) {
+        if(cleanName.includes(key)) return `https://logo.clearbit.com/${domainMap[key]}`;
+    }
+    return `https://logo.clearbit.com/${cleanName}.com`;
+};
 
 const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, initialData, savedCards }) => {
   const [name, setName] = useState('');
@@ -49,6 +69,9 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
   const [aiQuery, setAiQuery] = useState('');
   const [suggestions, setSuggestions] = useState<AiSuggestion[]>(POPULAR_SUBSCRIPTIONS);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  // Derived logo for preview
+  const logoPreview = name ? getLogoUrl(name) : '';
 
   useEffect(() => {
     if (initialData) {
@@ -196,16 +219,31 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Service Name</label>
-            <input 
-              required
-              type="text" 
-              value={name} 
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. Netflix"
-              className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none transition-colors"
-            />
+          <div className="flex items-start space-x-3">
+             <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-surface border border-border flex items-center justify-center overflow-hidden mt-6">
+                 {logoPreview ? (
+                     <img src={logoPreview} alt="" className="w-full h-full object-cover" 
+                        onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.parentElement!.style.backgroundColor = selectedColor;
+                            e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-bold text-lg">${name.charAt(0).toUpperCase()}</span>`;
+                        }}
+                     />
+                 ) : (
+                     <span className="text-secondary text-xs">Logo</span>
+                 )}
+             </div>
+             <div className="flex-1">
+                <label className="block text-xs font-semibold text-secondary uppercase mb-1">Service Name</label>
+                <input 
+                  required
+                  type="text" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Netflix"
+                  className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none transition-colors"
+                />
+             </div>
           </div>
 
           <div className="grid grid-cols-[2fr_1fr] gap-4">
@@ -222,7 +260,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                     value={price} 
                     onChange={e => setPrice(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none"
+                    className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none no-spinner"
                     />
                 </div>
             </div>
@@ -231,9 +269,9 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                  <select 
                    value={currency}
                    onChange={e => setCurrency(e.target.value)}
-                   className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
+                   className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
                  >
-                     {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                     {CURRENCIES.map(c => <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>)}
                  </select>
             </div>
           </div>
@@ -301,7 +339,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                                 value={last4}
                                 onChange={e => setLast4(e.target.value.slice(0, 4))}
                                 placeholder="Last 4"
-                                className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none text-sm text-center tracking-widest"
+                                className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none text-sm text-center tracking-widest no-spinner"
                                 maxLength={4}
                             />
                         </div>
@@ -470,8 +508,17 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                   className="w-full bg-surface border border-border hover:border-primary/50 p-3 rounded-xl flex justify-between items-center group text-left transition-all hover:shadow-md"
                  >
                    <div className="flex items-center">
-                     <div className="w-10 h-10 rounded-full bg-indigo-100/10 flex items-center justify-center text-primary font-bold mr-3 text-lg">
-                       {s.name.charAt(0)}
+                     <div className="w-10 h-10 rounded-full bg-indigo-100/10 flex items-center justify-center text-primary font-bold mr-3 text-lg overflow-hidden">
+                        {/* Auto Logo in Suggestions too */}
+                        <img 
+                            src={getLogoUrl(s.name)} 
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement!.innerHTML = s.name.charAt(0);
+                            }}
+                        />
                      </div>
                      <div>
                        <p className="font-bold text-textMain">{s.name}</p>

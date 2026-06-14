@@ -1,11 +1,13 @@
 
-export enum BillingCycle {
-  Daily = 'Daily',
-  Weekly = 'Weekly',
-  Monthly = 'Monthly',
-  Yearly = 'Yearly',
-  FreeTrial = 'Free Trial'
-}
+export const BillingCycle = {
+  Daily: 'Daily',
+  Weekly: 'Weekly',
+  Monthly: 'Monthly',
+  Yearly: 'Yearly',
+  FreeTrial: 'Free Trial'
+} as const;
+
+export type BillingCycle = typeof BillingCycle[keyof typeof BillingCycle];
 
 export type CardType = 'Visa' | 'Mastercard' | 'Amex' | 'Discover' | 'Paypal' | 'ApplePay' | 'GooglePay' | 'Other';
 
@@ -33,6 +35,7 @@ export interface Subscription {
   billingCycle: BillingCycle;
   firstPaymentDate: string; // ISO Date string
   nextPaymentDate: string; // ISO Date string
+  cancellationDate?: string; // ISO Date string, if Past
   category: string;
   cardId?: string; // Link to a PaymentCard
   cardName: string; // Fallback / Display name

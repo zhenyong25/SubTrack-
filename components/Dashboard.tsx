@@ -1,8 +1,8 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Subscription, BillingCycle, CURRENCIES, PaymentCard } from '../types';
-import { getMonthlyCost, getProjectionData, convertCurrency } from '../services/storageService';
+import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { CreditCard, Calendar, TrendingUp, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Clock, PlusCircle } from 'lucide-react';
 import CardLogo from './CardLogo';
 import CardDetail from './CardDetail';
@@ -24,6 +24,14 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [cardFilterDate, setCardFilterDate] = useState(new Date());
   const [selectedCardForDetail, setSelectedCardForDetail] = useState<PaymentCard | null>(null);
+  
+  // Year state for Chart
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  // Sync Chart Year when Card Filter Date changes years
+  useEffect(() => {
+    setSelectedYear(cardFilterDate.getFullYear());
+  }, [cardFilterDate]);
 
   const stats = useMemo(() => {
     let monthlyTotal = 0;
@@ -95,7 +103,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [subscriptions, baseCurrency]);
 
-  const projectionData = useMemo(() => getProjectionData(subscriptions, baseCurrency), [subscriptions, baseCurrency]);
+  const yearlyChartData = useMemo(() => getYearlyExpenseData(subscriptions, selectedYear, baseCurrency), [subscriptions, selectedYear, baseCurrency]);
 
   // Card Usage Data with Linkage
   const cardUsageData = useMemo(() => {
@@ -159,7 +167,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
      return Array.from(map.entries()).map(([name, data]) => ({ 
          name, 
          value: data.total, 
-         type: data.type,
+         type: data.type, 
          cardId: data.cardId,
          budget: data.budget,
          instance: data.instance
@@ -185,6 +193,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       if (ratio > 0.75) return 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-900/50';
       return 'bg-background';
   };
+
+  // Determine active month for Chart based on Card Filter
+  // Only valid if the selected card year matches the selected chart year
+  const activeMonthIndex = cardFilterDate.getFullYear() === selectedYear ? cardFilterDate.getMonth() : -1;
 
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
@@ -238,7 +250,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
             className="bg-surface text-xs font-bold text-textMain py-1.5 px-3 rounded-lg border border-border outline-none focus:border-primary cursor-pointer"
             >
             {CURRENCIES.map(c => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>
             ))}
             </select>
          </div>
@@ -310,15 +322,19 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
         </div>
       </div>
 
-      {/* Projection Chart */}
+      {/* Yearly Expense Chart */}
       <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
           <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">12-Month Projection</h3>
-              <span className="text-[10px] text-secondary bg-background px-2 py-1 rounded border border-border">Estimated</span>
+              <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expenses</h3>
+              <div className="flex items-center space-x-2 bg-background border border-border rounded-lg px-2 py-1">
+                  <button onClick={() => setSelectedYear(y => y - 1)} className="p-1 hover:text-primary"><ChevronLeft size={16}/></button>
+                  <span className="text-xs font-bold w-12 text-center">{selectedYear}</span>
+                  <button onClick={() => setSelectedYear(y => y + 1)} className="p-1 hover:text-primary"><ChevronRight size={16}/></button>
+              </div>
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={projectionData}>
+                <BarChart data={yearlyChartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
                     <XAxis 
                         dataKey="name" 
@@ -343,16 +359,17 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' 
                         }}
                         itemStyle={{ color: 'var(--color-primary)', fontSize: '12px', fontWeight: 'bold' }}
-                        labelFormatter={(label, payload) => {
-                            // Show full label with Year in tooltip
-                            if (payload && payload.length > 0 && payload[0].payload.tooltipLabel) {
-                                return payload[0].payload.tooltipLabel;
-                            }
-                            return label;
-                        }}
-                        formatter={(value: number) => [`${value.toFixed(0)} ${baseCurrency}`, 'Est. Cost']}
+                        formatter={(value: number) => [`${value.toFixed(0)} ${baseCurrency}`, 'Cost']}
                     />
-                    <Bar dataKey="total" fill="var(--color-primary)" radius={[4, 4, 0, 0]} activeBar={{ fill: 'var(--color-success)' }} />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                        {yearlyChartData.map((entry, index) => (
+                            <Cell 
+                                key={`cell-${index}`} 
+                                fill={index === activeMonthIndex ? 'var(--color-success)' : 'var(--color-primary)'} 
+                                className="transition-all duration-300"
+                            />
+                        ))}
+                    </Bar>
                 </BarChart>
             </ResponsiveContainer>
           </div>

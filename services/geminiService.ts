@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AiSuggestion } from "../types";
 
@@ -41,7 +42,7 @@ export const getSubscriptionSuggestions = async (query: string): Promise<AiSugge
               name: { type: Type.STRING },
               estimatedPrice: { type: Type.NUMBER },
               category: { type: Type.STRING },
-              billingCycle: { type: Type.STRING, enum: ['Monthly', 'Yearly'] },
+              billingCycle: { type: Type.STRING, "enum": ['Monthly', 'Yearly'] },
               currency: { type: Type.STRING }
             },
             required: ['name', 'estimatedPrice', 'category']
@@ -89,7 +90,7 @@ export const parseInvoiceText = async (text: string): Promise<{
              name: { type: Type.STRING },
              price: { type: Type.NUMBER },
              currency: { type: Type.STRING },
-             billingCycle: { type: Type.STRING, enum: ['Daily', 'Weekly', 'Monthly', 'Yearly', 'Free Trial'] },
+             billingCycle: { type: Type.STRING, "enum": ['Daily', 'Weekly', 'Monthly', 'Yearly', 'Free Trial'] },
              firstPaymentDate: { type: Type.STRING },
              category: { type: Type.STRING }
            }
@@ -123,3 +124,34 @@ export const generateNaughtyReminder = async (serviceName: string, personName: s
         return `Reminder: You owe ${price} for ${serviceName}.`;
     }
 }
+
+export const generateAppLogo = async (prompt: string): Promise<string | null> => {
+  if (!apiKey) return null;
+
+  try {
+    // Nano Banana / Flash Image model
+    const model = 'gemini-2.5-flash-image';
+    const finalPrompt = `A high quality, modern, minimalist mobile app icon for a subscription tracker app. 
+    Style: ${prompt}. 
+    Constraints: Flat or 3D vector style, solid distinctive background, suitable for iOS/Android icon. No text. Square aspect ratio.`;
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: {
+        parts: [{ text: finalPrompt }]
+      }
+    });
+
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+           return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error("Logo generation failed", e);
+    return null;
+  }
+};

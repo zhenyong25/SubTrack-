@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { PaymentCard, Subscription, CardType } from '../types';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -153,7 +152,7 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, subscriptions, baseCurren
                                     value={budget}
                                     onChange={e => setBudget(e.target.value)}
                                     placeholder="No Limit"
-                                    className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
+                                    className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none no-spinner"
                                 />
                                 <span className="absolute right-3 top-3 text-xs text-secondary">{baseCurrency}</span>
                             </div>
