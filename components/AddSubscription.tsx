@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Subscription, BillingCycle, AiSuggestion, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard } from '../types';
+import { Subscription, BillingCycle, AiSuggestion, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard, PaymentCardKind } from '../types';
 import { getSubscriptionSuggestions, POPULAR_SUBSCRIPTIONS } from '../services/geminiService';
 import { Sparkles, X, Plus, Loader2, Check, DollarSign, Calendar, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
 import { getCurrencySymbol } from '../services/storageService';
@@ -55,6 +55,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
   // New Card Fields (if adding new)
   const [cardName, setCardName] = useState('');
   const [cardType, setCardType] = useState<CardType>('Other');
+  const [cardKind, setCardKind] = useState<PaymentCardKind>('Credit');
   const [last4, setLast4] = useState('');
 
   const [category, setCategory] = useState('General');
@@ -90,6 +91,8 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
             setSelectedCardId('new');
             setCardName(initialData.cardName);
             if(initialData.cardType) setCardType(initialData.cardType);
+            const linkedCard = savedCards.find(c => c.name === initialData.cardName);
+            if (linkedCard?.kind) setCardKind(linkedCard.kind);
         } else {
             setSelectedCardId('none');
         }
@@ -153,6 +156,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                 id: crypto.randomUUID(),
                 name: cardName,
                 type: cardType,
+                kind: cardKind,
                 last4Digits: last4,
                 color: '#1e293b' // Default color
             };
@@ -325,11 +329,22 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                     </div>
                     <div className="flex gap-2">
                         <div className="flex-1">
-                             <select 
-                                value={cardType}
-                                onChange={e => setCardType(e.target.value as CardType)}
+                              <select 
+                                value={cardKind}
+                                onChange={e => setCardKind(e.target.value as PaymentCardKind)}
                                 className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none text-sm"
-                             >
+                              >
+                                <option value="Credit">Credit Card</option>
+                                <option value="Debit">Debit Card</option>
+                                <option value="MultiCurrency">Multi-currency</option>
+                              </select>
+                        </div>
+                        <div className="flex-1">
+                              <select 
+                                 value={cardType}
+                                 onChange={e => setCardType(e.target.value as CardType)}
+                                 className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none text-sm"
+                              >
                                 {CARD_TYPES.map(c => <option key={c.type} value={c.type}>{c.label}</option>)}
                              </select>
                         </div>

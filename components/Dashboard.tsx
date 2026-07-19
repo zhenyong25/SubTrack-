@@ -1,26 +1,32 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Subscription, BillingCycle, CURRENCIES, PaymentCard } from '../types';
+import { Subscription, BillingCycle, CURRENCIES, PaymentCard, CardPointTransaction, Expense } from '../types';
 import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { CreditCard, Calendar, TrendingUp, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Clock, PlusCircle } from 'lucide-react';
 import CardLogo from './CardLogo';
 import CardDetail from './CardDetail';
+import SubscriptionList from './SubscriptionList';
 
 interface DashboardProps {
   subscriptions: Subscription[];
   cards: PaymentCard[];
+  expenses: Expense[];
   baseCurrency: string;
   onCurrencyChange: (currency: string) => void;
   onUpdateCard: (card: PaymentCard) => void;
+  cardPointTransactions: CardPointTransaction[];
+  onUpdateCardPointTransactions: (transactions: CardPointTransaction[]) => void;
   onAddCard: () => void;
+  onDeleteSubscription: (id: string) => void;
+  onSelectSubscription: (subId: string) => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'];
 
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
 
-const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrency, onCurrencyChange, onUpdateCard, onAddCard }) => {
+const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, baseCurrency, onCurrencyChange, onUpdateCard, cardPointTransactions, onUpdateCardPointTransactions, onAddCard, onDeleteSubscription, onSelectSubscription }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [cardFilterDate, setCardFilterDate] = useState(new Date());
   const [selectedCardForDetail, setSelectedCardForDetail] = useState<PaymentCard | null>(null);
@@ -108,11 +114,18 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
   // Card Usage Data with Linkage
   const cardUsageData = useMemo(() => {
      // 1. Initialize map with existing cards
-     const map = new Map<string, { total: number, type: string, cardId?: string, budget?: number, instance?: PaymentCard }>();
-     
-     cards.forEach(c => {
-         map.set(c.name, { total: 0, type: c.type, cardId: c.id, budget: c.budget, instance: c });
-     });
+      const map = new Map<string, { total: number, type: string, cardId?: string, limitOrBalance?: number, kind?: PaymentCard['kind'], instance?: PaymentCard }>();
+      
+      cards.forEach(c => {
+          map.set(c.name, {
+              total: 0,
+              type: c.type,
+              cardId: c.id,
+              limitOrBalance: c.kind === 'Credit' ? (c.creditLimit ?? 0) : (c.currentBalance ?? 0),
+              kind: c.kind,
+              instance: c
+          });
+      });
 
      const filterMonth = cardFilterDate.getMonth();
      const filterYear = cardFilterDate.getFullYear();
@@ -165,13 +178,14 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
      });
 
      return Array.from(map.entries()).map(([name, data]) => ({ 
-         name, 
-         value: data.total, 
-         type: data.type, 
-         cardId: data.cardId,
-         budget: data.budget,
-         instance: data.instance
-     })).sort((a,b) => b.value - a.value);
+          name, 
+          value: data.total, 
+          type: data.type, 
+          cardId: data.cardId,
+          limitOrBalance: data.limitOrBalance,
+          kind: data.kind,
+          instance: data.instance
+      })).sort((a,b) => b.value - a.value);
   }, [subscriptions, baseCurrency, cardFilterDate, cards]);
 
   const handlePrevCardMonth = () => {
@@ -375,6 +389,17 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
           </div>
       </div>
 
+      {/* Subscriptions */}
+      <div className="bg-surface p-5 rounded-xl shadow-sm border border-border">
+          <SubscriptionList
+              subscriptions={subscriptions}
+              baseCurrency={baseCurrency}
+              onCurrencyChange={onCurrencyChange}
+              onDelete={onDeleteSubscription}
+              onSelect={(sub) => onSelectSubscription(sub.id)}
+          />
+      </div>
+
        {/* Spending by Card */}
        <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
             <div className="flex items-center justify-between mb-4">
@@ -401,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
             {cardUsageData.length > 0 ? (
                 <div className="space-y-3">
                     {cardUsageData.map(item => {
-                        const statusColor = getCardStatusColor(item.value, item.budget);
+                         const statusColor = getCardStatusColor(item.value, item.limitOrBalance);
                         
                         return (
                             <div 
@@ -413,11 +438,11 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                                     <CardLogo type={item.type as any} name={item.name} />
                                     <div className="ml-2">
                                         <span className="text-sm font-medium text-textMain block">{item.name}</span>
-                                        {item.budget && (
+                                        {item.kind === 'Credit' && item.limitOrBalance && (
                                             <div className="w-24 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mt-1 overflow-hidden">
                                                 <div 
-                                                    className={`h-full rounded-full ${item.value > item.budget ? 'bg-red-500' : 'bg-primary'}`} 
-                                                    style={{ width: `${Math.min((item.value / item.budget) * 100, 100)}%` }}
+                                                    className={`h-full rounded-full ${item.value > item.limitOrBalance ? 'bg-red-500' : 'bg-primary'}`} 
+                                                    style={{ width: `${Math.min((item.value / item.limitOrBalance) * 100, 100)}%` }}
                                                 />
                                             </div>
                                         )}
@@ -425,9 +450,9 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                                 </div>
                                 <div className="text-right">
                                     <span className="text-sm font-bold text-textMain block">{item.value.toFixed(2)} {baseCurrency}</span>
-                                    {item.budget && (
-                                        <span className={`text-[10px] font-medium ${item.value > item.budget ? 'text-red-500' : 'text-secondary'}`}>
-                                            of {item.budget} budget
+                                    {item.kind === 'Credit' && item.limitOrBalance && (
+                                        <span className={`text-[10px] font-medium ${item.value > item.limitOrBalance ? 'text-red-500' : 'text-secondary'}`}>
+                                            of {item.limitOrBalance} limit
                                         </span>
                                     )}
                                 </div>
@@ -489,11 +514,14 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {selectedCardForDetail && (
-          <CardDetail 
+              <CardDetail 
               card={selectedCardForDetail} 
               subscriptions={subscriptions}
+              expenses={expenses}
               baseCurrency={baseCurrency}
               onUpdate={onUpdateCard}
+              cardPointTransactions={cardPointTransactions}
+              onUpdateCardPointTransactions={onUpdateCardPointTransactions}
               onClose={() => setSelectedCardForDetail(null)}
           />
       )}

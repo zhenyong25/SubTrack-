@@ -1,5 +1,5 @@
 
-import { Subscription, BillingCycle, PaymentCard, Friend } from '../types';
+import { Subscription, BillingCycle, PaymentCard, Friend, Income, IncomeCycle, Expense } from '../types';
 
 const STORAGE_KEY = 'subtrack_data_v1';
 const STORAGE_KEY_CARDS = 'subtrack_cards_v1';
@@ -141,6 +141,14 @@ export const convertCurrency = (amount: number, fromCurrency: string, toCurrency
   return amountInUSD * toRate;
 };
 
+const parseDateOnly = (value?: string | null) => {
+  if (!value) return null;
+  const datePart = value.split('T')[0];
+  const [year, month, day] = datePart.split('-').map(Number);
+  if ([year, month, day].some(Number.isNaN)) return null;
+  return new Date(year, month - 1, day);
+};
+
 // Get monthly cost in the TARGET currency, accounting for splits
 export const getMonthlyCost = (sub: Subscription, targetCurrency: string = 'USD'): number => {
   if (sub.billingCycle === BillingCycle.FreeTrial) return 0;
@@ -168,6 +176,355 @@ export const getMonthlyCost = (sub: Subscription, targetCurrency: string = 'USD'
 
   // Convert to target currency
   return convertCurrency(myShare, sub.currency || 'USD', targetCurrency);
+};
+
+export const getMonthlyIncome = (income: Income, targetCurrency: string = 'USD'): number => {
+  if (income.incomeMode === 'One-time') {
+    return 0;
+  }
+
+  let monthlyValue = income.amount;
+
+  switch (income.incomeCycle) {
+    case IncomeCycle.Daily:
+      monthlyValue = income.amount * 30;
+      break;
+    case IncomeCycle.Weekly:
+      monthlyValue = income.amount * 4;
+      break;
+    case IncomeCycle.Monthly:
+      monthlyValue = income.amount;
+      break;
+    case IncomeCycle.Yearly:
+      monthlyValue = income.amount / 12;
+      break;
+  }
+
+  return convertCurrency(monthlyValue, income.currency || 'USD', targetCurrency);
+};
+
+export const getIncomeValueForMonth = (income: Income, targetCurrency: string, year: number, monthIndex: number): number => {
+  const amount = convertCurrency(income.amount, income.currency || 'USD', targetCurrency);
+  const startDate = parseDateOnly(income.incomeDate || income.firstIncomeDate || income.nextIncomeDate);
+  if (!startDate) return 0;
+
+  if (income.incomeMode === 'One-time') {
+    return startDate.getFullYear() === year && startDate.getMonth() === monthIndex ? amount : 0;
+  }
+
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  if (startDate > monthEnd) return 0;
+
+  let monthlyValue = amount;
+  switch (income.incomeCycle) {
+    case IncomeCycle.Daily:
+      monthlyValue = amount * 30;
+      break;
+    case IncomeCycle.Weekly:
+      monthlyValue = amount * 4;
+      break;
+    case IncomeCycle.Monthly:
+      monthlyValue = amount;
+      break;
+    case IncomeCycle.Yearly:
+      monthlyValue = startDate.getFullYear() <= year && startDate.getMonth() === monthIndex ? amount : 0;
+      break;
+  }
+
+  if (income.incomeCycle !== IncomeCycle.Yearly) {
+    return monthlyValue;
+  }
+
+  return monthStart >= new Date(startDate.getFullYear(), startDate.getMonth(), 1) ? monthlyValue : 0;
+};
+
+export const getMonthlyExpense = (expense: Expense, targetCurrency: string = 'USD'): number =>
+  convertCurrency(expense.amount, expense.currency || 'USD', targetCurrency);
+
+export const getYearlyIncomeData = (incomes: Income[], year: number, baseCurrency: string) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const data = months.map(m => ({
+      name: m,
+      total: 0,
+      recurringTotal: 0,
+      oneTimeTotal: 0,
+      activeTotal: 0,
+      passiveTotal: 0,
+      entries: [] as Array<{
+        name: string;
+        amount: number;
+        kind: 'Active' | 'Passive';
+        mode: 'Recurring' | 'One-time';
+        category: string;
+      }>,
+    }));
+
+    incomes.forEach(income => {
+        if (income.status !== 'Active') return;
+
+        for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
+            const amount = convertCurrency(income.amount, income.currency || 'USD', baseCurrency);
+            const startDate = parseDateOnly(income.incomeDate || income.firstIncomeDate || income.nextIncomeDate);
+            if (!startDate) continue;
+            const monthStart = new Date(year, monthIdx, 1);
+            const monthEnd = new Date(year, monthIdx + 1, 0);
+            if (startDate > monthEnd) continue;
+
+            if (income.incomeMode === 'One-time') {
+              if (startDate.getFullYear() === year && startDate.getMonth() === monthIdx) {
+                data[monthIdx].total += amount;
+                data[monthIdx].oneTimeTotal += amount;
+                if (income.incomeType === 'Active') data[monthIdx].activeTotal += amount;
+                if (income.incomeType === 'Passive') data[monthIdx].passiveTotal += amount;
+                data[monthIdx].entries.push({
+                  name: income.name,
+                  amount,
+                  kind: income.incomeType,
+                  mode: 'One-time',
+                  category: income.category,
+                });
+              }
+              continue;
+            }
+
+            switch (income.incomeCycle) {
+              case IncomeCycle.Daily:
+                data[monthIdx].total += amount * 30;
+                data[monthIdx].recurringTotal += amount * 30;
+                if (income.incomeType === 'Active') data[monthIdx].activeTotal += amount * 30;
+                if (income.incomeType === 'Passive') data[monthIdx].passiveTotal += amount * 30;
+                data[monthIdx].entries.push({
+                  name: income.name,
+                  amount: amount * 30,
+                  kind: income.incomeType,
+                  mode: 'Recurring',
+                  category: income.category,
+                });
+                break;
+              case IncomeCycle.Weekly:
+                data[monthIdx].total += amount * 4;
+                data[monthIdx].recurringTotal += amount * 4;
+                if (income.incomeType === 'Active') data[monthIdx].activeTotal += amount * 4;
+                if (income.incomeType === 'Passive') data[monthIdx].passiveTotal += amount * 4;
+                data[monthIdx].entries.push({
+                  name: income.name,
+                  amount: amount * 4,
+                  kind: income.incomeType,
+                  mode: 'Recurring',
+                  category: income.category,
+                });
+                break;
+              case IncomeCycle.Monthly:
+                data[monthIdx].total += amount;
+                data[monthIdx].recurringTotal += amount;
+                if (income.incomeType === 'Active') data[monthIdx].activeTotal += amount;
+                if (income.incomeType === 'Passive') data[monthIdx].passiveTotal += amount;
+                data[monthIdx].entries.push({
+                  name: income.name,
+                  amount,
+                  kind: income.incomeType,
+                  mode: 'Recurring',
+                  category: income.category,
+                });
+                break;
+              case IncomeCycle.Yearly: {
+                if (startDate.getFullYear() === year && startDate.getMonth() === monthIdx) {
+                  data[monthIdx].total += amount;
+                  data[monthIdx].recurringTotal += amount;
+                  if (income.incomeType === 'Active') data[monthIdx].activeTotal += amount;
+                  if (income.incomeType === 'Passive') data[monthIdx].passiveTotal += amount;
+                  data[monthIdx].entries.push({
+                    name: income.name,
+                    amount,
+                    kind: income.incomeType,
+                    mode: 'Recurring',
+                    category: income.category,
+                  });
+                }
+                break;
+              }
+            }
+        }
+    });
+
+    return data.map(d => ({
+      ...d,
+      total: parseFloat(d.total.toFixed(2)),
+      recurringTotal: parseFloat(d.recurringTotal.toFixed(2)),
+      oneTimeTotal: parseFloat(d.oneTimeTotal.toFixed(2)),
+      activeTotal: parseFloat(d.activeTotal.toFixed(2)),
+      passiveTotal: parseFloat(d.passiveTotal.toFixed(2)),
+      entries: d.entries
+        .slice()
+        .sort((a, b) => b.amount - a.amount)
+        .map(entry => ({ ...entry, amount: parseFloat(entry.amount.toFixed(2)) })),
+    }));
+};
+
+export const getIncomeDistribution = (incomes: Income[], baseCurrency: string, year: number, monthIndex: number) => {
+  const map = new Map<string, number>();
+
+  incomes.forEach(income => {
+    if (income.status !== 'Active') return;
+    const value = getIncomeValueForMonth(income, baseCurrency, year, monthIndex);
+    if (value > 0) {
+      map.set(income.category, (map.get(income.category) || 0) + value);
+    }
+  });
+
+  return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+};
+
+export const getExpenseDistribution = (expenses: Expense[], baseCurrency: string) => {
+  const map = new Map<string, number>();
+
+  expenses.forEach(expense => {
+    const value = getMonthlyExpense(expense, baseCurrency);
+    if (value > 0) {
+      map.set(expense.category, (map.get(expense.category) || 0) + value);
+    }
+  });
+
+  return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+};
+
+export const getYearlyExpenseDataFromExpenses = (expenses: Expense[], year: number, baseCurrency: string) => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const data = months.map(m => ({
+    name: m,
+    total: 0,
+    entries: [] as Array<{
+      name: string;
+      amount: number;
+      category: string;
+      source: 'Expense';
+    }>,
+  }));
+
+  expenses.forEach(expense => {
+    const expenseDate = new Date(expense.expenseDate);
+    if (Number.isNaN(expenseDate.getTime())) return;
+
+    for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
+      const monthStart = new Date(year, monthIdx, 1);
+      if (expenseDate.getFullYear() !== year || expenseDate.getMonth() !== monthIdx) continue;
+      const amount = convertCurrency(expense.amount, expense.currency, baseCurrency);
+      data[monthIdx].total += amount;
+      data[monthIdx].entries.push({
+        name: expense.name,
+        amount,
+        category: expense.category,
+        source: 'Expense',
+      });
+    }
+  });
+
+  return data.map(d => ({
+    ...d,
+    total: parseFloat(d.total.toFixed(2)),
+    entries: d.entries
+      .slice()
+      .sort((a, b) => b.amount - a.amount)
+      .map(entry => ({ ...entry, amount: parseFloat(entry.amount.toFixed(2)) })),
+  }));
+};
+
+export const getExpenseCalendarDays = (
+  expenses: Expense[],
+  subscriptions: Subscription[],
+  year: number,
+  monthIndex: number,
+  baseCurrency: string,
+) => {
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const result = Array.from({ length: daysInMonth }, (_, idx) => ({
+    day: idx + 1,
+    total: 0,
+    entries: [] as Array<{
+      id: string;
+      name: string;
+      amount: number;
+      currency: string;
+      category: string;
+      source: 'Expense' | 'Subscription';
+      color: string;
+      date: string;
+    }>,
+  }));
+
+  const addEntry = (
+    day: number,
+    entry: {
+      id: string;
+      name: string;
+      amount: number;
+      currency: string;
+      category: string;
+      source: 'Expense' | 'Subscription';
+      color: string;
+      date: string;
+    },
+  ) => {
+    const bucket = result[day - 1];
+    if (!bucket) return;
+    bucket.entries.push(entry);
+    bucket.total += convertCurrency(entry.amount, entry.currency, baseCurrency);
+  };
+
+  expenses.forEach(expense => {
+    const date = new Date(expense.expenseDate);
+    if (Number.isNaN(date.getTime())) return;
+    if (date.getFullYear() !== year || date.getMonth() !== monthIndex) return;
+    const dayOfMonth = date.getDate();
+
+    addEntry(dayOfMonth, {
+      id: expense.id,
+      name: expense.name,
+      amount: expense.amount,
+      currency: expense.currency,
+      category: expense.category,
+      source: 'Expense',
+      color: expense.color,
+      date: date.toISOString(),
+    });
+  });
+
+  subscriptions.forEach(subscription => {
+    if (subscription.status !== 'Active') return;
+    if (subscription.billingCycle === BillingCycle.FreeTrial) return;
+
+    const start = new Date(subscription.firstPaymentDate);
+    const end = subscription.status === 'Past' && subscription.cancellationDate ? new Date(subscription.cancellationDate) : new Date(9999, 11, 31);
+    const monthStart = new Date(year, monthIndex, 1);
+    if (new Date(start.getFullYear(), start.getMonth(), 1) > monthStart) return;
+    if (end < monthStart) return;
+
+    let dayOfMonth = start.getDate();
+    if (subscription.nextPaymentDate) {
+      const next = new Date(subscription.nextPaymentDate);
+      if (next.getFullYear() === year && next.getMonth() === monthIndex) {
+        dayOfMonth = next.getDate();
+      }
+    }
+
+    addEntry(dayOfMonth, {
+      id: subscription.id,
+      name: subscription.name,
+      amount: subscription.price,
+      currency: subscription.currency,
+      category: subscription.category,
+      source: 'Subscription',
+      color: subscription.color,
+      date: new Date(year, monthIndex, dayOfMonth).toISOString(),
+    });
+  });
+
+  return result.map(day => ({
+    ...day,
+    total: parseFloat(day.total.toFixed(2)),
+    entries: day.entries.sort((a, b) => a.name.localeCompare(b.name)),
+  }));
 };
 
 export const exportSubscriptionsToCSV = (subs: Subscription[]) => {
@@ -210,7 +567,16 @@ export const getYearlyExpenseData = (subs: Subscription[], year: number, baseCur
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     // Initialize buckets
-    const data = months.map(m => ({ name: m, total: 0 }));
+    const data = months.map(m => ({
+      name: m,
+      total: 0,
+      entries: [] as Array<{
+        name: string;
+        amount: number;
+        category: string;
+        source: 'Subscription';
+      }>,
+    }));
 
     subs.forEach(sub => {
         if (sub.billingCycle === BillingCycle.FreeTrial) return;
@@ -258,10 +624,25 @@ export const getYearlyExpenseData = (subs: Subscription[], year: number, baseCur
             }
 
             data[monthIdx].total += costToAdd;
+            if (costToAdd > 0) {
+                data[monthIdx].entries.push({
+                    name: sub.name,
+                    amount: costToAdd,
+                    category: sub.category,
+                    source: 'Subscription',
+                });
+            }
         }
     });
     
-    return data.map(d => ({ ...d, total: parseFloat(d.total.toFixed(2)) }));
+    return data.map(d => ({
+        ...d,
+        total: parseFloat(d.total.toFixed(2)),
+        entries: d.entries
+            .slice()
+            .sort((a, b) => b.amount - a.amount)
+            .map(entry => ({ ...entry, amount: parseFloat(entry.amount.toFixed(2)) })),
+    }));
 }
 
 export const getPaymentDistribution = (subs: Subscription[], baseCurrency: string) => {

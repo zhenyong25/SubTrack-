@@ -184,9 +184,11 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
                             className="w-full h-full object-cover"
                             onError={(e) => {
                                 e.currentTarget.style.display = 'none';
-                                e.currentTarget.parentElement!.style.background = `linear-gradient(135deg, ${sub.color}, ${sub.color}88)`;
-                                e.currentTarget.parentElement!.innerText = sub.name.charAt(0).toUpperCase();
-                                e.currentTarget.parentElement!.className = "w-12 h-12 flex-shrink-0 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm mr-3";
+                                const fallbackParent = e.currentTarget.parentElement as HTMLDivElement | null;
+                                if (!fallbackParent) return;
+                                fallbackParent.style.background = `linear-gradient(135deg, ${sub.color}, ${sub.color}88)`;
+                                fallbackParent.textContent = sub.name.charAt(0).toUpperCase();
+                                fallbackParent.className = "w-12 h-12 flex-shrink-0 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm mr-3";
                             }}
                         />
                     </div>
