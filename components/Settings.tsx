@@ -247,12 +247,12 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
             </div>
 
-            {/* Payment Methods */}
+            {/* Cards */}
             <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center text-primary">
                         <CreditCard size={20} className="mr-2" />
-                        <h3 className="font-bold text-lg">Payment Methods</h3>
+                        <h3 className="font-bold text-lg">Cards</h3>
                     </div>
                     <button
                         onClick={onAddCard}
@@ -261,7 +261,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         <Plus size={16} className="mr-1" /> Add
                     </button>
                 </div>
-                <p className="text-xs text-secondary mb-4">Add cards or bank accounts here, then select them when you create a subscription. For bank accounts, use the card type you prefer, or keep it as Other.</p>
+                <p className="text-xs text-secondary mb-4">Add cards or bank accounts here, then select them when you create a subscription. If you want a card to behave like a debit/bank account, use Other or a bank-friendly label.</p>
 
                 <div className="space-y-2">
                     {cards.map(card => (
@@ -285,10 +285,10 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                     ))}
                     {cards.length === 0 && (
                         <div className="bg-background p-4 rounded-lg border border-dashed border-border text-center">
-                            <p className="text-sm text-textMain font-medium">No payment methods yet</p>
+                            <p className="text-sm text-textMain font-medium">No cards yet</p>
                             <p className="text-xs text-secondary mt-1">Add a card or bank account to link subscriptions to it.</p>
                             <button onClick={onAddCard} className="mt-3 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                                Add Payment Method
+                                Add Card
                             </button>
                         </div>
                     )}

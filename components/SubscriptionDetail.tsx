@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Subscription, Friend } from '../types';
+import { calculateNextPayment } from '../services/storageService';
 import { generateNaughtyReminder } from '../services/geminiService';
 import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell, RotateCcw, PlayCircle } from 'lucide-react';
 
@@ -90,10 +91,12 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
   }
 
   const handleResumeExisting = () => {
+      const nextPaymentDate = calculateNextPayment(subscription.firstPaymentDate, subscription.billingCycle);
       onUpdate({
           ...subscription,
           status: 'Active',
-          cancellationDate: undefined // Clear cancellation
+          cancellationDate: undefined, // Clear cancellation
+          nextPaymentDate,
       });
       setShowReactivateModal(false);
       onShowToast("Resumed existing subscription");

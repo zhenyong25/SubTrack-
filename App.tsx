@@ -1,33 +1,55 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Bell, Sun, Moon, CheckCircle, Plus } from 'lucide-react';
+import { Bell, CheckCircle, Plus, Landmark, TrendingUp } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
-import SubscriptionList from './components/SubscriptionList';
 import AddSubscription from './components/AddSubscription';
+import AddIncome from './components/AddIncome';
+import AddExpense from './components/AddExpense';
 import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import CardDetail from './components/CardDetail';
-import { Subscription, BillingCycle, UserProfile, PaymentCard } from './types';
+import CardsTab from './components/CardsTab';
+import IncomeTab from './components/IncomeTab';
+import ExpenseTab from './components/ExpenseTab';
+import InvestmentTab from './components/InvestmentTab';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction } from './types';
 import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveCards, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveCardPointTransactions, saveCards, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 
 enum Tab {
   Dashboard = 'Dashboard',
-  Subscriptions = 'Subscriptions',
+  Cards = 'Cards',
+  Expenses = 'Expenses',
+  Income = 'Income',
+  Investment = 'Investment',
   Settings = 'Settings'
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Dashboard);
   const [isAdding, setIsAdding] = useState(false);
+  const [isAddingIncome, setIsAddingIncome] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [editingSub, setEditingSub] = useState<Subscription | undefined>(undefined);
+  const [editingIncome, setEditingIncome] = useState<Income | undefined>(undefined);
+  const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [investments, setInvestments] = useState<InvestmentHolding[]>([]);
+  const [investmentValuations, setInvestmentValuations] = useState<InvestmentValuation[]>([]);
+  const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
+  const [pokerMttTournaments, setPokerMttTournaments] = useState<PokerMttTournament[]>([]);
+  const [pokerMttBankrollTransactions, setPokerMttBankrollTransactions] = useState<PokerMttBankrollTransaction[]>([]);
   const [cards, setCards] = useState<PaymentCard[]>([]);
+  const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
+  const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +106,7 @@ function App() {
 
       const { data } = client.auth.onAuthStateChange((_event, nextSession) => {
         setSession(nextSession);
+        setAuthChecking(false);
       });
       authSubscription = data.subscription;
     };
@@ -113,7 +136,15 @@ function App() {
       if (isSupabaseConfigured() && !session) {
         setUserProfile(createDefaultProfile());
         setSubscriptions([]);
+        setIncomes([]);
+        setExpenses([]);
+        setInvestments([]);
+        setInvestmentValuations([]);
+        setInvestmentTransactions([]);
+        setPokerMttTournaments([]);
+        setPokerMttBankrollTransactions([]);
         setCards([]);
+        setCardPointTransactions([]);
         setIsLoading(false);
         return;
       }
@@ -149,11 +180,26 @@ function App() {
           isLoggedIn: Boolean(session || loaded.userId),
         });
         setSubscriptions(updated);
+        setIncomes(loaded.incomes);
+        setExpenses(loaded.expenses);
+        setInvestments(loaded.investments);
+        setInvestmentValuations(loaded.investmentValuations);
+        setInvestmentTransactions(loaded.investmentTransactions);
+        setPokerMttTournaments(loaded.pokerMttTournaments);
+        setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
         setCards(loaded.cards);
+        setCardPointTransactions(loaded.cardPointTransactions);
+        setCardBenefits(loaded.cardBenefits);
 
         if (loaded.userId) {
           void saveProfile({ ...loaded.profile, isLoggedIn: true });
           void saveSubscriptions(updated);
+          void saveIncomes(loaded.incomes);
+          void saveExpenses(loaded.expenses);
+          void saveInvestmentTransactions(loaded.investmentTransactions);
+          void savePokerMttTournaments(loaded.pokerMttTournaments);
+          void savePokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
+          void saveCardPointTransactions(loaded.cardPointTransactions);
         }
       } catch (error) {
         console.error('Failed to load app data', error);
@@ -195,17 +241,33 @@ function App() {
       await supabaseSignOut();
       setSession(null);
       setSubscriptions([]);
+      setIncomes([]);
+      setExpenses([]);
+      setInvestments([]);
+      setInvestmentValuations([]);
+      setInvestmentTransactions([]);
       setCards([]);
+      setCardPointTransactions([]);
+      setCardBenefits([]);
       setUserProfile(createDefaultProfile());
       setSelectedSubId(null);
       setEditingSub(undefined);
       setIsAdding(false);
+      setEditingIncome(undefined);
+      setIsAddingIncome(false);
+      setEditingExpense(undefined);
+      setIsAddingExpense(false);
       setActiveTab(Tab.Dashboard);
       showToast('Signed out.');
   };
 
   const handleCurrencyChange = (curr: string) => {
     handleUpdateProfile({ ...userProfile, currency: curr });
+  };
+
+  const handleUpdateCardPointTransactions = (transactions: CardPointTransaction[]) => {
+    setCardPointTransactions(transactions);
+    void saveCardPointTransactions(transactions);
   };
 
   const handleAddOrUpdateSubscription = (data: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => {
@@ -222,7 +284,15 @@ function App() {
 
     // 2. Handle Subscription
     if (editingSub) {
-        const updatedList = subscriptions.map(s => s.id === editingSub.id ? { ...data, id: editingSub.id, nextPaymentDate: editingSub.nextPaymentDate } : s);
+        const updatedList = subscriptions.map(s =>
+          s.id === editingSub.id
+            ? {
+                ...data,
+                id: editingSub.id,
+                nextPaymentDate: calculateNextPayment(data.firstPaymentDate, data.billingCycle),
+              }
+            : s
+        );
         setSubscriptions(updatedList);
         void saveSubscriptions(updatedList);
         showToast(`Updated ${data.name}`);
@@ -241,7 +311,73 @@ function App() {
     setIsAdding(false);
     setEditingSub(undefined);
     if(editingSub) setSelectedSubId(editingSub.id);
-    else setActiveTab(Tab.Subscriptions);
+    else setActiveTab(Tab.Dashboard);
+  };
+
+  const handleAddOrUpdateIncome = (data: Omit<Income, 'id'>) => {
+    if (editingIncome) {
+      const updatedList = incomes.map(income =>
+        income.id === editingIncome.id
+          ? {
+              ...data,
+              id: editingIncome.id,
+              nextIncomeDate:
+                data.incomeMode === 'One-time'
+                  ? data.incomeDate || data.firstIncomeDate
+                  : calculateNextPayment(data.firstIncomeDate, data.incomeCycle as BillingCycle),
+            }
+          : income
+      );
+      setIncomes(updatedList);
+      void saveIncomes(updatedList);
+      showToast(`Updated ${data.name}`);
+    } else {
+      const newIncome: Income = {
+        ...data,
+        id: crypto.randomUUID(),
+        nextIncomeDate:
+          data.incomeMode === 'One-time'
+            ? data.incomeDate || data.firstIncomeDate
+            : calculateNextPayment(data.firstIncomeDate, data.incomeCycle as BillingCycle),
+      };
+      const updatedList = [...incomes, newIncome];
+      setIncomes(updatedList);
+      void saveIncomes(updatedList);
+      showToast(`Added ${newIncome.name}`);
+    }
+
+    setIsAddingIncome(false);
+    setEditingIncome(undefined);
+    setActiveTab(Tab.Income);
+  };
+
+  const handleAddOrUpdateExpense = async (data: Omit<Expense, 'id'>) => {
+    if (editingExpense) {
+      const updatedList = expenses.map(expense =>
+        expense.id === editingExpense.id
+          ? {
+              ...data,
+              id: editingExpense.id,
+            }
+          : expense
+      );
+      setExpenses(updatedList);
+      const saved = await saveExpenses(updatedList);
+      showToast(saved ? `Updated ${data.name}` : `Failed to save ${data.name} to Supabase`);
+    } else {
+      const newExpense: Expense = {
+        ...data,
+        id: crypto.randomUUID(),
+      };
+      const updatedList = [...expenses, newExpense];
+      setExpenses(updatedList);
+      const saved = await saveExpenses(updatedList);
+      showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase`);
+    }
+
+    setIsAddingExpense(false);
+    setEditingExpense(undefined);
+    setActiveTab(Tab.Expenses);
   };
 
   const handleCloneSubscription = (originalSub: Subscription) => {
@@ -283,11 +419,120 @@ function App() {
     }
   };
 
+  const handleDeleteIncome = (id: string) => {
+    if (confirm('Are you sure you want to delete this income source permanently?')) {
+      const updated = incomes.filter(income => income.id !== id);
+      setIncomes(updated);
+      void saveIncomes(updated);
+      showToast('Income source deleted.');
+    }
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    if (confirm('Are you sure you want to delete this expense permanently?')) {
+      const updated = expenses.filter(expense => expense.id !== id);
+      setExpenses(updated);
+      void saveExpenses(updated);
+      showToast('Expense deleted.');
+    }
+  };
+
+  const handleAddInvestmentTransaction = async (transaction: Omit<InvestmentTransaction, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newTransaction: InvestmentTransaction = {
+      ...transaction,
+      id: crypto.randomUUID(),
+    };
+
+    const updatedTransactions = [...investmentTransactions, newTransaction].sort(
+      (a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
+    );
+    setInvestmentTransactions(updatedTransactions);
+    void saveInvestmentTransactions(updatedTransactions);
+
+    const updatedHoldings = investments.map(holding => {
+      if (holding.id !== newTransaction.investmentId) return holding;
+
+      const prevUnits = holding.units;
+      const prevBasis = prevUnits * holding.averageCost;
+      const tradeUnits = Math.max(0, newTransaction.units);
+      const tradeValue = tradeUnits * newTransaction.price;
+
+      if (newTransaction.transactionType === 'Buy' || newTransaction.transactionType === 'Transfer In') {
+        const nextUnits = prevUnits + tradeUnits;
+        const nextBasis = prevBasis + tradeValue + newTransaction.fees;
+        return {
+          ...holding,
+          units: nextUnits,
+          averageCost: nextUnits > 0 ? nextBasis / nextUnits : 0,
+          acquiredDate: holding.acquiredDate || newTransaction.tradeDate,
+        };
+      }
+
+      if (newTransaction.transactionType === 'Sell' || newTransaction.transactionType === 'Transfer Out') {
+        const nextUnits = Math.max(0, prevUnits - tradeUnits);
+        return {
+          ...holding,
+          units: nextUnits,
+          averageCost: nextUnits > 0 ? holding.averageCost : 0,
+        };
+      }
+
+      if (newTransaction.transactionType === 'Fee') {
+        const nextBasis = prevBasis + newTransaction.fees;
+        return {
+          ...holding,
+          averageCost: prevUnits > 0 ? nextBasis / prevUnits : holding.averageCost,
+        };
+      }
+
+      return holding;
+    });
+
+    setInvestments(updatedHoldings);
+    void saveInvestments(updatedHoldings);
+
+    showToast(`Logged ${newTransaction.transactionType} for ${newTransaction.source || 'investment'}`);
+  };
+
+  const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
+    const updatedHoldings = [...investments, holding];
+    setInvestments(updatedHoldings);
+    await saveInvestments(updatedHoldings);
+    showToast(`Added ${holding.name}`);
+  };
+
+  const handleAddPokerMttTournament = async (tournament: PokerMttTournament) => {
+    const updated = [...pokerMttTournaments.filter(item => item.id !== tournament.id), tournament].sort((a, b) => new Date(a.tournamentDate).getTime() - new Date(b.tournamentDate).getTime());
+    setPokerMttTournaments(updated);
+    await savePokerMttTournaments(updated);
+    showToast('Poker tournament saved.');
+  };
+
+  const handleAddPokerMttBankrollTransaction = async (event: PokerMttBankrollTransaction) => {
+    const updated = [...pokerMttBankrollTransactions, event].sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
+    setPokerMttBankrollTransactions(updated);
+    await savePokerMttBankrollTransactions(updated);
+    showToast('Poker bankroll entry saved.');
+  };
+
   const handleClearData = async () => {
-      if(confirm("This will wipe all your subscriptions and cards. Are you sure?")) {
+      if(confirm("This will wipe all your subscriptions, income sources, expenses, and cards. Are you sure?")) {
           setSubscriptions([]);
+          setIncomes([]);
+          setExpenses([]);
           setCards([]);
+          setInvestments([]);
+          setInvestmentValuations([]);
+          setInvestmentTransactions([]);
+          setPokerMttTournaments([]);
+          setPokerMttBankrollTransactions([]);
           setUserProfile(createDefaultProfile());
+          setEditingSub(undefined);
+          setEditingIncome(undefined);
+          setEditingExpense(undefined);
+          setIsAdding(false);
+          setIsAddingIncome(false);
+          setIsAddingExpense(false);
           await clearStoredAppData();
           showToast("All data cleared.");
       }
@@ -305,15 +550,39 @@ function App() {
       const newCardTemplate: PaymentCard = {
           id: 'new', // Flag as new
           name: '',
+          kind: 'Credit',
           type: 'Visa',
           last4Digits: '',
-          color: '#1e293b'
+          color: '#1e293b',
+          creditLimit: 0,
+          currentDebt: 0,
+          currentBalance: 0,
       };
       setAddingCard(newCardTemplate);
   };
 
   const handleEditCardStart = (card: PaymentCard) => {
       setAddingCard(card);
+  };
+
+  const handleAddNewIncomeStart = () => {
+      setEditingIncome(undefined);
+      setIsAddingIncome(true);
+  };
+
+  const handleEditIncomeStart = (income: Income) => {
+      setEditingIncome(income);
+      setIsAddingIncome(true);
+  };
+
+  const handleAddNewExpenseStart = () => {
+      setEditingExpense(undefined);
+      setIsAddingExpense(true);
+  };
+
+  const handleEditExpenseStart = (expense: Expense) => {
+      setEditingExpense(expense);
+      setIsAddingExpense(true);
   };
 
   // Save new or existing card from modal
@@ -349,6 +618,33 @@ function App() {
     );
   }
 
+  if (isAddingIncome) {
+    return (
+      <AddIncome
+        onSave={handleAddOrUpdateIncome}
+        onCancel={() => {
+          setIsAddingIncome(false);
+          setEditingIncome(undefined);
+        }}
+        initialData={editingIncome}
+      />
+    );
+  }
+
+  if (isAddingExpense) {
+    return (
+      <AddExpense
+        onSave={handleAddOrUpdateExpense}
+        onCancel={() => {
+          setIsAddingExpense(false);
+          setEditingExpense(undefined);
+        }}
+        initialData={editingExpense}
+        cards={cards}
+      />
+    );
+  }
+
   const selectedSub = subscriptions.find(s => s.id === selectedSubId);
   const upcomingNotifications = getUpcomingNotifications();
 
@@ -366,7 +662,7 @@ function App() {
   }
 
   if (isSupabaseConfigured() && !session) {
-    return <AuthScreen onAuthenticated={() => setAuthChecking(true)} />;
+    return <AuthScreen onAuthenticated={() => undefined} />;
   }
 
   if (isLoading) {
@@ -389,17 +685,12 @@ function App() {
         <div className="flex items-center space-x-3">
              <AppLogo />
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
-               {userProfile.name ? `${userProfile.name}'s SubTrack` : 'SubTrack'}
+               {activeTab === Tab.Investment
+                 ? (userProfile.name ? `${userProfile.name}'s Portfolio` : 'Portfolio')
+                 : (userProfile.name ? `${userProfile.name}'s SubTrack` : 'SubTrack')}
             </h1>
         </div>
         <div className="flex items-center space-x-3 relative" ref={notificationRef}>
-            <button 
-            onClick={toggleTheme}
-            className="p-2 rounded-full text-secondary hover:text-textMain transition-colors"
-            title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-            {isDark ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
             <button 
             onClick={() => setShowNotifications(!showNotifications)}
             className={`p-2 rounded-full transition-colors relative ${showNotifications || upcomingNotifications.length > 0 ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
@@ -462,18 +753,68 @@ function App() {
             baseCurrency={userProfile.currency}
             onCurrencyChange={handleCurrencyChange}
             onUpdateCard={handleUpdateCard}
+            cardPointTransactions={cardPointTransactions}
+            onUpdateCardPointTransactions={handleUpdateCardPointTransactions}
             onAddCard={handleAddNewCardStart}
+            onDeleteSubscription={handleDelete}
+            onSelectSubscription={setSelectedSubId}
           />
         )}
         
-        {activeTab === Tab.Subscriptions && (
-            <SubscriptionList 
-            subscriptions={subscriptions} 
-            baseCurrency={userProfile.currency}
-            onCurrencyChange={handleCurrencyChange}
-            onDelete={handleDelete}
-            onSelect={(sub) => setSelectedSubId(sub.id)}
-          />
+        {activeTab === Tab.Cards && (
+            <CardsTab
+                cards={cards}
+                subscriptions={subscriptions}
+                expenses={expenses}
+                cardBenefits={cardBenefits}
+                cardPointTransactions={cardPointTransactions}
+                baseCurrency={userProfile.currency}
+                onAddCard={handleAddNewCardStart}
+                onEditCard={handleEditCardStart}
+            />
+        )}
+
+        {activeTab === Tab.Expenses && (
+            <ExpenseTab
+                expenses={expenses}
+                subscriptions={subscriptions}
+                baseCurrency={userProfile.currency}
+                onCurrencyChange={handleCurrencyChange}
+                onAddExpense={handleAddNewExpenseStart}
+                onEditExpense={handleEditExpenseStart}
+                onDeleteExpense={handleDeleteExpense}
+            />
+        )}
+
+        {activeTab === Tab.Income && (
+            <IncomeTab
+                incomes={incomes}
+                baseCurrency={userProfile.currency}
+                onCurrencyChange={handleCurrencyChange}
+                onAddIncome={handleAddNewIncomeStart}
+                onEditIncome={handleEditIncomeStart}
+                onDeleteIncome={handleDeleteIncome}
+            />
+        )}
+
+        {activeTab === Tab.Investment && (
+        <InvestmentTab
+                baseCurrency={userProfile.currency}
+                investments={investments}
+                valuations={investmentValuations}
+                transactions={investmentTransactions}
+                pokerMttTournaments={pokerMttTournaments}
+                pokerMttBankrollTransactions={pokerMttBankrollTransactions}
+                onAddTransaction={handleAddInvestmentTransaction}
+                onCreateHolding={handleAddInvestmentHolding}
+                onAddPokerMttTournament={handleAddPokerMttTournament}
+                onDeletePokerMttTournament={(tournamentId) => {
+                  const updated = pokerMttTournaments.filter(tournament => tournament.id !== tournamentId);
+                  setPokerMttTournaments(updated);
+                  void savePokerMttTournaments(updated);
+                }}
+                onAddPokerMttBankrollTransaction={handleAddPokerMttBankrollTransaction}
+            />
         )}
 
         {activeTab === Tab.Settings && (
@@ -493,7 +834,7 @@ function App() {
       </main>
 
       {/* Navigation Tabs */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-8 z-40">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-6 z-40">
         <button 
           onClick={() => setActiveTab(Tab.Dashboard)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Dashboard ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
@@ -503,11 +844,35 @@ function App() {
           </div>
         </button>
         <button 
-          onClick={() => setActiveTab(Tab.Subscriptions)}
-          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Subscriptions ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+          onClick={() => setActiveTab(Tab.Cards)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Cards ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
-           <div className={`p-1 rounded-lg ${activeTab === Tab.Subscriptions ? 'bg-primary/10' : 'bg-transparent'}`}>
-             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15V6" /><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /><path d="M12 12H3" /><path d="M16 6H3" /><path d="M12 18H3" /></svg>
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Cards ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <Landmark size={20} />
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab(Tab.Expenses)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Expenses ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Expenses ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18" /><path d="M6 7h12" /><path d="M8 17h8" /></svg>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab(Tab.Income)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Income ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Income ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <TrendingUp size={20} />
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab(Tab.Investment)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Investment ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Investment ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12l5-5 4 4 9-9" /><path d="M21 7v5h-5" /></svg>
           </div>
         </button>
         <button 
@@ -520,12 +885,23 @@ function App() {
         </button>
       </nav>
 
-      {/* Floating Add Button (Dashboard and Subscriptions) */}
-      {(activeTab === Tab.Dashboard || activeTab === Tab.Subscriptions) && (
+      {/* Floating Add Button (Dashboard, Expenses, Income and Subscriptions) */}
+      {(activeTab === Tab.Dashboard || activeTab === Tab.Income || activeTab === Tab.Expenses) && (
         <button 
-          onClick={() => { setIsAdding(true); setEditingSub(undefined); }}
+          onClick={() => {
+            if (activeTab === Tab.Income) {
+              handleAddNewIncomeStart();
+              return;
+            }
+            if (activeTab === Tab.Expenses) {
+              handleAddNewExpenseStart();
+              return;
+            }
+            setIsAdding(true);
+            setEditingSub(undefined);
+          }}
           className="fixed bottom-24 right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
-          aria-label="Add subscription"
+          aria-label={activeTab === Tab.Income ? 'Add income' : activeTab === Tab.Expenses ? 'Add expense' : 'Add subscription'}
         >
           <Plus size={24} />
         </button>
@@ -554,8 +930,12 @@ function App() {
           <CardDetail 
               card={addingCard}
               subscriptions={subscriptions}
+              expenses={expenses}
               baseCurrency={userProfile.currency}
+              benefits={getCardBenefitsForCard(addingCard.name, cardBenefits)}
               onUpdate={handleSaveCardFromModal}
+              cardPointTransactions={cardPointTransactions}
+              onUpdateCardPointTransactions={handleUpdateCardPointTransactions}
               onClose={() => setAddingCard(null)}
           />
       )}
