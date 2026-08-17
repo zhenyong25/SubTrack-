@@ -1,11 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { BillingCycle, CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
+import { BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
 const SUBSCRIPTIONS_STORAGE_KEY = 'subtrack_data_v1';
 const INCOMES_STORAGE_KEY = 'subtrack_income_v1';
 const EXPENSES_STORAGE_KEY = 'subtrack_expenses_v1';
+const BUDGETS_STORAGE_KEY = 'subtrack_budgets_v1';
 const CARDS_STORAGE_KEY = 'subtrack_cards_v1';
 const CARD_POINTS_STORAGE_KEY = 'subtrack_card_points_v1';
 const FRIENDS_STORAGE_KEY = 'subtrack_friends_v1';
@@ -45,7 +46,11 @@ export const signInWithPassword = async (email: string, password: string) => {
 
 export const signUpWithPassword = async (email: string, password: string) => {
   if (!supabase) throw new Error('Supabase is not configured');
-  return supabase.auth.signUp({ email, password });
+  return supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: window.location.origin },
+  });
 };
 
 export const signOut = async () => {
@@ -58,6 +63,7 @@ export interface LoadedAppData {
   subscriptions: Subscription[];
   incomes: Income[];
   expenses: Expense[];
+  budgetPlans: BudgetPlan[];
   investments: InvestmentHolding[];
   investmentValuations: InvestmentValuation[];
   investmentTransactions: InvestmentTransaction[];
@@ -129,6 +135,14 @@ type ExpenseRow = {
   notes: string | null;
   linked_card_id?: string | null;
   linked_card_name?: string | null;
+};
+
+type BudgetPlanRow = {
+  user_id: string;
+  month: string;
+  total_limit: number;
+  category_limits: Record<string, number> | null;
+  updated_at?: string;
 };
 
 type PaymentCardRow = {
@@ -438,6 +452,21 @@ const mapExpenseToRow = (expense: Expense, userId: string): ExpenseRow => ({
   linked_card_name: expense.linkedCardName || null,
 });
 
+const mapBudgetPlanRow = (row: BudgetPlanRow): BudgetPlan => ({
+  month: row.month.slice(0, 7),
+  totalLimit: Number(row.total_limit),
+  categoryLimits: row.category_limits || {},
+  updatedAt: row.updated_at,
+});
+
+const mapBudgetPlanToRow = (plan: BudgetPlan, userId: string): BudgetPlanRow => ({
+  user_id: userId,
+  month: `${plan.month}-01`,
+  total_limit: plan.totalLimit,
+  category_limits: plan.categoryLimits,
+  updated_at: new Date().toISOString(),
+});
+
 const mapCardRow = (row: PaymentCardRow): PaymentCard => ({
   id: row.id,
   name: row.name,
@@ -610,6 +639,7 @@ const loadLocalData = (): LoadedAppData => {
     incomeDate: income.incomeDate || income.firstIncomeDate,
   }));
   const expenses = readLocalJson<Expense[]>(EXPENSES_STORAGE_KEY, []);
+  const budgetPlans = readLocalJson<BudgetPlan[]>(BUDGETS_STORAGE_KEY, []);
   const investments = readLocalJson<InvestmentHolding[]>(INVESTMENTS_STORAGE_KEY, []);
   const investmentTransactions = readLocalJson<InvestmentTransaction[]>(INVESTMENT_TRANSACTIONS_STORAGE_KEY, []);
   const pokerMttTournaments = readLocalJson<PokerMttTournament[]>(POKER_MTT_TOURNAMENTS_STORAGE_KEY, []);
@@ -623,6 +653,7 @@ const loadLocalData = (): LoadedAppData => {
     subscriptions,
     incomes,
     expenses,
+    budgetPlans,
     investments,
     investmentValuations: [],
     investmentTransactions,
@@ -642,11 +673,12 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const userId = await getSupabaseUserId();
   if (!userId) return loadLocalData();
 
-  const [profileResult, subsResult, incomesResult, expensesResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cardsResult, cardPointsResult, benefitsResult, friendsResult] = await Promise.all([
+  const [profileResult, subsResult, incomesResult, expensesResult, budgetsResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cardsResult, cardPointsResult, benefitsResult, friendsResult] = await Promise.all([
     supabase.from('profiles').select('id, name, photo_url, currency, notification_days').eq('id', userId).maybeSingle(),
     supabase.from('subscriptions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('incomes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('expenses').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+    supabase.from('budget_plans').select('*').eq('user_id', userId).order('month', { ascending: true }),
     supabase.from('investment_portfolio_positions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('investment_valuations').select('*').eq('user_id', userId).order('valuation_date', { ascending: true }),
     supabase.from('investment_transactions').select('*').eq('user_id', userId).order('trade_date', { ascending: true }),
@@ -663,6 +695,10 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const subscriptions = (subsResult.data as SubscriptionRow[] | null | undefined)?.map(mapSubscriptionRow) ?? [];
   const incomes = (incomesResult.data as IncomeRow[] | null | undefined)?.map(mapIncomeRow) ?? [];
   const expenses = (expensesResult.data as ExpenseRow[] | null | undefined)?.map(mapExpenseRow) ?? [];
+  const remoteBudgetPlans = (budgetsResult.data as BudgetPlanRow[] | null | undefined)?.map(mapBudgetPlanRow) ?? [];
+  const budgetPlans = remoteBudgetPlans.length > 0
+    ? remoteBudgetPlans
+    : readLocalJson<BudgetPlan[]>(BUDGETS_STORAGE_KEY, []);
   const investments = (investmentsResult.data as InvestmentPortfolioPositionRow[] | null | undefined)?.map(mapInvestmentRow) ?? [];
   const investmentValuations = (valuationsResult.data as InvestmentValuationRow[] | null | undefined)?.map(mapInvestmentValuationRow) ?? [];
   const investmentTransactions = (transactionsResult.data as InvestmentTransactionRow[] | null | undefined)?.map(mapInvestmentTransactionRow) ?? [];
@@ -687,6 +723,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     subscriptions: hydratedSubscriptions,
     incomes,
     expenses,
+    budgetPlans,
     investments,
     investmentValuations,
     investmentTransactions,
@@ -764,6 +801,18 @@ export const saveExpenses = async (expenses: Expense[]) => {
   }
 
   return true;
+};
+
+export const saveBudgetPlans = async (plans: BudgetPlan[]) => {
+  writeLocalJson(BUDGETS_STORAGE_KEY, plans);
+
+  if (!supabase) return;
+  const userId = await getSupabaseUserId();
+  if (!userId || plans.length === 0) return;
+
+  const rows = plans.map(plan => mapBudgetPlanToRow(plan, userId));
+  const { error } = await supabase.from('budget_plans').upsert(rows, { onConflict: 'user_id,month' });
+  if (error) console.warn('Budget plans were saved locally but could not be synced.', error.message);
 };
 
 export const saveInvestmentTransactions = async (transactions: InvestmentTransaction[]) => {
@@ -949,6 +998,7 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(SUBSCRIPTIONS_STORAGE_KEY);
   localStorage.removeItem(INCOMES_STORAGE_KEY);
   localStorage.removeItem(EXPENSES_STORAGE_KEY);
+  localStorage.removeItem(BUDGETS_STORAGE_KEY);
   localStorage.removeItem(CARDS_STORAGE_KEY);
   localStorage.removeItem(CARD_POINTS_STORAGE_KEY);
   localStorage.removeItem(FRIENDS_STORAGE_KEY);
@@ -965,6 +1015,7 @@ export const clearStoredAppData = async () => {
     supabase.from('subscriptions').delete().eq('user_id', userId),
     supabase.from('incomes').delete().eq('user_id', userId),
     supabase.from('expenses').delete().eq('user_id', userId),
+    supabase.from('budget_plans').delete().eq('user_id', userId),
     supabase.from('investment_transactions').delete().eq('user_id', userId),
     supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId),
     supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId),

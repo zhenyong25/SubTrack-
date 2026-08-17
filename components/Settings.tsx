@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, CURRENCIES, Friend, PaymentCard } from '../types';
-import { User, Trash2, Download, Moon, Sun, Save, Users, Plus, X, Loader2, AlertTriangle, Settings as SettingsIcon, CreditCard, Pencil } from 'lucide-react';
+import { User, Trash2, Download, Moon, Sun, Save, Users, Plus, X, Loader2, AlertTriangle, Settings as SettingsIcon, CreditCard, Pencil, Bell } from 'lucide-react';
 import { exportSubscriptionsToCSV, getCurrencySymbol } from '../services/storageService';
 import { saveFriends } from '../services/appDataService';
+import { isPushSupported, getActivePushSubscription, enableDailyReminder, disableDailyReminder } from '../services/pushService';
 import CardLogo from './CardLogo';
 
 interface SettingsProps {
@@ -32,12 +33,44 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
     
     const [confirmClear, setConfirmClear] = useState(false);
 
+    // Daily reminder push notification state
+    const pushSupported = isPushSupported();
+    const isStandalone = typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
+    const [reminderEnabled, setReminderEnabled] = useState(false);
+    const [reminderLoading, setReminderLoading] = useState(false);
+    const [reminderError, setReminderError] = useState<string | null>(null);
+
     useEffect(() => {
         setName(currentProfile.name);
         setCurrency(currentProfile.currency);
         setNotificationDays(currentProfile.notificationDays || 3);
         setFriends(currentProfile.friends || []);
     }, [currentProfile]);
+
+    useEffect(() => {
+        if (!pushSupported) return;
+        getActivePushSubscription()
+            .then(sub => setReminderEnabled(Boolean(sub)))
+            .catch(() => setReminderEnabled(false));
+    }, [pushSupported]);
+
+    const handleToggleReminder = async () => {
+        setReminderLoading(true);
+        setReminderError(null);
+        try {
+            if (reminderEnabled) {
+                await disableDailyReminder();
+                setReminderEnabled(false);
+            } else {
+                await enableDailyReminder();
+                setReminderEnabled(true);
+            }
+        } catch (err) {
+            setReminderError(err instanceof Error ? err.message : 'Something went wrong');
+        } finally {
+            setReminderLoading(false);
+        }
+    };
 
     const handleSave = () => {
         const updatedFriends = friends;
@@ -192,6 +225,45 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         {saved ? 'Saved!' : <><Save size={18} className="mr-2" /> Save Changes</>}
                     </button>
                 </div>
+            </div>
+
+            {/* Daily Reminder */}
+            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+                <div className="flex items-center mb-4 text-primary">
+                    <Bell size={20} className="mr-2" />
+                    <h3 className="font-bold text-lg">Daily Reminder</h3>
+                </div>
+
+                {!pushSupported ? (
+                    <p className="text-xs text-secondary">
+                        Push notifications aren't available here. Sign in and use this device's installed app to enable reminders.
+                    </p>
+                ) : !isStandalone ? (
+                    <p className="text-xs text-secondary">
+                        Add SubTrack to your Home Screen first, then open it from there to enable reminders (required on iPhone).
+                    </p>
+                ) : (
+                    <>
+                        <div className="flex justify-between items-center">
+                            <div className="pr-4">
+                                <p className="text-sm font-medium text-textMain">Remind me if I forget to log</p>
+                                <p className="text-[10px] text-secondary mt-0.5">A daily notification if no expense or income was recorded that day.</p>
+                            </div>
+                            <button
+                                onClick={handleToggleReminder}
+                                disabled={reminderLoading}
+                                role="switch"
+                                aria-checked={reminderEnabled}
+                                className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-50 ${reminderEnabled ? 'bg-primary' : 'bg-border'}`}
+                            >
+                                <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${reminderEnabled ? 'translate-x-5' : ''}`} />
+                            </button>
+                        </div>
+                        {reminderError && (
+                            <p className="text-[10px] text-red-500 mt-2">{reminderError}</p>
+                        )}
+                    </>
+                )}
             </div>
 
             {/* Friend List Manager */}

@@ -142,7 +142,13 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
         <div className="absolute left-[66%] top-[14%] h-2.5 w-2.5 rounded-full bg-blue-300/30 blur-[2px] animate-pulse-glow" />
       </div>
 
-      <div className="relative z-20 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 pb-10 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+      <div
+        className="relative z-20 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 sm:px-6 lg:px-8"
+        style={{
+          paddingTop: 'max(1rem, env(safe-area-inset-top))',
+          paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))',
+        }}
+      >
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/6 shadow-[0_0_40px_rgba(59,130,246,0.18)] backdrop-blur-xl">

@@ -149,6 +149,49 @@ const parseDateOnly = (value?: string | null) => {
   return new Date(year, month - 1, day);
 };
 
+const getSubscriptionDatesForMonth = (subscription: Subscription, year: number, monthIndex: number): Date[] => {
+  if (subscription.billingCycle === BillingCycle.FreeTrial) return [];
+
+  const start = parseDateOnly(subscription.firstPaymentDate);
+  if (!start) return [];
+
+  const cancellation = parseDateOnly(subscription.cancellationDate);
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  if (start > monthEnd || (cancellation && cancellation < monthStart)) return [];
+
+  const isWithinActiveRange = (date: Date) => date >= start && (!cancellation || date <= cancellation);
+
+  if (subscription.billingCycle === BillingCycle.Daily) {
+    const dates: Date[] = [];
+    for (let day = 1; day <= monthEnd.getDate(); day++) {
+      const date = new Date(year, monthIndex, day);
+      if (isWithinActiveRange(date)) dates.push(date);
+    }
+    return dates;
+  }
+
+  if (subscription.billingCycle === BillingCycle.Weekly) {
+    const dates: Date[] = [];
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let day = 1; day <= monthEnd.getDate(); day++) {
+      const date = new Date(year, monthIndex, day);
+      if (!isWithinActiveRange(date)) continue;
+      const elapsedDays = Math.round((Date.UTC(year, monthIndex, day) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / dayMs);
+      if (elapsedDays >= 0 && elapsedDays % 7 === 0) dates.push(date);
+    }
+    return dates;
+  }
+
+  const monthOffset = (year - start.getFullYear()) * 12 + (monthIndex - start.getMonth());
+  if (monthOffset < 0) return [];
+  if (subscription.billingCycle === BillingCycle.Yearly && monthOffset % 12 !== 0) return [];
+
+  const billingDay = Math.min(start.getDate(), monthEnd.getDate());
+  const occurrence = new Date(year, monthIndex, billingDay);
+  return isWithinActiveRange(occurrence) ? [occurrence] : [];
+};
+
 // Get monthly cost in the TARGET currency, accounting for splits
 export const getMonthlyCost = (sub: Subscription, targetCurrency: string = 'USD'): number => {
   if (sub.billingCycle === BillingCycle.FreeTrial) return 0;
@@ -267,7 +310,6 @@ export const getYearlyIncomeData = (incomes: Income[], year: number, baseCurrenc
             const amount = convertCurrency(income.amount, income.currency || 'USD', baseCurrency);
             const startDate = parseDateOnly(income.incomeDate || income.firstIncomeDate || income.nextIncomeDate);
             if (!startDate) continue;
-            const monthStart = new Date(year, monthIdx, 1);
             const monthEnd = new Date(year, monthIdx + 1, 0);
             if (startDate > monthEnd) continue;
 
@@ -407,7 +449,6 @@ export const getYearlyExpenseDataFromExpenses = (expenses: Expense[], year: numb
     if (Number.isNaN(expenseDate.getTime())) return;
 
     for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
-      const monthStart = new Date(year, monthIdx, 1);
       if (expenseDate.getFullYear() !== year || expenseDate.getMonth() !== monthIdx) continue;
       const amount = convertCurrency(expense.amount, expense.currency, baseCurrency);
       data[monthIdx].total += amount;
@@ -491,32 +532,20 @@ export const getExpenseCalendarDays = (
   });
 
   subscriptions.forEach(subscription => {
-    if (subscription.status !== 'Active') return;
-    if (subscription.billingCycle === BillingCycle.FreeTrial) return;
+    if (subscription.status !== 'Active' && !subscription.cancellationDate) return;
+    const splitCount = subscription.sharedCount && subscription.sharedCount > 0 ? subscription.sharedCount : 1;
 
-    const start = new Date(subscription.firstPaymentDate);
-    const end = subscription.status === 'Past' && subscription.cancellationDate ? new Date(subscription.cancellationDate) : new Date(9999, 11, 31);
-    const monthStart = new Date(year, monthIndex, 1);
-    if (new Date(start.getFullYear(), start.getMonth(), 1) > monthStart) return;
-    if (end < monthStart) return;
-
-    let dayOfMonth = start.getDate();
-    if (subscription.nextPaymentDate) {
-      const next = new Date(subscription.nextPaymentDate);
-      if (next.getFullYear() === year && next.getMonth() === monthIndex) {
-        dayOfMonth = next.getDate();
-      }
-    }
-
-    addEntry(dayOfMonth, {
-      id: subscription.id,
-      name: subscription.name,
-      amount: subscription.price,
-      currency: subscription.currency,
-      category: subscription.category,
-      source: 'Subscription',
-      color: subscription.color,
-      date: new Date(year, monthIndex, dayOfMonth).toISOString(),
+    getSubscriptionDatesForMonth(subscription, year, monthIndex).forEach(occurrence => {
+      addEntry(occurrence.getDate(), {
+        id: subscription.id,
+        name: subscription.name,
+        amount: subscription.price / splitCount,
+        currency: subscription.currency,
+        category: subscription.category,
+        source: 'Subscription',
+        color: subscription.color,
+        date: occurrence.toISOString(),
+      });
     });
   });
 

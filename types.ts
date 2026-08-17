@@ -41,6 +41,13 @@ export interface Expense {
   linkedCardName?: string;
 }
 
+export interface BudgetPlan {
+  month: string; // YYYY-MM
+  totalLimit: number;
+  categoryLimits: Record<string, number>;
+  updatedAt?: string;
+}
+
 export type CardType = 'Visa' | 'Mastercard' | 'Amex' | 'Discover' | 'Paypal' | 'ApplePay' | 'GooglePay' | 'Other';
 
 export type PaymentCardKind = 'Credit' | 'Debit' | 'MultiCurrency';
