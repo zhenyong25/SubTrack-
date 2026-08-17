@@ -12,17 +12,20 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Cell, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts';
-import { CURRENCIES, Expense, Subscription } from '../types';
-import { getCurrencySymbol, getExpenseCalendarDays, getMonthlyCost, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
+import { BudgetPlan, CURRENCIES, Expense, Subscription } from '../types';
+import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getMonthlyCost, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
+import BudgetPanel from './BudgetPanel';
 
 interface ExpenseTabProps {
   expenses: Expense[];
   subscriptions: Subscription[];
+  budgetPlans: BudgetPlan[];
   baseCurrency: string;
   onCurrencyChange: (currency: string) => void;
   onAddExpense: () => void;
   onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (id: string) => void;
+  onSaveBudgetPlan: (plan: BudgetPlan) => void;
 }
 
 const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
@@ -89,7 +92,7 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
   );
 };
 
-const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense }) => {
+const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans, baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -108,10 +111,22 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCu
     [expenses, selectedYear, selectedMonth]
   );
 
+  const calendarDays = useMemo(
+    () => getExpenseCalendarDays(expenses, syncedSubscriptions, selectedYear, selectedMonth, baseCurrency),
+    [expenses, syncedSubscriptions, selectedYear, selectedMonth, baseCurrency]
+  );
+
+  const scheduledSubscriptionEntries = useMemo(
+    () => calendarDays.flatMap(day => day.entries).filter(entry => entry.source === 'Subscription'),
+    [calendarDays],
+  );
+
   const stats = useMemo(() => {
     const expenseMonthly = monthExpenses.reduce((sum, expense) => sum + getMonthlyExpense(expense, baseCurrency), 0);
-    const recurringSubscriptions = syncedSubscriptions;
-    const subscriptionMonthly = recurringSubscriptions.reduce((sum, subscription) => sum + getMonthlyCost(subscription, baseCurrency), 0);
+    const subscriptionMonthly = scheduledSubscriptionEntries.reduce(
+      (sum, entry) => sum + convertCurrency(entry.amount, entry.currency, baseCurrency),
+      0,
+    );
     const monthlyTotal = expenseMonthly + subscriptionMonthly;
     const yearlyTotal = monthlyTotal * 12;
     const monthDays = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -124,10 +139,10 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCu
         value: getMonthlyExpense(expense, baseCurrency),
         source: 'Expense' as const,
       })),
-      ...recurringSubscriptions.map(subscription => ({
-        id: subscription.id,
-        name: subscription.name,
-        value: getMonthlyCost(subscription, baseCurrency),
+      ...scheduledSubscriptionEntries.map(entry => ({
+        id: entry.id,
+        name: entry.name,
+        value: convertCurrency(entry.amount, entry.currency, baseCurrency),
         source: 'Subscription' as const,
       })),
     ].sort((a, b) => b.value - a.value)[0];
@@ -138,12 +153,12 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCu
       dailyAverage,
       topExpense,
       expenseCount: monthExpenses.length,
-      subscriptionCount: recurringSubscriptions.length,
+      subscriptionCount: scheduledSubscriptionEntries.length,
       recurringExpenseMonthly: expenseMonthly,
       subscriptionMonthly,
       expenseMonthly,
     };
-  }, [monthExpenses, syncedSubscriptions, baseCurrency, selectedMonth, selectedYear]);
+  }, [monthExpenses, scheduledSubscriptionEntries, baseCurrency, selectedMonth, selectedYear]);
 
   const yearlyExpenseData = useMemo(() => {
     const expenseData = getYearlyExpenseDataFromExpenses(expenses, selectedYear, baseCurrency);
@@ -169,22 +184,30 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCu
 
   const categoryData = useMemo(() => {
     const map = new Map<string, number>();
-
-    monthExpenses.forEach(expense => {
-      const value = getMonthlyExpense(expense, baseCurrency);
-      map.set(expense.category, (map.get(expense.category) || 0) + value);
-    });
-
-    syncedSubscriptions.forEach(subscription => {
-      map.set(subscription.category, (map.get(subscription.category) || 0) + getMonthlyCost(subscription, baseCurrency));
+    calendarDays.flatMap(day => day.entries).forEach(entry => {
+      const value = convertCurrency(entry.amount, entry.currency, baseCurrency);
+      map.set(entry.category, (map.get(entry.category) || 0) + value);
     });
 
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [monthExpenses, syncedSubscriptions, baseCurrency]);
+  }, [calendarDays, baseCurrency]);
 
-  const calendarDays = useMemo(
-    () => getExpenseCalendarDays(expenses, syncedSubscriptions, selectedYear, selectedMonth, baseCurrency),
-    [expenses, syncedSubscriptions, selectedYear, selectedMonth, baseCurrency]
+  const budgetMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+  const previousBudgetDate = new Date(selectedYear, selectedMonth - 1, 1);
+  const previousBudgetMonthKey = `${previousBudgetDate.getFullYear()}-${String(previousBudgetDate.getMonth() + 1).padStart(2, '0')}`;
+  const currentBudgetPlan = budgetPlans.find(plan => plan.month === budgetMonthKey);
+  const previousBudgetPlan = budgetPlans.find(plan => plan.month === previousBudgetMonthKey);
+  const spendingByCategory = useMemo(
+    () => Object.fromEntries(categoryData.map(entry => [entry.name, entry.value])),
+    [categoryData],
+  );
+  const availableBudgetCategories = useMemo(
+    () => Array.from(new Set([
+      ...expenses.map(expense => expense.category),
+      ...subscriptions.map(subscription => subscription.category),
+      ...Object.keys(currentBudgetPlan?.categoryLimits || {}),
+    ])).filter(Boolean).sort(),
+    [expenses, subscriptions, currentBudgetPlan],
   );
 
   const selectedCalendarDayTotal = useMemo(() => {
@@ -381,6 +404,17 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, baseCu
           </select>
         </div>
       </div>
+
+      <BudgetPanel
+        monthLabel={monthLabel}
+        monthKey={budgetMonthKey}
+        currency={baseCurrency}
+        plan={currentBudgetPlan}
+        previousPlan={previousBudgetPlan}
+        spendingByCategory={spendingByCategory}
+        availableCategories={availableBudgetCategories}
+        onSave={onSaveBudgetPlan}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-surface p-4 rounded-xl shadow-sm border border-border">

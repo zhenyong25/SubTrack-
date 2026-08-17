@@ -14,9 +14,9 @@ import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
 import InvestmentTab from './components/InvestmentTab';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction } from './types';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction } from './types';
 import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveCardPointTransactions, saveCards, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 
@@ -42,6 +42,7 @@ function App() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgetPlans, setBudgetPlans] = useState<BudgetPlan[]>([]);
   const [investments, setInvestments] = useState<InvestmentHolding[]>([]);
   const [investmentValuations, setInvestmentValuations] = useState<InvestmentValuation[]>([]);
   const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
@@ -138,6 +139,7 @@ function App() {
         setSubscriptions([]);
         setIncomes([]);
         setExpenses([]);
+        setBudgetPlans([]);
         setInvestments([]);
         setInvestmentValuations([]);
         setInvestmentTransactions([]);
@@ -182,6 +184,7 @@ function App() {
         setSubscriptions(updated);
         setIncomes(loaded.incomes);
         setExpenses(loaded.expenses);
+        setBudgetPlans(loaded.budgetPlans);
         setInvestments(loaded.investments);
         setInvestmentValuations(loaded.investmentValuations);
         setInvestmentTransactions(loaded.investmentTransactions);
@@ -214,6 +217,34 @@ function App() {
       cancelled = true;
     };
   }, [authChecking, session]);
+
+  // Deep link support (e.g. iOS Back Tap / Action Button shortcuts): opening the app
+  // with ?add=expense|income|subscription jumps straight to that form.
+  useEffect(() => {
+    if (authChecking || isLoading) return;
+    if (isSupabaseConfigured() && !session) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const add = params.get('add');
+    if (!add) return;
+
+    if (add === 'expense') {
+      setActiveTab(Tab.Expenses);
+      setEditingExpense(undefined);
+      setIsAddingExpense(true);
+    } else if (add === 'income') {
+      setActiveTab(Tab.Income);
+      setEditingIncome(undefined);
+      setIsAddingIncome(true);
+    } else if (add === 'subscription') {
+      setEditingSub(undefined);
+      setIsAdding(true);
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('add');
+    window.history.replaceState({}, '', url.toString());
+  }, [authChecking, isLoading, session]);
 
   const showToast = (msg: string) => {
       setToastMessage(msg);
@@ -585,6 +616,15 @@ function App() {
       setIsAddingExpense(true);
   };
 
+  const handleSaveBudgetPlan = (plan: BudgetPlan) => {
+      const updated = budgetPlans.some(item => item.month === plan.month)
+        ? budgetPlans.map(item => item.month === plan.month ? plan : item)
+        : [...budgetPlans, plan];
+      setBudgetPlans(updated);
+      void saveBudgetPlans(updated);
+      showToast('Budget plan saved');
+  };
+
   // Save new or existing card from modal
   const handleSaveCardFromModal = (card: PaymentCard) => {
       if (card.id === 'new') {
@@ -681,7 +721,7 @@ function App() {
   return (
     <div className="bg-background min-h-screen text-textMain font-sans selection:bg-primary selection:text-white transition-colors duration-300">
       {/* Header */}
-      <header className="fixed top-0 w-full z-20 bg-background/90 backdrop-blur-md border-b border-border px-6 py-4 flex justify-between items-center transition-colors duration-300">
+      <header className="fixed top-0 w-full z-20 bg-background/90 backdrop-blur-md border-b border-border px-6 pb-4 flex justify-between items-center transition-colors duration-300" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
         <div className="flex items-center space-x-3">
              <AppLogo />
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
@@ -745,7 +785,13 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="pt-24 px-4 pb-24 max-w-2xl mx-auto">
+      <main
+        className="px-4 max-w-2xl mx-auto"
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top) + 6rem)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom) + 6rem)',
+        }}
+      >
         {activeTab === Tab.Dashboard && (
           <Dashboard 
             subscriptions={subscriptions} 
@@ -765,6 +811,7 @@ function App() {
             <CardsTab
                 cards={cards}
                 subscriptions={subscriptions}
+                budgetPlans={budgetPlans}
                 expenses={expenses}
                 cardBenefits={cardBenefits}
                 cardPointTransactions={cardPointTransactions}
@@ -783,6 +830,7 @@ function App() {
                 onAddExpense={handleAddNewExpenseStart}
                 onEditExpense={handleEditExpenseStart}
                 onDeleteExpense={handleDeleteExpense}
+                onSaveBudgetPlan={handleSaveBudgetPlan}
             />
         )}
 
@@ -834,7 +882,10 @@ function App() {
       </main>
 
       {/* Navigation Tabs */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-6 z-40">
+      <nav
+        className="fixed left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-6 z-40"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
+      >
         <button 
           onClick={() => setActiveTab(Tab.Dashboard)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Dashboard ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
@@ -900,7 +951,8 @@ function App() {
             setIsAdding(true);
             setEditingSub(undefined);
           }}
-          className="fixed bottom-24 right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
+          className="fixed right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 6rem)' }}
           aria-label={activeTab === Tab.Income ? 'Add income' : activeTab === Tab.Expenses ? 'Add expense' : 'Add subscription'}
         >
           <Plus size={24} />
@@ -942,7 +994,10 @@ function App() {
 
       {/* Toast Notification */}
       {toastMessage && (
-          <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-surface border border-primary/20 text-textMain px-4 py-2 rounded-full shadow-lg z-50 animate-slide-up flex items-center">
+          <div
+            className="fixed left-1/2 -translate-x-1/2 bg-surface border border-primary/20 text-textMain px-4 py-2 rounded-full shadow-lg z-50 animate-slide-up flex items-center"
+            style={{ top: 'calc(env(safe-area-inset-top) + 6rem)' }}
+          >
               <CheckCircle size={16} className="text-primary mr-2" />
               <span className="text-sm font-bold">{toastMessage}</span>
           </div>
