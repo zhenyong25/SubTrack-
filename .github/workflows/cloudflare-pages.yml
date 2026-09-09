@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare Workers
 
 on:
   push:
@@ -12,7 +12,6 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       VITE_LOGO_DEV_PUBLISHABLE_KEY: ${{ vars.VITE_LOGO_DEV_PUBLISHABLE_KEY }}
-      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
@@ -39,10 +38,6 @@ jobs:
       - name: Validate Cloudflare config
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          if [ -z "$CLOUDFLARE_PAGES_PROJECT_NAME" ]; then
-            echo "Missing repository variable CLOUDFLARE_PAGES_PROJECT_NAME"
-            exit 1
-          fi
           if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "Missing secret CLOUDFLARE_ACCOUNT_ID"
             exit 1
@@ -52,11 +47,11 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Workers
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=${{ env.CLOUDFLARE_PAGES_PROJECT_NAME }}
+          command: deploy
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}

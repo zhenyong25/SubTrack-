@@ -1,0 +1,8 @@
+# Deploys the built SPA as a Cloudflare Worker with static assets.
+# This is the "subtrack" Worker visible in the Cloudflare dashboard
+# (Workers & Pages > subtrack), served at subtrack.zhenyong25.workers.dev.
+name = "subtrack"
+compatibility_date = "2024-09-23"
+
+[assets]
+directory = "./dist"
