@@ -37,6 +37,7 @@ function App() {
   const [editingSub, setEditingSub] = useState<Subscription | undefined>(undefined);
   const [editingIncome, setEditingIncome] = useState<Income | undefined>(undefined);
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>(undefined);
+  const [presetExpenseDate, setPresetExpenseDate] = useState<string | undefined>(undefined);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -155,16 +156,30 @@ function App() {
 
       try {
         const loaded = await loadAppData();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
         const updated = loaded.subscriptions.map(sub => {
           let next = sub.nextPaymentDate;
-          if (!sub.status) sub.status = 'Active';
+          let status = sub.status || 'Active';
+          let cancellationDate = sub.cancellationDate;
+          const nextDate = new Date(next || sub.firstPaymentDate);
 
-          if (new Date(next) < new Date() && sub.status === 'Active') {
+          if (
+            status === 'Active' &&
+            sub.billingCycle === BillingCycle.FreeTrial &&
+            !Number.isNaN(nextDate.getTime()) &&
+            nextDate < todayStart
+          ) {
+            status = 'Past';
+            cancellationDate = cancellationDate || next || sub.firstPaymentDate;
+          }
+
+          if (new Date(next) < new Date() && status === 'Active') {
             if (sub.billingCycle !== BillingCycle.FreeTrial) {
               next = calculateNextPayment(sub.firstPaymentDate, sub.billingCycle);
             }
           }
-          return { ...sub, nextPaymentDate: next };
+          return { ...sub, status, cancellationDate, nextPaymentDate: next };
         });
 
         if (cancelled) return;
@@ -184,7 +199,7 @@ function App() {
         setSubscriptions(updated);
         setIncomes(loaded.incomes);
         setExpenses(loaded.expenses);
-        setBudgetPlans(loaded.budgetPlans);
+        setBudgetPlans(loaded.budgetPlans ?? []);
         setInvestments(loaded.investments);
         setInvestmentValuations(loaded.investmentValuations);
         setInvestmentTransactions(loaded.investmentTransactions);
@@ -193,10 +208,10 @@ function App() {
         setCards(loaded.cards);
         setCardPointTransactions(loaded.cardPointTransactions);
         setCardBenefits(loaded.cardBenefits);
+        void saveSubscriptions(updated);
 
         if (loaded.userId) {
           void saveProfile({ ...loaded.profile, isLoggedIn: true });
-          void saveSubscriptions(updated);
           void saveIncomes(loaded.incomes);
           void saveExpenses(loaded.expenses);
           void saveInvestmentTransactions(loaded.investmentTransactions);
@@ -274,6 +289,7 @@ function App() {
       setSubscriptions([]);
       setIncomes([]);
       setExpenses([]);
+      setBudgetPlans([]);
       setInvestments([]);
       setInvestmentValuations([]);
       setInvestmentTransactions([]);
@@ -408,6 +424,7 @@ function App() {
 
     setIsAddingExpense(false);
     setEditingExpense(undefined);
+    setPresetExpenseDate(undefined);
     setActiveTab(Tab.Expenses);
   };
 
@@ -551,6 +568,7 @@ function App() {
           setSubscriptions([]);
           setIncomes([]);
           setExpenses([]);
+          setBudgetPlans([]);
           setCards([]);
           setInvestments([]);
           setInvestmentValuations([]);
@@ -606,12 +624,14 @@ function App() {
       setIsAddingIncome(true);
   };
 
-  const handleAddNewExpenseStart = () => {
+  const handleAddNewExpenseStart = (expenseDate?: string) => {
       setEditingExpense(undefined);
+      setPresetExpenseDate(expenseDate);
       setIsAddingExpense(true);
   };
 
   const handleEditExpenseStart = (expense: Expense) => {
+      setPresetExpenseDate(undefined);
       setEditingExpense(expense);
       setIsAddingExpense(true);
   };
@@ -678,8 +698,10 @@ function App() {
         onCancel={() => {
           setIsAddingExpense(false);
           setEditingExpense(undefined);
+          setPresetExpenseDate(undefined);
         }}
         initialData={editingExpense}
+        initialDate={presetExpenseDate}
         cards={cards}
       />
     );
@@ -811,7 +833,6 @@ function App() {
             <CardsTab
                 cards={cards}
                 subscriptions={subscriptions}
-                budgetPlans={budgetPlans}
                 expenses={expenses}
                 cardBenefits={cardBenefits}
                 cardPointTransactions={cardPointTransactions}
@@ -825,6 +846,7 @@ function App() {
             <ExpenseTab
                 expenses={expenses}
                 subscriptions={subscriptions}
+                budgetPlans={budgetPlans}
                 baseCurrency={userProfile.currency}
                 onCurrencyChange={handleCurrencyChange}
                 onAddExpense={handleAddNewExpenseStart}

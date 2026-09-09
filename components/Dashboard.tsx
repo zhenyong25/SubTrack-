@@ -347,7 +347,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, b
               </div>
           </div>
           <div className="h-56 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
                 <BarChart data={yearlyChartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
                     <XAxis 
@@ -473,7 +473,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, b
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Spending by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
               <PieChart>
                 <Pie
                   data={categoryData}

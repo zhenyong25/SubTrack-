@@ -1,0 +1,1380 @@
+# Entertainment
+Netflix|netflix.com|Netflix Standard,Netflix Premium,Netflix Basic
+Disney+|disneyplus.com|Disney Plus,Disney Hotstar,Disney+ Hotstar
+Amazon Prime Video|primevideo.com|Prime Video
+YouTube Premium|youtube.com|YouTube Red
+Apple TV+|tv.apple.com|Apple TV Plus,Apple TV
+HBO Max|hbomax.com|Max,HBO Now,HBO Go
+Hulu|hulu.com
+Paramount+|paramountplus.com|Paramount Plus,CBS All Access
+Peacock|peacocktv.com
+Crunchyroll|crunchyroll.com|Funimation
+MUBI|mubi.com
+Shudder|shudder.com
+BritBox|britbox.com
+Acorn TV|acorn.tv
+AMC+|amcplus.com
+Starz|starz.com
+MGM+|mgmplus.com|Epix
+Criterion Channel|criterionchannel.com
+Curiosity Stream|curiositystream.com
+Nebula|nebula.tv
+Dropout|dropout.tv
+Floatplane|floatplane.com
+Vimeo|vimeo.com
+Viki|viki.com|Rakuten Viki
+Viu|viu.com
+iQIYI|iq.com|爱奇艺
+WeTV|wetv.vip|Tencent Video
+Youku|youku.tv
+Bilibili|bilibili.tv
+Mango TV|mgtv.com
+JioHotstar|hotstar.com|Hotstar,JioCinema
+ZEE5|zee5.com
+SonyLIV|sonyliv.com
+Sun NXT|sunnxt.com
+aha|aha.video
+Hoichoi|hoichoi.tv
+Eros Now|erosnow.com
+ShemarooMe|shemaroome.com
+Chaupal|chaupal.tv
+ManoramaMAX|manoramamax.com
+Discovery+|discoveryplus.com|Discovery Plus
+NOW|nowtv.com|NOW TV
+SkyShowtime|skyshowtime.com
+Sky Go|sky.com
+ITVX|itv.com|ITV Hub
+Channel 4+|channel4.com|All 4 Plus
+STV Player|player.stv.tv
+BFI Player|player.bfi.org.uk
+National Theatre at Home|ntathome.com
+Marquee TV|marquee.tv
+BroadwayHD|broadwayhd.com
+Met Opera on Demand|metopera.org
+Medici.tv|medici.tv
+Filmin|filmin.es
+Movistar Plus+|movistarplus.es
+Atresplayer|atresplayer.com
+Mitele|mitele.es
+Viaplay|viaplay.com
+TV 2 Play|play.tv2.dk
+TV4 Play|tv4play.se
+Ruutu|ruutu.fi
+Videoland|videoland.com
+NLZIET|nlziet.nl
+Canal+|canalplus.com
+Molotov|molotov.tv
+Joyn|joyn.de
+RTL+|plus.rtl.de
+WOW|wowtv.de
+MagentaTV|magenta.tv
+Zattoo|zattoo.com
+waipu.tv|waipu.tv
+Tivify|tivify.tv
+Filmbox+|filmbox.com
+Rakuten TV|rakuten.tv
+FlixOlé|flixole.com
+Sling TV|sling.com
+YouTube TV|tv.youtube.com
+Fubo|fubo.tv|fuboTV
+DirecTV Stream|directv.com
+Philo|philo.com
+Frndly TV|frndlytv.com
+Plex Pass|plex.tv
+Emby Premiere|emby.media
+Screambox|screambox.com
+Fandor|fandor.com
+OVID|ovid.tv
+MHz Choice|mhzchoice.com
+Dekkoo|dekkoo.com
+Revry|revry.tv
+Gaia|gaia.com
+Hallmark+|hallmarkplus.com|Hallmark Movies Now
+Lifetime Movie Club|lifetimemovieclub.com
+History Vault|historyvault.com
+A&E Crime Central|aecrimecentral.com
+PBS Passport|pbs.org
+Tastemade|tastemade.com
+MotorTrend|motortrend.com
+HIDIVE|hidive.com
+RetroCrush|retrocrush.tv
+AsianCrush|asiancrush.com
+Kocowa|kocowa.com
+OnDemandKorea|ondemandkorea.com
+OnDemandChina|ondemandchina.com
+TVING|tving.com
+Wavve|wavve.com
+Coupang Play|coupangplay.com
+Watcha|watcha.com
+U-NEXT|unext.jp
+Abema|abema.tv
+d Anime Store|animestore.docomo.ne.jp
+FOD|fod.fujitv.co.jp
+TELASA|telasa.jp
+WOWOW|wowow.co.jp
+Niconico|nicovideo.jp
+Lemino|lemino.docomo.ne.jp
+Stan|stan.com.au
+Binge|binge.com.au
+Foxtel|foxtel.com.au
+BritBox Australia|britbox.com.au
+Neon|neontv.co.nz
+Sky Sport Now|skysportnow.co.nz
+Showmax|showmax.com
+DStv|dstv.com
+GOtv|gotvafrica.com
+StarTimes|startimestv.com
+IrokoTV|irokotv.com
+Shahid|shahid.mbc.net
+OSN+|osnplus.com
+STARZPLAY|starzplay.com
+TOD|tod.tv
+Anghami Plus|anghami.com
+Globoplay|globoplay.globo.com
+Telecine|telecine.com.br
+Premiere|premiere.globo.com
+Looke|looke.com.br
+Claro video|clarovideo.com
+ViX|vix.com
+Flow|flow.com.ar
+Movistar Play|movistar.com
+Crave|crave.ca
+Super Channel|superchannel.ca
+Hollywood Suite|hollywoodsuite.ca
+CBC Gem|gem.cbc.ca
+ICI TOU.TV|ici.tou.tv
+Club illico|clubillico.com
+Astro|astro.com.my
+sooka|sooka.my
+Astro GO|astrogo.astro.com.my
+Unifi TV|unifi.com.my
+meWATCH|mewatch.sg|Toggle
+Singtel TV|singtel.com
+StarHub TV+|starhub.com
+Vidio|vidio.com
+Vision+|visionplus.id
+RCTI+|rctiplus.com
+TrueID|trueid.net
+AIS PLAY|aisplay.ais.co.th
+FPT Play|fptplay.vn
+VieON|vieon.vn
+Galaxy Play|galaxyplay.vn
+K+|kplus.vn
+myTV SUPER|mytvsuper.com
+Now E|nowe.com
+Hami Video|hamivideo.hinet.net
+friDay Video|video.friday.tw
+Catchplay+|catchplay.com
+KKTV|kktv.me
+LiTV|litv.tv
+LINE TV|linetv.tw
+# Music
+Spotify|spotify.com|Spotify Premium,Spotify Family,Spotify Duo
+Apple Music|music.apple.com
+YouTube Music|music.youtube.com
+Amazon Music|music.amazon.com|Amazon Music Unlimited
+Tidal|tidal.com
+Deezer|deezer.com
+Qobuz|qobuz.com
+Pandora|pandora.com
+SoundCloud|soundcloud.com|SoundCloud Go,SoundCloud Next Pro
+SiriusXM|siriusxm.com
+TuneIn|tunein.com
+Napster|napster.com
+IDAGIO|idagio.com
+Presto Music|prestomusic.com
+Nugs.net|nugs.net
+LiveOne|liveone.com|Slacker
+DI.FM|di.fm
+RadioTunes|radiotunes.com
+JazzRadio|jazzradio.com
+Calm Radio|calmradio.com
+ROCKRADIO|rockradio.com
+JioSaavn|jiosaavn.com
+Gaana|gaana.com
+Hungama Music|hungama.com
+KKBOX|kkbox.com
+Joox|joox.com
+NetEase Cloud Music|music.163.com
+QQ Music|y.qq.com
+Kugou Music|kugou.com
+Kuwo Music|kuwo.cn
+Melon|melon.com
+Genie Music|genie.co.kr
+Bugs|music.bugs.co.kr
+FLO|music-flo.com
+LINE Music|music.line.me
+AWA|awa.fm
+Yandex Music|music.yandex.com
+VK Music|music.vk.com
+Boomplay|boomplay.com
+Audiomack|audiomack.com
+Mdundo|mdundo.com
+Soundtrack Your Brand|soundtrackyourbrand.com
+Rockbot|rockbot.com
+Cloud Cover Music|cloudcovermusic.com
+Feed.fm|feed.fm
+Brain.fm|brain.fm
+Focus@Will|focusatwill.com
+Endel|endel.io
+myNoise|mynoise.net
+Noisli|noisli.com
+Epidemic Sound|epidemicsound.com
+Artlist|artlist.io
+Musicbed|musicbed.com
+Soundstripe|soundstripe.com
+Audiio|audiio.com
+Uppbeat|uppbeat.io
+Lickd|lickd.co
+PremiumBeat|premiumbeat.com
+BeatStars|beatstars.com
+Splice|splice.com
+Loopcloud|loopcloud.com
+LANDR|landr.com
+DistroKid|distrokid.com
+TuneCore|tunecore.com
+Ditto Music|dittomusic.com
+UnitedMasters|unitedmasters.com
+Amuse|amuse.io
+ReverbNation|reverbnation.com
+Bandzoogle|bandzoogle.com
+BandLab|bandlab.com
+Soundtrap|soundtrap.com
+Flat|flat.io
+Noteflight|noteflight.com
+MuseScore|musescore.com
+Ultimate Guitar|ultimate-guitar.com
+Chordify|chordify.net
+Songsterr|songsterr.com
+Moises|moises.ai
+Yousician|yousician.com
+Simply Piano|hellosimply.com
+Flowkey|flowkey.com
+Skoove|skoove.com
+Fender Play|fender.com
+Guitar Tricks|guitartricks.com
+TrueFire|truefire.com
+JamPlay|jamplay.com
+Pianote|pianote.com
+Drumeo|drumeo.com
+Scott's Bass Lessons|scottsbasslessons.com
+Melodics|melodics.com
+Playground Sessions|playgroundsessions.com
+# Gaming
+Xbox Game Pass|xbox.com|Xbox Live Gold,PC Game Pass,Game Pass Ultimate
+PlayStation Plus|playstation.com|PS Plus,PlayStation Now
+Nintendo Switch Online|nintendo.com
+Apple Arcade|apple.com
+EA Play|ea.com|Origin Access
+Ubisoft+|ubisoft.com|Uplay Plus
+GeForce NOW|nvidia.com
+Amazon Luna|luna.amazon.com
+Humble Choice|humblebundle.com
+Antstream Arcade|antstream.com
+Blacknut|blacknut.com
+Boosteroid|boosteroid.com
+Shadow PC|shadow.tech
+airgpu|airgpu.com
+Parsec|parsec.app
+GameClub|gameclub.io
+GameFly|gamefly.com
+Meta Quest+|meta.com
+Viveport Infinity|viveport.com
+Discord Nitro|discord.com
+Twitch Turbo|twitch.tv
+Patreon|patreon.com
+Ko-fi|ko-fi.com
+Roblox Premium|roblox.com
+Minecraft Realms|minecraft.net
+World of Warcraft|worldofwarcraft.blizzard.com|WoW
+Final Fantasy XIV|finalfantasyxiv.com|FFXIV
+RuneScape|runescape.com
+Old School RuneScape|oldschool.runescape.com|OSRS
+EVE Online|eveonline.com
+Elder Scrolls Online|elderscrollsonline.com|ESO Plus
+Fallout 76|fallout.bethesda.net|Fallout 1st
+Star Wars The Old Republic|swtor.com|SWTOR
+Albion Online|albiononline.com
+Tibia|tibia.com
+Dofus|dofus.com
+Wakfu|wakfu.com
+EverQuest|everquest.com
+EverQuest II|everquest2.com
+DC Universe Online|dcuniverseonline.com
+Daybreak All Access|daybreakgames.com
+Wizard101|wizard101.com
+Pirate101|pirate101.com
+Star Stable|starstable.com
+Animal Jam|animaljam.com
+Neopets|neopets.com
+AdventureQuest Worlds|aq.com
+Fortnite Crew|fortnite.com
+GTA+|rockstargames.com
+Chess.com|chess.com
+Chessable|chessable.com
+Internet Chess Club|chessclub.com
+Aimchess|aimchess.com
+DecodeChess|decodechess.com
+Board Game Arena|boardgamearena.com
+Tabletopia|tabletopia.com
+Roll20|roll20.net
+D&D Beyond|dndbeyond.com
+Demiplane|demiplane.com
+World Anvil|worldanvil.com
+Inkarnate|inkarnate.com
+Kanka|kanka.io
+Obsidian Portal|obsidianportal.com
+StartPlaying|startplaying.games
+Owlbear Rodeo|owlbear.rodeo
+Fantasy Grounds|fantasygrounds.com
+Foundry Server|foundryserver.com
+The Forge|forge-vtt.com
+Molten Hosting|moltenhosting.com
+Nitrado|nitrado.net
+G-Portal|g-portal.com
+BisectHosting|bisecthosting.com
+Apex Hosting|apexminecrafthosting.com
+Shockbyte|shockbyte.com
+Nodecraft|nodecraft.com
+Host Havoc|hosthavoc.com
+GTXGaming|gtxgaming.co.uk
+ScalaCube|scalacube.com
+PebbleHost|pebblehost.com
+Sparked Host|sparkedhost.com
+# Sports
+DAZN|dazn.com
+ESPN+|espn.com|ESPN Plus
+F1 TV|formula1.com|Formula 1
+MotoGP VideoPass|motogp.com
+NBA League Pass|nba.com
+NFL+|nfl.com|NFL Game Pass
+MLB.TV|mlb.com
+NHL.TV|nhl.com
+UFC Fight Pass|ufcfightpass.com
+WWE Network|wwe.com
+FloSports|flosports.tv
+FloGrappling|flograppling.com
+FloWrestling|flowrestling.org
+FloRacing|floracing.com
+FloBikes|flobikes.com
+Willow TV|willow.tv
+FanCode|fancode.com
+Kayo Sports|kayosports.com.au
+Optus Sport|sport.optus.com.au
+beIN Sports|beinsports.com
+Sportsnet+|sportsnet.ca
+TSN|tsn.ca
+RDS|rds.ca
+FITE+|trillertv.com|TrillerTV
+Tennis TV|tennistv.com
+Tennis Channel|tennischannel.com
+WTA TV|wtatv.com
+RugbyPass|rugbypass.com
+URC TV|urc.tv
+Premier Sports|premiersports.com
+Fanatiz|fanatiz.com
+OneFootball|onefootball.com
+GolfPass|golfpass.com
+Rally.TV|rally.tv|WRC Plus
+WEC TV|fiawec.tv
+SuperView|supercars.com
+FIA Formula E|fiaformulae.com
+Motorvision|motorvision.tv
+Racing TV|racingtv.com
+The Athletic|theathletic.com
+Strat-O-Matic|strat-o-matic.com
+RotoWire|rotowire.com
+FantasyPros|fantasypros.com
+Fantasy Football Scout|fantasyfootballscout.co.uk
+Fantasy Football Hub|fantasyfootballhub.co.uk
+PFF|pff.com
+Action Network|actionnetwork.com
+TeamRankings|teamrankings.com
+# Productivity
+Microsoft 365|microsoft.com|Office 365,Microsoft Office
+Google Workspace|workspace.google.com|G Suite,Google Apps
+Notion|notion.so
+Evernote|evernote.com
+Todoist|todoist.com
+TickTick|ticktick.com
+Any.do|any.do
+Remember The Milk|rememberthemilk.com
+Toodledo|toodledo.com
+Amazing Marvin|amazingmarvin.com
+Sunsama|sunsama.com
+Motion|usemotion.com
+Akiflow|akiflow.com
+Reclaim|reclaim.ai
+Morgen|morgen.so
+Routine|routine.co
+Amie|amie.so
+Fantastical|flexibits.com
+Calendly|calendly.com
+Cal.com|cal.com
+Acuity Scheduling|acuityscheduling.com
+SavvyCal|savvycal.com
+YouCanBookMe|youcanbook.me
+SimplyBook.me|simplybook.me
+Setmore|setmore.com
+Appointy|appointy.com
+Doodle|doodle.com
+When I Work|wheniwork.com
+Clockwise|getclockwise.com
+SkedPal|skedpal.com
+Obsidian|obsidian.md
+Roam Research|roamresearch.com
+Reflect|reflect.app
+Mem|mem.ai
+Capacities|capacities.io
+Heptabase|heptabase.com
+Tana|tana.inc
+Workflowy|workflowy.com
+Dynalist|dynalist.io
+RemNote|remnote.com
+Craft|craft.do
+Bear|bear.app
+Ulysses|ulysses.app
+Day One|dayoneapp.com
+Journey|journey.cloud
+Diarium|diariumapp.com
+Goodnotes|goodnotes.com
+Notability|notability.com
+Noteshelf|noteshelf.net
+Nebo|nebo.app
+NotePlan|noteplan.co
+Agenda|agenda.com
+UpNote|getupnote.com
+Standard Notes|standardnotes.com
+Notesnook|notesnook.com
+Joplin Cloud|joplinapp.org
+Milanote|milanote.com
+Scrintal|scrintal.com
+Walling|walling.app
+Taskade|taskade.com
+Coda|coda.io
+Airtable|airtable.com
+Smartsheet|smartsheet.com
+Asana|asana.com
+Trello|trello.com
+Monday.com|monday.com
+ClickUp|clickup.com
+Basecamp|basecamp.com
+Wrike|wrike.com
+Teamwork|teamwork.com
+Hive|hive.com
+Linear|linear.app
+Jira|atlassian.com
+Confluence|atlassian.com
+Shortcut|shortcut.com
+YouTrack|jetbrains.com
+Zenhub|zenhub.com
+MeisterTask|meistertask.com
+MindMeister|mindmeister.com
+XMind|xmind.app
+MindNode|mindnode.com
+MindManager|mindmanager.com
+Lucidchart|lucidchart.com
+Lucidspark|lucidspark.com
+Miro|miro.com
+Mural|mural.co
+Whimsical|whimsical.com
+FigJam|figma.com
+Creately|creately.com
+Cacoo|cacoo.com
+Gliffy|gliffy.com
+SmartDraw|smartdraw.com
+EdrawMax|edrawsoft.com
+Toggl Track|toggl.com
+Clockify|clockify.me
+Harvest|getharvest.com
+Timely|timely.com
+RescueTime|rescuetime.com
+Rize|rize.io
+Timing|timingapp.com
+Timeular|timeular.com
+TrackingTime|trackingtime.co
+Hubstaff|hubstaff.com
+Time Doctor|timedoctor.com
+DeskTime|desktime.com
+Everhour|everhour.com
+Paymo|paymoapp.com
+Freedom|freedom.to
+Opal|opal.so
+Forest|forestapp.cc
+Focusmate|focusmate.com
+Session|stayinsession.com
+Serene|sereneapp.com
+Centered|centered.app
+Setapp|setapp.com
+CleanMyMac|macpaw.com
+Raycast|raycast.com
+TextExpander|textexpander.com
+PhraseExpress|phraseexpress.com
+Text Blaze|blaze.today
+Paste|pasteapp.io
+CleanShot X|cleanshot.com
+Snagit|techsmith.com
+Screen Studio|screen.studio
+Loom|loom.com
+Tella|tella.tv
+Zight|zight.com|CloudApp
+Droplr|droplr.com
+Scribe|scribehow.com
+Tango|tango.us
+Guidde|guidde.com
+# Storage
+Google One|one.google.com|Google Drive,Google One AI Premium
+iCloud+|icloud.com|iCloud,Apple iCloud
+Dropbox|dropbox.com|Dropbox Plus
+Microsoft OneDrive|onedrive.live.com|OneDrive
+Box|box.com
+pCloud|pcloud.com
+Sync.com|sync.com
+MEGA|mega.io
+Icedrive|icedrive.net
+Internxt|internxt.com
+Filen|filen.io
+Tresorit|tresorit.com
+Proton Drive|proton.me
+Koofr|koofr.eu
+Jottacloud|jottacloud.com
+NordLocker|nordlocker.com
+IDrive|idrive.com
+Backblaze|backblaze.com
+Carbonite|carbonite.com
+Acronis|acronis.com
+CrashPlan|crashplan.com
+SpiderOak|spideroak.com
+Livedrive|livedrive.com
+OpenDrive|opendrive.com
+Zoolz|zoolz.com
+BigMIND|zoolz.com
+Degoo|degoo.com
+MediaFire|mediafire.com
+WeTransfer|wetransfer.com
+TransferNow|transfernow.net
+TransferXL|transferxl.com
+Filemail|filemail.com
+SendGB|sendgb.com
+Smash|fromsmash.com
+MASV|massive.io
+Hightail|hightail.com
+Egnyte|egnyte.com
+ShareFile|sharefile.com
+FileCloud|filecloud.com
+Nextcloud|nextcloud.com
+ownCloud|owncloud.com
+Seafile|seafile.com
+Resilio Sync|resilio.com
+GoodSync|goodsync.com
+Synology C2|c2.synology.com
+Wasabi|wasabi.com
+Bunny Storage|bunny.net
+Storj|storj.io
+TeraBox|terabox.com
+MultCloud|multcloud.com
+# Security
+1Password|1password.com
+Bitwarden|bitwarden.com
+Dashlane|dashlane.com
+LastPass|lastpass.com
+Keeper|keepersecurity.com
+NordPass|nordpass.com
+RoboForm|roboform.com
+Enpass|enpass.io
+Sticky Password|stickypassword.com
+Password Boss|passwordboss.com
+Passbolt|passbolt.com
+Proton Pass|proton.me
+NordVPN|nordvpn.com
+ExpressVPN|expressvpn.com
+Surfshark|surfshark.com
+Proton VPN|protonvpn.com
+Mullvad|mullvad.net
+IVPN|ivpn.net
+Windscribe|windscribe.com
+TunnelBear|tunnelbear.com
+Private Internet Access|privateinternetaccess.com|PIA
+CyberGhost|cyberghostvpn.com
+IPVanish|ipvanish.com
+VyprVPN|vyprvpn.com
+PureVPN|purevpn.com
+Hotspot Shield|hotspotshield.com
+Hide.me|hide.me
+hideMyAss|hidemyass.com|HMA
+PrivadoVPN|privadovpn.com
+PrivateVPN|privatevpn.com
+TorGuard|torguard.net
+Astrill|astrill.com
+AirVPN|airvpn.org
+AzireVPN|azirevpn.com
+Perfect Privacy|perfect-privacy.com
+Mozilla VPN|mozilla.org
+AdGuard VPN|adguard-vpn.com
+AdGuard|adguard.com
+NextDNS|nextdns.io
+Control D|controld.com
+CleanBrowsing|cleanbrowsing.org
+DNSFilter|dnsfilter.com
+Norton|norton.com
+McAfee|mcafee.com
+Bitdefender|bitdefender.com
+Kaspersky|kaspersky.com
+ESET|eset.com
+Malwarebytes|malwarebytes.com
+Avast|avast.com
+AVG|avg.com
+Avira|avira.com
+Trend Micro|trendmicro.com
+F-Secure|f-secure.com
+Webroot|webroot.com
+Sophos|sophos.com
+Panda Security|pandasecurity.com
+G Data|gdata-software.com
+Emsisoft|emsisoft.com
+Intego|intego.com
+TotalAV|totalav.com
+Clario|clario.co
+Aura|aura.com
+LifeLock|lifelock.com
+IdentityForce|identityforce.com
+Identity Guard|identityguard.com
+IDShield|idshield.com
+DeleteMe|joindeleteme.com
+Incogni|incogni.com
+Optery|optery.com
+Kanary|kanary.com
+Privacy Bee|privacybee.com
+IronVest|ironvest.com
+SimpleLogin|simplelogin.io
+Addy.io|addy.io|AnonAddy
+Firefox Relay|relay.firefox.com
+DuckDuckGo Privacy Pro|duckduckgo.com
+Qustodio|qustodio.com
+Bark|bark.us
+Net Nanny|netnanny.com
+Canopy|canopy.us
+# Communication
+Zoom|zoom.us
+Slack|slack.com
+Microsoft Teams|teams.microsoft.com
+Google Meet|meet.google.com
+Webex|webex.com
+GoTo Meeting|goto.com
+RingCentral|ringcentral.com
+Dialpad|dialpad.com
+OpenPhone|openphone.com
+Aircall|aircall.io
+Nextiva|nextiva.com
+8x8|8x8.com
+Vonage|vonage.com
+Grasshopper|grasshopper.com
+Ooma|ooma.com
+Phone.com|phone.com
+JustCall|justcall.io
+CloudTalk|cloudtalk.io
+KrispCall|krispcall.com
+Sonetel|sonetel.com
+Viber Out|viber.com
+Telegram Premium|telegram.org
+LINE Premium|line.me
+Threema Work|threema.ch
+Wire|wire.com
+Element|element.io
+Mattermost|mattermost.com
+Rocket.Chat|rocket.chat
+Chanty|chanty.com
+Flock|flock.com
+Twist|twist.com
+Pumble|pumble.com
+Lark|larksuite.com
+Missive|missiveapp.com
+Front|front.com
+Spark Mail|sparkmailapp.com
+Superhuman|superhuman.com
+SaneBox|sanebox.com
+Mailbird|getmailbird.com
+eM Client|emclient.com
+Airmail|airmailapp.com
+Canary Mail|canarymail.io
+Shortwave|shortwave.com
+HEY|hey.com
+Fastmail|fastmail.com
+Proton Mail|proton.me
+Tuta|tuta.com|Tutanota
+Mailbox.org|mailbox.org
+Posteo|posteo.de
+Runbox|runbox.com
+StartMail|startmail.com
+Mailfence|mailfence.com
+Hushmail|hushmail.com
+Zoho Mail|zoho.com
+Migadu|migadu.com
+Purelymail|purelymail.com
+MXroute|mxroute.com
+Mailflow|mailflow.com
+Clean Email|clean.email
+Mailstrom|mailstrom.co
+Boomerang|boomerangapp.com
+Mailbutler|mailbutler.io
+Mixmax|mixmax.com
+Gmelius|gmelius.com
+Hiver|hiverhq.com
+Help Scout|helpscout.com
+Intercom|intercom.com
+Zendesk|zendesk.com
+Freshdesk|freshdesk.com
+Freshchat|freshworks.com
+LiveChat|livechat.com
+Crisp|crisp.chat
+Tidio|tidio.com
+Olark|olark.com
+Userlike|userlike.com
+Chatwoot|chatwoot.com
+Gorgias|gorgias.com
+Re:amaze|reamaze.com
+# AI
+ChatGPT|chatgpt.com|ChatGPT Plus,ChatGPT Pro,OpenAI
+Claude|claude.ai|Claude Pro,Anthropic
+Google Gemini|gemini.google.com|Gemini Advanced,Bard,Google AI Pro
+Perplexity|perplexity.ai|Perplexity Pro
+Microsoft Copilot|copilot.microsoft.com|Copilot Pro
+Grok|grok.com|SuperGrok,xAI
+Poe|poe.com
+You.com|you.com
+Kagi|kagi.com
+Phind|phind.com
+Mistral Le Chat|mistral.ai
+Manus|manus.im
+Genspark|genspark.ai
+Notion AI|notion.so
+Jasper|jasper.ai
+Copy.ai|copy.ai
+Writesonic|writesonic.com
+Rytr|rytr.me
+Anyword|anyword.com
+Wordtune|wordtune.com
+Grammarly|grammarly.com
+ProWritingAid|prowritingaid.com
+QuillBot|quillbot.com
+LanguageTool|languagetool.org
+DeepL|deepl.com
+Jenni|jenni.ai
+Sudowrite|sudowrite.com
+NovelAI|novelai.net
+AI Dungeon|aidungeon.com
+Character.AI|character.ai
+Replika|replika.com
+Kindroid|kindroid.ai
+Nomi|nomi.ai
+Midjourney|midjourney.com
+Leonardo.Ai|leonardo.ai
+Ideogram|ideogram.ai
+Krea|krea.ai
+NightCafe|nightcafe.studio
+DreamStudio|dreamstudio.ai
+Playground AI|playground.com
+Freepik|freepik.com
+Adobe Firefly|firefly.adobe.com
+getimg.ai|getimg.ai
+SeaArt|seaart.ai
+Tensor.Art|tensor.art
+Civitai|civitai.com
+Clipdrop|clipdrop.co
+Magnific|magnific.ai
+Let's Enhance|letsenhance.io
+Topaz Labs|topazlabs.com
+Remove.bg|remove.bg
+Photoroom|photoroom.com
+Pixelcut|pixelcut.ai
+Runway|runwayml.com
+Pika|pika.art
+Luma Dream Machine|lumalabs.ai
+Kling AI|klingai.com
+Hailuo AI|hailuoai.video
+HeyGen|heygen.com
+Synthesia|synthesia.io
+D-ID|d-id.com
+Colossyan|colossyan.com
+Elai|elai.io
+Hour One|hourone.ai
+DeepBrain AI|aistudios.com
+InVideo|invideo.io
+Pictory|pictory.ai
+Fliki|fliki.ai
+VEED|veed.io
+Kapwing|kapwing.com
+Descript|descript.com
+OpusClip|opus.pro
+Captions|captions.ai
+Submagic|submagic.co
+Wisecut|wisecut.video
+Vizard|vizard.ai
+ElevenLabs|elevenlabs.io
+Murf|murf.ai
+PlayHT|play.ht
+Speechify|speechify.com
+WellSaid Labs|wellsaidlabs.com
+LOVO|lovo.ai
+Resemble AI|resemble.ai
+Listnr|listnr.ai
+Suno|suno.com
+Udio|udio.com
+AIVA|aiva.ai
+Soundraw|soundraw.io
+Boomy|boomy.com
+Beatoven|beatoven.ai
+Mubert|mubert.com
+Otter.ai|otter.ai
+Fireflies.ai|fireflies.ai
+Fathom|fathom.video
+tl;dv|tldv.io
+Read AI|read.ai
+MeetGeek|meetgeek.ai
+Avoma|avoma.com
+Sembly|sembly.ai
+Fellow|fellow.app
+Krisp|krisp.ai
+Supernormal|supernormal.com
+Granola|granola.ai
+Wispr Flow|wisprflow.ai
+Superwhisper|superwhisper.com
+MacWhisper|macwhisper.com
+Notta|notta.ai
+Sonix|sonix.ai
+Trint|trint.com
+Happy Scribe|happyscribe.com
+Rev|rev.com
+TurboScribe|turboscribe.ai
+Gamma|gamma.app
+Beautiful.ai|beautiful.ai
+Tome|tome.app
+Plus AI|plusdocs.com
+SlidesAI|slidesai.io
+Presentations.AI|presentations.ai
+# Design
+Adobe Creative Cloud|adobe.com|Adobe CC
+Adobe Photoshop|adobe.com
+Adobe Lightroom|adobe.com
+Adobe Illustrator|adobe.com
+Adobe Premiere Pro|adobe.com
+Adobe After Effects|adobe.com
+Adobe InDesign|adobe.com
+Adobe Acrobat|adobe.com
+Adobe Express|adobe.com
+Adobe Stock|stock.adobe.com
+Canva|canva.com|Canva Pro
+Figma|figma.com
+Sketch|sketch.com
+Framer|framer.com
+Webflow|webflow.com
+Marvel|marvelapp.com
+UXPin|uxpin.com
+Proto.io|proto.io
+ProtoPie|protopie.io
+Axure|axure.com
+Balsamiq|balsamiq.com
+Moqups|moqups.com
+Mockplus|mockplus.com
+Uizard|uizard.io
+Penpot|penpot.app
+Zeplin|zeplin.io
+Abstract|abstract.com
+Spline|spline.design
+Rive|rive.app
+LottieFiles|lottiefiles.com
+Jitter|jitter.video
+Animaker|animaker.com
+Vyond|vyond.com
+Powtoon|powtoon.com
+Renderforest|renderforest.com
+VistaCreate|create.vista.com
+Visme|visme.co
+Piktochart|piktochart.com
+Venngage|venngage.com
+Infogram|infogram.com
+Genially|genially.com
+Prezi|prezi.com
+Pitch|pitch.com
+Haiku Deck|haikudeck.com
+Emaze|emaze.com
+Slidebean|slidebean.com
+Flaticon|flaticon.com
+Icons8|icons8.com
+Iconfinder|iconfinder.com
+The Noun Project|thenounproject.com
+Streamline|streamlinehq.com
+Font Awesome|fontawesome.com
+Envato Elements|elements.envato.com
+Motion Array|motionarray.com
+Storyblocks|storyblocks.com
+Shutterstock|shutterstock.com
+iStock|istockphoto.com
+Getty Images|gettyimages.com
+Depositphotos|depositphotos.com
+Dreamstime|dreamstime.com
+123RF|123rf.com
+Alamy|alamy.com
+Stocksy|stocksy.com
+Unsplash+|unsplash.com
+Creative Market|creativemarket.com
+Creative Fabrica|creativefabrica.com
+Design Bundles|designbundles.net
+Placeit|placeit.net
+Smartmockups|smartmockups.com
+Pacdora|pacdora.com
+Rotato|rotato.app
+Shots|shots.so
+Fotor|fotor.com
+Pixlr|pixlr.com
+BeFunky|befunky.com
+PicMonkey|picmonkey.com
+Picsart|picsart.com
+VSCO|vsco.co
+Polarr|polarr.com
+Afterlight|afterlight.co
+Darkroom|darkroom.co
+Photomator|pixelmator.com
+Luminar Neo|skylum.com
+ON1 Photo RAW|on1.com
+Capture One|captureone.com
+DxO PhotoLab|dxo.com
+ACDSee|acdsee.com
+SmugMug|smugmug.com
+Flickr Pro|flickr.com
+500px|500px.com
+Pixieset|pixieset.com
+ShootProof|shootproof.com
+Pic-Time|pic-time.com
+Zenfolio|zenfolio.com
+Format|format.com
+PhotoShelter|photoshelter.com
+Pass Gallery|passgallery.com
+# Development
+GitHub|github.com
+GitHub Copilot|github.com
+GitLab|gitlab.com
+Bitbucket|bitbucket.org
+JetBrains|jetbrains.com|IntelliJ IDEA,WebStorm,PyCharm
+Cursor|cursor.com
+Windsurf|windsurf.com|Codeium
+Tabnine|tabnine.com
+Replit|replit.com
+CodeSandbox|codesandbox.io
+StackBlitz|stackblitz.com
+Bolt.new|bolt.new
+Lovable|lovable.dev
+v0|v0.dev
+Sourcegraph|sourcegraph.com
+Augment Code|augmentcode.com
+Zed|zed.dev
+Warp|warp.dev
+GitKraken|gitkraken.com
+Tower|git-tower.com
+Gitpod|gitpod.io
+Coder|coder.com
+CodePen|codepen.io
+JSFiddle|jsfiddle.net
+Postman|postman.com
+Insomnia|insomnia.rest
+HTTPie|httpie.io
+RapidAPI|rapidapi.com
+ReadMe|readme.com
+GitBook|gitbook.com
+Mintlify|mintlify.com
+Stoplight|stoplight.io
+SwaggerHub|swagger.io
+Redocly|redocly.com
+Scalar|scalar.com
+Sentry|sentry.io
+Bugsnag|bugsnag.com
+Rollbar|rollbar.com
+Raygun|raygun.com
+AppSignal|appsignal.com
+Honeybadger|honeybadger.io
+LogRocket|logrocket.com
+FullStory|fullstory.com
+Hotjar|hotjar.com
+Smartlook|smartlook.com
+Heap|heap.io
+Mixpanel|mixpanel.com
+Amplitude|amplitude.com
+PostHog|posthog.com
+Plausible|plausible.io
+Fathom Analytics|usefathom.com
+Simple Analytics|simpleanalytics.com
+Matomo|matomo.org
+Umami|umami.is
+Pirsch|pirsch.io
+GoatCounter|goatcounter.com
+Countly|countly.com
+Datadog|datadoghq.com
+New Relic|newrelic.com
+Dynatrace|dynatrace.com
+Splunk|splunk.com
+Elastic Cloud|elastic.co
+Grafana Cloud|grafana.com
+Better Stack|betterstack.com
+Axiom|axiom.co
+Papertrail|papertrail.com
+Loggly|loggly.com
+Logz.io|logz.io
+Sumo Logic|sumologic.com
+Coralogix|coralogix.com
+Mezmo|mezmo.com
+Honeycomb|honeycomb.io
+Lightstep|lightstep.com
+Chronosphere|chronosphere.io
+SigNoz|signoz.io
+SolarWinds|solarwinds.com
+UptimeRobot|uptimerobot.com
+Pingdom|pingdom.com
+Uptime.com|uptime.com
+StatusCake|statuscake.com
+Checkly|checklyhq.com
+Oh Dear|ohdear.app
+Cronitor|cronitor.io
+Healthchecks.io|healthchecks.io
+Dead Man's Snitch|deadmanssnitch.com
+Pulsetic|pulsetic.com
+PagerDuty|pagerduty.com
+Opsgenie|opsgenie.com
+incident.io|incident.io
+Rootly|rootly.com
+FireHydrant|firehydrant.com
+Squadcast|squadcast.com
+Statuspage|atlassian.com
+Instatus|instatus.com
+Status.io|status.io
+Sorry|sorryapp.com
+# Hosting
+Amazon Web Services|aws.amazon.com|AWS
+Google Cloud|cloud.google.com|GCP
+Microsoft Azure|azure.microsoft.com
+DigitalOcean|digitalocean.com
+Linode|linode.com|Akamai Cloud
+Vultr|vultr.com
+Hetzner|hetzner.com
+OVHcloud|ovhcloud.com
+Scaleway|scaleway.com
+UpCloud|upcloud.com
+Contabo|contabo.com
+IONOS|ionos.com
+Kamatera|kamatera.com
+Rackspace|rackspace.com
+Liquid Web|liquidweb.com
+Leaseweb|leaseweb.com
+Hostinger|hostinger.com
+Bluehost|bluehost.com
+SiteGround|siteground.com
+DreamHost|dreamhost.com
+HostGator|hostgator.com
+A2 Hosting|a2hosting.com
+InMotion Hosting|inmotionhosting.com
+GreenGeeks|greengeeks.com
+Namecheap|namecheap.com
+GoDaddy|godaddy.com
+Porkbun|porkbun.com
+Name.com|name.com
+Gandi|gandi.net
+Hover|hover.com
+Dynadot|dynadot.com
+Cloudflare|cloudflare.com
+Fastly|fastly.com
+Bunny.net|bunny.net
+KeyCDN|keycdn.com
+CDN77|cdn77.com
+Cloudinary|cloudinary.com
+ImageKit|imagekit.io
+imgix|imgix.com
+Uploadcare|uploadcare.com
+Filestack|filestack.com
+Cloudimage|cloudimage.io
+Sirv|sirv.com
+Gumlet|gumlet.com
+Mux|mux.com
+api.video|api.video
+Cloudflare Stream|cloudflare.com
+Vercel|vercel.com
+Netlify|netlify.com
+Render|render.com
+Railway|railway.app
+Fly.io|fly.io
+Heroku|heroku.com
+Platform.sh|platform.sh
+Platformatic|platformatic.dev
+Northflank|northflank.com
+Koyeb|koyeb.com
+Zeabur|zeabur.com
+Coolify Cloud|coolify.io
+Cloudways|cloudways.com
+Kinsta|kinsta.com
+WP Engine|wpengine.com
+Flywheel|getflywheel.com
+Pressable|pressable.com
+Pagely|pagely.com
+Rocket.net|rocket.net
+WordPress.com|wordpress.com
+Wix|wix.com
+Squarespace|squarespace.com
+Weebly|weebly.com
+Ghost|ghost.org
+Carrd|carrd.co
+Duda|duda.co
+Strikingly|strikingly.com
+Jimdo|jimdo.com
+Tilda|tilda.cc
+Dorik|dorik.com
+Typedream|typedream.com
+Unicorn Platform|unicornplatform.com
+Softr|softr.io
+Bubble|bubble.io
+Glide|glideapps.com
+Adalo|adalo.com
+FlutterFlow|flutterflow.io
+Thunkable|thunkable.com
+Bravo Studio|bravostudio.app
+Draftbit|draftbit.com
+Backendless|backendless.com
+Supabase|supabase.com
+Firebase|firebase.google.com
+Appwrite|appwrite.io
+Convex|convex.dev
+Neon|neon.tech
+PlanetScale|planetscale.com
+MongoDB Atlas|mongodb.com
+CockroachDB|cockroachlabs.com
+Turso|turso.tech
+# Education
+Coursera|coursera.org
+Udemy|udemy.com
+LinkedIn Learning|linkedin.com
+Skillshare|skillshare.com
+MasterClass|masterclass.com
+Brilliant|brilliant.org
+DataCamp|datacamp.com
+Codecademy|codecademy.com
+Pluralsight|pluralsight.com
+O'Reilly Learning|oreilly.com
+Frontend Masters|frontendmasters.com
+Educative|educative.io
+Treehouse|teamtreehouse.com
+Boot.dev|boot.dev
+Scrimba|scrimba.com
+LeetCode|leetcode.com
+AlgoExpert|algoexpert.io
+NeetCode|neetcode.io
+Interview Cake|interviewcake.com
+Design Gurus|designgurus.io
+Duolingo|duolingo.com|Super Duolingo,Duolingo Plus,Duolingo Max
+Babbel|babbel.com
+Busuu|busuu.com
+Memrise|memrise.com
+Rosetta Stone|rosettastone.com
+Lingoda|lingoda.com
+Pimsleur|pimsleur.com
+LingQ|lingq.com
+Drops|languagedrops.com
+Mondly|mondly.com
+ELSA Speak|elsaspeak.com
+Speak|speak.com
+Preply|preply.com
+Cambly|cambly.com
+Lingopie|lingopie.com
+FluentU|fluentu.com
+WaniKani|wanikani.com
+Bunpro|bunpro.jp
+LingoDeer|lingodeer.com
+Clozemaster|clozemaster.com
+Quizlet|quizlet.com
+Chegg|chegg.com
+Course Hero|coursehero.com
+Study.com|study.com
+Scribbr|scribbr.com
+Wolfram Alpha|wolframalpha.com
+Symbolab|symbolab.com
+Mathway|mathway.com
+Photomath|photomath.com
+Khanmigo|khanmigo.ai
+ABCmouse|abcmouse.com
+Adventure Academy|adventureacademy.com
+Reading Eggs|readingeggs.com
+Reading.com|reading.com
+Epic!|getepic.com
+SplashLearn|splashlearn.com
+IXL|ixl.com
+Prodigy|prodigygame.com
+Homer|learnwithhomer.com
+Lingokids|lingokids.com
+# Health & Fitness
+Strava|strava.com
+AllTrails|alltrails.com
+Komoot|komoot.com
+Ride with GPS|ridewithgps.com
+Zwift|zwift.com
+TrainerRoad|trainerroad.com
+TrainingPeaks|trainingpeaks.com
+Wahoo SYSTM|wahoofitness.com
+Rouvy|rouvy.com
+Peloton|onepeloton.com
+Apple Fitness+|apple.com
+Fitbit Premium|fitbit.com
+Garmin Connect+|garmin.com
+WHOOP|whoop.com
+Oura|ouraring.com
+Eight Sleep|eightsleep.com
+MyFitnessPal|myfitnesspal.com
+Cronometer|cronometer.com
+Lose It!|loseit.com
+Lifesum|lifesum.com
+Yazio|yazio.com
+MacroFactor|macrofactorapp.com
+Noom|noom.com
+WeightWatchers|weightwatchers.com|WW
+Centr|centr.com
+Freeletics|freeletics.com
+Fitbod|fitbod.me
+Hevy|hevyapp.com
+Strong|strong.app
+JEFIT|jefit.com
+StrongLifts|stronglifts.com
+Caliber|caliberstrong.com
+Ladder|joinladder.com
+Sweat|sweat.com
+Les Mills+|lesmills.com
+BODi|bodi.com|Beachbody
+Daily Burn|dailyburn.com
+Glo|glo.com
+Alo Moves|alomoves.com
+Down Dog|downdogapp.com
+Yoga International|yogainternational.com
+Headspace|headspace.com
+Calm|calm.com
+Insight Timer|insighttimer.com
+Waking Up|wakingup.com
+Balance|balanceapp.com
+Happier Meditation|meditatehappier.com|Ten Percent Happier,Happier
+BetterSleep|bettersleep.com
+Sleep Cycle|sleepcycle.com
+SleepScore|sleepscore.com
+Finch|befinch.com
+Fabulous|thefabulous.co
+Daylio|daylio.net
+Stoic|getstoic.com
+ClassPass|classpass.com
+Fitness First|fitnessfirst.com
+Anytime Fitness|anytimefitness.com
+Pure Fitness|pure-fitness.com
+# Books & News
+Audible|audible.com
+Everand|everand.com|Scribd Books
+Scribd|scribd.com
+Kindle Unlimited|amazon.com
+Kobo Plus|kobo.com
+Storytel|storytel.com
+BookBeat|bookbeat.com
+Nextory|nextory.com
+Audiobooks.com|audiobooks.com
+Libro.fm|libro.fm
+Blinkist|blinkist.com
+Headway|makeheadway.com
+Shortform|shortform.com
+getAbstract|getabstract.com
+Instaread|instaread.co
+Readwise|readwise.io
+Instapaper|instapaper.com
+Feedly|feedly.com
+Inoreader|inoreader.com
+NewsBlur|newsblur.com
+Readly|readly.com
+Magzter|magzter.com
+PressReader|pressreader.com
+Zinio|zinio.com
+Apple News+|apple.com
+The New York Times|nytimes.com|NYT
+The Washington Post|washingtonpost.com
+The Wall Street Journal|wsj.com|WSJ
+Financial Times|ft.com
+The Economist|economist.com
+Bloomberg|bloomberg.com
+Reuters|reuters.com
+The Guardian|theguardian.com
+The Times|thetimes.com
+The Telegraph|telegraph.co.uk
+The Atlantic|theatlantic.com
+The New Yorker|newyorker.com
+Wired|wired.com
+The Information|theinformation.com
+TechCrunch|techcrunch.com
+Medium|medium.com
+Substack|substack.com
+The Straits Times|straitstimes.com
+The Business Times|businesstimes.com.sg
+The Edge Malaysia|theedgemalaysia.com
+Malaysiakini|malaysiakini.com
+The Star|thestar.com.my
+South China Morning Post|scmp.com
+Nikkei Asia|asia.nikkei.com
+The Japan Times|japantimes.co.jp
+# Shopping & Lifestyle
+Amazon Prime|amazon.com
+Apple One|apple.com
+Walmart+|walmart.com
+Costco|costco.com
+Sam's Club|samsclub.com
+Target Circle 360|target.com
+GrabUnlimited|grab.com|Grab Unlimited
+foodpanda pandapro|foodpanda.com|pandapro
+Deliveroo Plus|deliveroo.com
+Uber One|uber.com
+DoorDash DashPass|doordash.com|DashPass
+Instacart+|instacart.com
+Shipt|shipt.com
+HelloFresh|hellofresh.com
+Blue Apron|blueapron.com
+Factor|factor75.com
+Gousto|gousto.co.uk
+Mindful Chef|mindfulchef.com
+Huel|huel.com
+AG1|drinkag1.com|Athletic Greens
+Dollar Shave Club|dollarshaveclub.com
+Harry's|harrys.com
+Birchbox|birchbox.com
+Ipsy|ipsy.com
+BoxyCharm|boxycharm.com
+FabFitFun|fabfitfun.com
+BarkBox|barkbox.com
+KiwiCo|kiwico.com
+CrunchLabs|crunchlabs.com
+Lovevery|lovevery.com
+# Finance & Business
+YNAB|ynab.com|You Need A Budget
+Monarch Money|monarchmoney.com
+Copilot Money|copilot.money
+Quicken|quicken.com
+PocketSmith|pocketsmith.com
+Lunch Money|lunchmoney.app
+Tiller|tillerhq.com
+Spendee|spendee.com
+MoneyWiz|wiz.money
+Wallet by BudgetBakers|budgetbakers.com
+TradingView|tradingview.com
+Seeking Alpha|seekingalpha.com
+Morningstar|morningstar.com
+The Motley Fool|fool.com
+Koyfin|koyfin.com
+Finviz|finviz.com
+Stock Rover|stockrover.com
+Simply Wall St|simplywall.st
+Sharesight|sharesight.com
+Snowball Analytics|snowball-analytics.com
+QuickBooks|quickbooks.intuit.com
+Xero|xero.com
+FreshBooks|freshbooks.com
+Wave|waveapps.com
+Zoho Books|zoho.com
+Sage|sage.com
+FreeAgent|freeagent.com
+Bonsai|hellobonsai.com
+HoneyBook|honeybook.com
+Dubsado|dubsado.com

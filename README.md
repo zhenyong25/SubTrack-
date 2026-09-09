@@ -42,6 +42,8 @@ If you prefer Cloudflare Pages Git integration instead of GitHub Actions, connec
 
 ## Supabase
 
+For searchable subscription names, automatic logos, and the ready-to-run catalog SQL, see [Subscription service catalog setup](docs/subscription-service-catalog.md).
+
 To connect the app to your Supabase database later, add these Vite environment variables:
 
 - `VITE_SUPABASE_URL`

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Check, CircleDollarSign, Tag, X } from 'lucide-react';
+import { Calendar, Check, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Expense, PaymentCard } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 
 interface AddExpenseProps {
-  onSave: (expense: Omit<Expense, 'id'>) => void;
+  onSave: (expense: Omit<Expense, 'id'>) => void | Promise<void>;
   onCancel: () => void;
   initialData?: Expense;
+  initialDate?: string;
   cards: PaymentCard[];
 }
 
@@ -27,7 +28,7 @@ const loadStoredCategories = () => {
   }
 };
 
-const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, cards }) => {
+const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, initialDate, cards }) => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('SGD');
@@ -38,10 +39,14 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
   const [notes, setNotes] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [linkedCardId, setLinkedCardId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setCategories(loadStoredCategories());
-    if (!initialData) return;
+    if (!initialData) {
+      if (initialDate) setDate(initialDate);
+      return;
+    }
 
     setName(initialData.name);
     setAmount(initialData.amount.toString());
@@ -51,7 +56,7 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
     setNotes(initialData.notes || '');
     setSelectedColor(initialData.color);
     setLinkedCardId(initialData.linkedCardId || '');
-  }, [initialData]);
+  }, [initialData, initialDate]);
 
   const persistCategories = (nextCategories: string[]) => {
     const normalized = Array.from(new Set(nextCategories.map(cat => cat.trim()).filter(Boolean)));
@@ -80,26 +85,32 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
     persistCategories(nextCategories);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
 
-    onSave({
-      name,
-      amount: parseFloat(amount) || 0,
-      currency,
-      expenseDate: date,
-      category,
-      color: selectedColor,
-      notes: notes.trim() || undefined,
-      linkedCardId: linkedCardId || undefined,
-      linkedCardName: linkedCardId ? cards.find(card => card.id === linkedCardId)?.name || undefined : undefined,
-    });
+    setIsSaving(true);
+    try {
+      await onSave({
+        name,
+        amount: parseFloat(amount) || 0,
+        currency,
+        expenseDate: date,
+        category,
+        color: selectedColor,
+        notes: notes.trim() || undefined,
+        linkedCardId: linkedCardId || undefined,
+        linkedCardName: linkedCardId ? cards.find(card => card.id === linkedCardId)?.name || undefined : undefined,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
       <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
-        <button onClick={onCancel} className="text-secondary hover:text-textMain">
+        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Expense' : 'New Expense'}</h2>
@@ -275,9 +286,17 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
 
           <button
             type="submit"
-            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6"
+            disabled={isSaving}
+            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6 flex items-center justify-center disabled:opacity-70"
           >
-            {initialData ? 'Update Expense' : 'Save Expense'}
+            {isSaving ? (
+              <>
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              initialData ? 'Update Expense' : 'Save Expense'
+            )}
           </button>
         </form>
       </div>

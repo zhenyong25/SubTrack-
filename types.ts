@@ -120,6 +120,7 @@ export interface Subscription {
   cardType?: CardType;
   color: string;
   logoUrl?: string;
+  serviceId?: string;
   notes?: string;
   sharedCount?: number; 
   sharedWith?: string[]; // Names of people sharing (e.g. ['Alice', 'Bob'])

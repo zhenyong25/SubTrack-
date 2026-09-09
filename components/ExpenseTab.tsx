@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   ChevronLeft,
@@ -8,12 +8,13 @@ import {
   PieChart as PieChartIcon,
   TrendingDown,
   Wallet,
+  Plus,
   Pencil,
   Trash2,
 } from 'lucide-react';
 import { Cell, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts';
 import { BudgetPlan, CURRENCIES, Expense, Subscription } from '../types';
-import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getMonthlyCost, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
+import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
 import BudgetPanel from './BudgetPanel';
 
 interface ExpenseTabProps {
@@ -22,7 +23,7 @@ interface ExpenseTabProps {
   budgetPlans: BudgetPlan[];
   baseCurrency: string;
   onCurrencyChange: (currency: string) => void;
-  onAddExpense: () => void;
+  onAddExpense: (expenseDate?: string) => void;
   onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (id: string) => void;
   onSaveBudgetPlan: (plan: BudgetPlan) => void;
@@ -92,11 +93,16 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
   );
 };
 
-const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans, baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
+const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onAddExpense, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const today = new Date();
+
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [selectedMonth, selectedYear]);
 
   const syncedSubscriptions = useMemo(
     () => subscriptions.filter(subscription => subscription.status === 'Active' && subscription.billingCycle !== 'Free Trial'),
@@ -245,33 +251,23 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
       : `Total from expenses and synced bills from Jan to Dec ${selectedYear}`;
 
   const expenseRows = useMemo(() => {
-    return [
-        ...expenses.map(expense => ({
-          id: expense.id,
-          name: expense.name,
-          category: expense.category,
-          amount: getMonthlyExpense(expense, baseCurrency),
-          source: 'Expense' as const,
-          nextDate: expense.expenseDate,
-          color: expense.color,
-          originalAmount: expense.amount,
-          originalCurrency: expense.currency,
-          linkedCardName: expense.linkedCardName,
-        })),
-      ...syncedSubscriptions.map(subscription => ({
-        id: subscription.id,
-        name: subscription.name,
-        category: subscription.category,
-        amount: getMonthlyCost(subscription, baseCurrency),
-        source: 'Subscription' as const,
-        nextDate: subscription.nextPaymentDate,
-        color: subscription.color,
-        originalAmount: subscription.price,
-        originalCurrency: subscription.currency,
-        linkedCardName: undefined,
-      })),
-    ].sort((a, b) => new Date(a.nextDate).getTime() - new Date(b.nextDate).getTime());
-  }, [expenses, syncedSubscriptions, baseCurrency]);
+    return calendarDays.flatMap(day => day.entries.map(entry => {
+      const expense = entry.source === 'Expense' ? expenses.find(item => item.id === entry.id) : undefined;
+      const subscription = entry.source === 'Subscription' ? subscriptions.find(item => item.id === entry.id) : undefined;
+      return {
+        id: entry.id,
+        name: entry.name,
+        category: entry.category,
+        amount: convertCurrency(entry.amount, entry.currency, baseCurrency),
+        source: entry.source,
+        nextDate: entry.date,
+        color: entry.color,
+        originalAmount: entry.amount,
+        originalCurrency: entry.currency,
+        linkedCardName: expense?.linkedCardName || subscription?.cardName,
+      };
+    })).sort((a, b) => new Date(a.nextDate).getTime() - new Date(b.nextDate).getTime());
+  }, [calendarDays, expenses, subscriptions, baseCurrency]);
 
   const groupedExpenseRows = useMemo(() => {
     const monthMap = new Map<string, {
@@ -327,6 +323,20 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
     return groupedExpenseRows.find(group => group.monthKey === monthKey) ?? null;
   }, [groupedExpenseRows, selectedYear, selectedMonth]);
 
+  const visibleLedgerDays = useMemo(() => {
+    if (!currentMonthLedger) return [];
+    if (selectedDay == null) return currentMonthLedger.days;
+    const selectedDayKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    return currentMonthLedger.days.filter(day => day.dayKey === selectedDayKey);
+  }, [currentMonthLedger, selectedDay, selectedMonth, selectedYear]);
+
+  const selectedDateLabel = selectedDay == null
+    ? null
+    : new Date(selectedYear, selectedMonth, selectedDay).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const selectedExpenseDate = selectedDay == null
+    ? undefined
+    : `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+
   const monthLabel = new Date(selectedYear, selectedMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
   const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const firstDay = new Date(selectedYear, selectedMonth, 1).getDay();
@@ -356,7 +366,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   }, [calendarDays, firstDay]);
 
   return (
-    <div className="space-y-6 pb-24 animate-fade-in">
+    <div className="flex flex-col gap-6 pb-24 animate-fade-in">
       <div className="bg-gradient-to-r from-rose-500 to-orange-500 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
@@ -480,16 +490,27 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
               selectedMonth === new Date().getMonth() &&
               cell.day === new Date().getDate();
             const hasEntries = Boolean(cell.day && cell.entries && cell.entries.length);
+            const isSelected = cell.day != null && cell.day === selectedDay;
 
             return (
               <div
                 key={`${index}-${cell.day ?? 'empty'}`}
-                className={`min-h-20 rounded-xl border p-2 text-left transition-colors ${cell.day ? 'bg-background border-border' : 'bg-transparent border-transparent'} ${hasEntries ? 'shadow-sm' : ''} ${isToday ? 'ring-2 ring-primary/40' : ''}`}
+                onClick={() => cell.day != null && setSelectedDay(current => current === cell.day ? null : cell.day)}
+                onKeyDown={event => {
+                  if (cell.day == null || (event.key !== 'Enter' && event.key !== ' ')) return;
+                  event.preventDefault();
+                  setSelectedDay(current => current === cell.day ? null : cell.day);
+                }}
+                role={cell.day != null ? 'button' : undefined}
+                tabIndex={cell.day != null ? 0 : undefined}
+                aria-pressed={cell.day != null ? isSelected : undefined}
+                aria-label={cell.day != null ? `Show expenses for ${monthLabel} ${cell.day}` : undefined}
+                className={`min-h-20 rounded-xl border p-2 text-left transition-all ${cell.day ? `cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/50 ${hasEntries ? 'bg-background border-border shadow-sm' : 'bg-emerald-50/80 border-emerald-200/70 dark:bg-emerald-400/10 dark:border-emerald-400/20'}` : 'bg-transparent border-transparent'} ${isSelected ? 'ring-2 ring-primary border-primary shadow-md' : isToday ? 'ring-2 ring-primary/40' : ''}`}
               >
                 {cell.day != null && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className={`text-xs font-bold ${hasEntries ? 'text-textMain' : 'text-secondary'}`}>{cell.day}</span>
+                      <span className={`text-xs font-bold ${hasEntries ? 'text-textMain' : 'text-emerald-700 dark:text-emerald-300'}`}>{cell.day}</span>
                       {hasEntries && <span className="w-2 h-2 rounded-full bg-primary" />}
                     </div>
                     {hasEntries && (
@@ -521,11 +542,11 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="order-2 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <h3 className="text-sm font-bold text-textMain uppercase mb-4 tracking-wide">Monthly Category Split</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
               <PieChart>
                 <Pie
                   data={categoryData}
@@ -572,88 +593,106 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
-        <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="order-1 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <div className="flex items-center space-x-2">
             <CircleDollarSign className="text-primary" size={18} />
-            <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Expense Ledger</h3>
+            <div>
+              <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Expense Ledger</h3>
+              <p className="mt-0.5 text-[10px] text-secondary">
+                {selectedDateLabel || monthLabel}
+                {selectedDay != null && visibleLedgerDays[0] ? ` · ${visibleLedgerDays[0].entries.length} item${visibleLedgerDays[0].entries.length === 1 ? '' : 's'} · ${visibleLedgerDays[0].total.toFixed(2)} ${baseCurrency}` : ''}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-2 py-1">
-            <button
-              onClick={goToPreviousMonth}
-              className="p-1 hover:text-primary"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold min-w-[130px] text-center">{monthLabel}</span>
-            <button
-              onClick={goToNextMonth}
-              className="p-1 hover:text-primary"
-            >
-              <ChevronRight size={16} />
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedDay != null && (
+              <button onClick={() => onAddExpense(selectedExpenseDate)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[10px] font-bold text-white shadow-sm shadow-primary/20 hover:bg-blue-600">
+                <Plus size={13} /> Add transaction
+              </button>
+            )}
+            {selectedDay != null && (
+              <button onClick={() => setSelectedDay(null)} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary hover:text-white">
+                Show full month
+              </button>
+            )}
+            <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-2 py-1">
+              <button onClick={goToPreviousMonth} className="p-1 hover:text-primary">
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-xs font-bold min-w-[130px] text-center">{monthLabel}</span>
+              <button onClick={goToNextMonth} className="p-1 hover:text-primary">
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {!currentMonthLedger || currentMonthLedger.days.length === 0 ? (
+        {visibleLedgerDays.length === 0 ? (
           <div className="text-center py-8 text-secondary">
-            <p className="text-xs">No expenses yet for this month.</p>
+            <p className="text-xs">{selectedDateLabel ? `No expenses recorded on ${selectedDateLabel}.` : 'No expenses yet for this month.'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {currentMonthLedger.days.map(dayGroup => (
+            {visibleLedgerDays.map(dayGroup => (
               <div key={dayGroup.dayKey} className="rounded-2xl border border-border overflow-hidden shadow-sm">
-                <div className="bg-background px-3 py-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-textMain">{dayGroup.dayLabel}</p>
-                    <p className="text-[10px] text-secondary">{dayGroup.entries.length} item{dayGroup.entries.length === 1 ? '' : 's'}</p>
+                {selectedDay == null && (
+                  <div className="bg-background px-3 py-2 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-textMain">{dayGroup.dayLabel}</p>
+                      <p className="text-[10px] text-secondary">{dayGroup.entries.length} item{dayGroup.entries.length === 1 ? '' : 's'}</p>
+                    </div>
+                    <div className="text-xs font-bold text-textMain">
+                      {dayGroup.total.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="text-xs font-bold text-textMain">
-                    {dayGroup.total.toFixed(2)}
-                  </div>
-                </div>
+                )}
                 <div className="divide-y divide-border bg-surface">
                   {dayGroup.entries.map(entry => (
                     <div key={`${entry.source}-${entry.id}-${entry.nextDate}`} className="px-4 py-3 bg-surface">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
-                            <p className="text-sm font-semibold text-textMain truncate">{entry.name}</p>
+                        <div className="min-w-0 flex-1 flex items-start gap-2.5">
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: entry.color }} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-sm font-semibold text-textMain truncate">{entry.name}</p>
+                              {entry.source === 'Subscription' && (
+                                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-orange-50 text-orange-600 border border-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800/50">
+                                  Sub
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 truncate text-[10px] text-secondary">
+                              {entry.category}
+                              {entry.originalCurrency !== baseCurrency ? ` · ${entry.originalAmount.toFixed(2)} ${entry.originalCurrency}` : ''}
+                              {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
+                            </p>
                           </div>
                         </div>
                         <div className="text-sm font-bold text-textMain whitespace-nowrap">{entry.amount.toFixed(2)}</div>
                       </div>
 
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0 text-[10px] text-secondary">
-                          <span className={`shrink-0 px-2 py-0.5 rounded-full border ${entry.source === 'Subscription' ? 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800/50' : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800/50'}`}>
-                            {entry.source}
-                          </span>
-                                  <span className="truncate">
-                                    {entry.category} - {entry.originalAmount.toFixed(2)} {entry.originalCurrency}
-                                    {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
-                                  </span>
-                                </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {entry.source === 'Expense' && (
-                            <button
-                              onClick={() => {
-                                const expense = expenses.find(item => item.id === entry.id);
-                                if (expense) onEditExpense(expense);
-                              }}
-                              className="text-primary hover:text-primary/80"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                          )}
-                          {entry.source === 'Expense' && (
-                            <button onClick={() => onDeleteExpense(entry.id)} className="text-red-500 hover:text-red-400">
-                              <Trash2 size={14} />
-                            </button>
-                          )}
+                      {entry.source === 'Expense' && (
+                        <div className="mt-1.5 flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              const expense = expenses.find(item => item.id === entry.id);
+                              if (expense) onEditExpense(expense);
+                            }}
+                            className="p-1.5 rounded-lg text-primary hover:bg-primary/10"
+                            aria-label={`Edit ${entry.name}`}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => onDeleteExpense(entry.id)}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10"
+                            aria-label={`Delete ${entry.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -663,7 +702,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         )}
       </div>
 
-      <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="order-3 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expense Progression</h3>
           <div className="flex items-center justify-between gap-2 bg-background border border-border rounded-lg px-2 py-1 w-full sm:w-auto">
@@ -673,7 +712,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
           </div>
         </div>
         <div className="h-56 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
             <BarChart data={yearlyExpenseData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={0} />

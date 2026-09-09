@@ -438,7 +438,7 @@ const CardDetail: React.FC<CardDetailProps> = ({
                                         </button>
                                     </div>
                                 </div>
-                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 520, height: 224 }}>
                                     <LineChart data={pointsChartData}>
                                         <XAxis
                                             dataKey="label"

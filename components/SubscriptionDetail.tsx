@@ -4,6 +4,7 @@ import { Subscription, Friend } from '../types';
 import { calculateNextPayment } from '../services/storageService';
 import { generateNaughtyReminder } from '../services/geminiService';
 import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell, RotateCcw, PlayCircle } from 'lucide-react';
+import SubscriptionLogo from './SubscriptionLogo';
 
 interface SubscriptionDetailProps {
   subscription: Subscription;
@@ -15,24 +16,6 @@ interface SubscriptionDetailProps {
   onClose: () => void;
   onShowToast: (msg: string) => void;
 }
-
-const getLogoUrl = (name: string) => {
-    const cleanName = name.toLowerCase().replace(/\s+/g, '').replace(/premium|plus|pro|standard|family|student|individual|plan/g, '');
-    const domainMap: Record<string, string> = {
-        'netflix': 'netflix.com', 'spotify': 'spotify.com', 'youtube': 'youtube.com', 'amazon': 'amazon.com', 'prime': 'amazon.com',
-        'disney': 'disneyplus.com', 'hulu': 'hulu.com', 'hbo': 'hbo.com', 'max': 'max.com', 'apple': 'apple.com', 'icloud': 'apple.com',
-        'google': 'google.com', 'dropbox': 'dropbox.com', 'slack': 'slack.com', 'adobe': 'adobe.com', 'chatgpt': 'openai.com',
-        'openai': 'openai.com', 'github': 'github.com', 'playstation': 'playstation.com', 'xbox': 'xbox.com', 'nintendo': 'nintendo.com',
-        'steam': 'steampowered.com', 'twitch': 'twitch.tv', 'duolingo': 'duolingo.com', 'canva': 'canva.com', 'notion': 'notion.so',
-        'medium': 'medium.com', 'x': 'twitter.com', 'twitter': 'twitter.com', 'linkedin': 'linkedin.com', 'zoom': 'zoom.us',
-        'discord': 'discord.com', 'figma': 'figma.com', 'tinder': 'tinder.com', 'bumble': 'bumble.com', 'hinge': 'hinge.co',
-        'audible': 'audible.com', 'evernote': 'evernote.com', 'midjourney': 'midjourney.com', 'claude': 'anthropic.com'
-    };
-    for(const key in domainMap) {
-        if(cleanName.includes(key)) return `https://logo.clearbit.com/${domainMap[key]}`;
-    }
-    return `https://logo.clearbit.com/${cleanName}.com`;
-};
 
 const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, friends, onUpdate, onDelete, onEdit, onClone, onClose, onShowToast }) => {
   const [loadingNudge, setLoadingNudge] = useState<string | null>(null);
@@ -49,7 +32,6 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
 
   const availableFriends = friends;
 
-  const logoUrl = getLogoUrl(subscription.name);
 
   const getMonthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
   const formatMonth = (date: Date) => date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -180,16 +162,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                     className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mb-4 overflow-hidden bg-surface border border-border"
                     style={{ boxShadow: `0 10px 30px -10px ${subscription.color || 'rgba(0,0,0,0.1)'}` }}
                 >
-                    <img 
-                        src={logoUrl} 
-                        alt={subscription.name} 
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.parentElement!.style.backgroundColor = subscription.color;
-                            e.currentTarget.parentElement!.innerText = subscription.name.charAt(0).toUpperCase();
-                        }}
-                    />
+                    <SubscriptionLogo name={subscription.name} serviceId={subscription.serviceId} logoUrl={subscription.logoUrl} className="w-full h-full bg-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-textMain">{subscription.name}</h2>
                 <div className="flex items-baseline mt-1">

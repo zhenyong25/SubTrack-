@@ -3,9 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# 13:00 UTC = 21:00 Singapore Time (UTC+8, no DST)
+# Every 8 hours (00:00/08:00/16:00 UTC = 08:00/16:00/00:00 Singapore Time, UTC+8, no DST)
 [triggers]
-crons = ["0 13 * * *"]
+crons = ["0 */8 * * *"]
 
 # Set via `wrangler secret put <NAME>` — never commit real values:
 #   SUPABASE_URL

@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import LogoAttribution from './components/LogoAttribution';
+import { hasLogoDevKey } from './services/subscriptionLogoService';
 import './styles.css';
 
 const shouldIgnoreExternalError = (event: ErrorEvent) => {
@@ -38,5 +40,6 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <App />
+    {hasLogoDevKey && <footer className="bg-background pb-24"><LogoAttribution /></footer>}
   </React.StrictMode>
 );
