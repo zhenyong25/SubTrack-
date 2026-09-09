@@ -75,16 +75,16 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
 
   return (
     <div className="pb-24 animate-fade-in space-y-6">
-      <div className="bg-gradient-to-br from-[#1f2a44] via-[#18233a] to-[#11182b] rounded-2xl border border-white/5 p-5 shadow-[0_20px_60px_-30px_rgba(59,130,246,0.45)]">
+      <div className="bg-gradient-to-br from-[#1f2a44] via-[#18233a] to-[#11182b] rounded-2xl border border-white/5 p-5 shadow-[0_20px_60px_-30px_rgba(59,130,246,0.45)] text-white">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-bold text-textMain">{totalMonthlySpend.toFixed(2)} {baseCurrency}</h2>
-              <p className="text-xs text-secondary mt-1">
+              <h2 className="text-2xl font-bold text-white">{totalMonthlySpend.toFixed(2)} {baseCurrency}</h2>
+              <p className="text-xs text-white/70 mt-1">
                 Current month linked expenses across {filter === 'All' ? 'all cards' : `${filter.toLowerCase()} cards`}
               </p>
-              <p className="text-xs text-secondary mt-1">Points balance: {totalPoints.toFixed(0)}</p>
-              <p className="text-xs text-secondary mt-1">
+              <p className="text-xs text-white/70 mt-1">Points balance: {totalPoints.toFixed(0)}</p>
+              <p className="text-xs text-white/70 mt-1">
                 Exchangeable KrisFlyer miles: {totalExchangeableMiles.toFixed(0)}
               </p>
             </div>
@@ -105,7 +105,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                   filter === option
                     ? 'bg-primary text-white border-primary'
-                    : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'
+                    : 'bg-white/5 text-white/70 border-white/10 hover:text-white hover:border-primary/40'
                 }`}
               >
                 {option === 'MultiCurrency' ? 'Multi-currency' : option}

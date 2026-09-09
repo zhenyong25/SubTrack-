@@ -1,9 +1,21 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { StaleWhileRevalidate } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
 
 declare const self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+// Cache only icons the user views, instead of fetching the whole catalog on install.
+registerRoute(
+  ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/service-logos/'),
+  new StaleWhileRevalidate({
+    cacheName: 'subtrack-service-logos-v1',
+    plugins: [new ExpirationPlugin({ maxEntries: 1500, maxAgeSeconds: 30 * 24 * 60 * 60 })],
+  }),
+);
 
 interface PushPayload {
   title?: string;

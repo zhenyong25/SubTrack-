@@ -25,6 +25,7 @@ const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
 
 const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
+const budgetSyncEnabled = import.meta.env.VITE_ENABLE_BUDGET_SYNC === 'true';
 const supabase: SupabaseClient | null = hasSupabaseConfig
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
@@ -98,6 +99,7 @@ type SubscriptionRow = {
   card_id: string | null;
   color: string;
   logo_url: string | null;
+  service_id?: string | null;
   notes: string | null;
   status: 'Active' | 'Past';
   shared_with: string[] | null;
@@ -361,6 +363,7 @@ const mapSubscriptionRow = (row: SubscriptionRow): Subscription => ({
   cardType: undefined,
   color: row.color,
   logoUrl: row.logo_url || undefined,
+  serviceId: row.service_id || (row.logo_url?.startsWith('catalog:') ? row.logo_url.slice(8) : undefined),
   notes: row.notes || undefined,
   sharedCount: row.shared_with?.length ? row.shared_with.length + 1 : 1,
   sharedWith: row.shared_with || [],
@@ -381,7 +384,8 @@ const mapSubscriptionToRow = (sub: Subscription, userId: string): SubscriptionRo
   category: sub.category,
   card_id: sub.cardId || null,
   color: sub.color,
-  logo_url: sub.logoUrl || null,
+  logo_url: sub.logoUrl || (sub.serviceId ? `catalog:${sub.serviceId}` : null),
+  service_id: sub.serviceId || null,
   notes: sub.notes || null,
   status: sub.status,
   shared_with: sub.sharedWith || [],
@@ -678,7 +682,9 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     supabase.from('subscriptions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('incomes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('expenses').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-    supabase.from('budget_plans').select('*').eq('user_id', userId).order('month', { ascending: true }),
+    budgetSyncEnabled
+      ? supabase.from('budget_plans').select('*').eq('user_id', userId).order('month', { ascending: true })
+      : Promise.resolve({ data: [] as BudgetPlanRow[], error: null }),
     supabase.from('investment_portfolio_positions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('investment_valuations').select('*').eq('user_id', userId).order('valuation_date', { ascending: true }),
     supabase.from('investment_transactions').select('*').eq('user_id', userId).order('trade_date', { ascending: true }),
@@ -763,7 +769,11 @@ export const saveSubscriptions = async (subs: Subscription[]) => {
   if (subs.length === 0) return;
 
   const rows = subs.map(sub => mapSubscriptionToRow(sub, userId));
-  await supabase.from('subscriptions').upsert(rows, { onConflict: 'id' });
+  const { error } = await supabase.from('subscriptions').upsert(rows, { onConflict: 'id' });
+  if (error && ['PGRST204', '42703'].includes(error.code) && error.message.includes('service_id')) {
+    // Older databases retain the stable catalog reference in their existing logo column.
+    await supabase.from('subscriptions').upsert(rows.map(({ service_id, ...row }) => row), { onConflict: 'id' });
+  }
 };
 
 export const saveIncomes = async (incomes: Income[]) => {
@@ -806,7 +816,7 @@ export const saveExpenses = async (expenses: Expense[]) => {
 export const saveBudgetPlans = async (plans: BudgetPlan[]) => {
   writeLocalJson(BUDGETS_STORAGE_KEY, plans);
 
-  if (!supabase) return;
+  if (!supabase || !budgetSyncEnabled) return;
   const userId = await getSupabaseUserId();
   if (!userId || plans.length === 0) return;
 
@@ -1015,7 +1025,7 @@ export const clearStoredAppData = async () => {
     supabase.from('subscriptions').delete().eq('user_id', userId),
     supabase.from('incomes').delete().eq('user_id', userId),
     supabase.from('expenses').delete().eq('user_id', userId),
-    supabase.from('budget_plans').delete().eq('user_id', userId),
+    ...(budgetSyncEnabled ? [supabase.from('budget_plans').delete().eq('user_id', userId)] : []),
     supabase.from('investment_transactions').delete().eq('user_id', userId),
     supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId),
     supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId),

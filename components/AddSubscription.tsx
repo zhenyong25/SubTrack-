@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Subscription, BillingCycle, AiSuggestion, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard, PaymentCardKind } from '../types';
-import { getSubscriptionSuggestions, POPULAR_SUBSCRIPTIONS } from '../services/geminiService';
-import { Sparkles, X, Plus, Loader2, Check, DollarSign, Calendar, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
+import { Subscription, BillingCycle, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard, PaymentCardKind } from '../types';
+import { X, Plus, Check, DollarSign, Calendar, Loader2, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
 import { getCurrencySymbol } from '../services/storageService';
+import ServicePicker from './ServicePicker';
+import { findExactService } from '../services/serviceCatalog';
+import { useServiceCatalog } from '../services/serviceCatalogStore';
 
 interface AddSubscriptionProps {
-  onSave: (sub: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => void;
+  onSave: (sub: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => void | Promise<void>;
   onCancel: () => void;
   initialData?: Subscription;
   savedCards: PaymentCard[];
@@ -23,25 +25,6 @@ const CARD_TYPES: { type: CardType, label: string }[] = [
     { type: 'GooglePay', label: 'Google Pay' },
     { type: 'Other', label: 'Other' },
 ];
-
-const getLogoUrl = (name: string) => {
-    if (!name) return '';
-    const cleanName = name.toLowerCase().replace(/\s+/g, '').replace(/premium|plus|pro|standard|family|student|individual|plan/g, '');
-    const domainMap: Record<string, string> = {
-        'netflix': 'netflix.com', 'spotify': 'spotify.com', 'youtube': 'youtube.com', 'amazon': 'amazon.com', 'prime': 'amazon.com',
-        'disney': 'disneyplus.com', 'hulu': 'hulu.com', 'hbo': 'hbo.com', 'max': 'max.com', 'apple': 'apple.com', 'icloud': 'apple.com',
-        'google': 'google.com', 'dropbox': 'dropbox.com', 'slack': 'slack.com', 'adobe': 'adobe.com', 'chatgpt': 'openai.com',
-        'openai': 'openai.com', 'github': 'github.com', 'playstation': 'playstation.com', 'xbox': 'xbox.com', 'nintendo': 'nintendo.com',
-        'steam': 'steampowered.com', 'twitch': 'twitch.tv', 'duolingo': 'duolingo.com', 'canva': 'canva.com', 'notion': 'notion.so',
-        'medium': 'medium.com', 'x': 'twitter.com', 'twitter': 'twitter.com', 'linkedin': 'linkedin.com', 'zoom': 'zoom.us',
-        'discord': 'discord.com', 'figma': 'figma.com', 'tinder': 'tinder.com', 'bumble': 'bumble.com', 'hinge': 'hinge.co',
-        'audible': 'audible.com', 'evernote': 'evernote.com', 'midjourney': 'midjourney.com', 'claude': 'anthropic.com'
-    };
-    for(const key in domainMap) {
-        if(cleanName.includes(key)) return `https://logo.clearbit.com/${domainMap[key]}`;
-    }
-    return `https://logo.clearbit.com/${cleanName}.com`;
-};
 
 const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, initialData, savedCards }) => {
   const [name, setName] = useState('');
@@ -65,18 +48,16 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
   const [sharedWith, setSharedWith] = useState<string[]>([]);
   const [newShareName, setNewShareName] = useState('');
   
-  const [showAi, setShowAi] = useState(false);
-  
-  const [aiQuery, setAiQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<AiSuggestion[]>(POPULAR_SUBSCRIPTIONS);
-  const [loadingAi, setLoadingAi] = useState(false);
-
-  // Derived logo for preview
-  const logoPreview = name ? getLogoUrl(name) : '';
+  const catalog = useServiceCatalog();
+  const [serviceId, setServiceId] = useState<string>();
+  const [logoUrl, setLogoUrl] = useState<string>();
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
         setName(initialData.name);
+        setServiceId(initialData.serviceId);
+        setLogoUrl(initialData.logoUrl);
         setPrice(initialData.price.toString());
         setCurrency(initialData.currency);
         setCycle(initialData.billingCycle);
@@ -109,23 +90,6 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
     }
   }, [initialData, savedCards]);
 
-  const handleAiSearch = async () => {
-    setLoadingAi(true);
-    const results = await getSubscriptionSuggestions(aiQuery);
-    setSuggestions(results);
-    setLoadingAi(false);
-  };
-
-  const applySuggestion = (s: AiSuggestion) => {
-    setName(s.name);
-    setPrice(s.estimatedPrice.toString());
-    if (s.currency) setCurrency(s.currency);
-    setCategory(s.category);
-    if (s.billingCycle === 'Yearly') setCycle(BillingCycle.Yearly);
-    else setCycle(BillingCycle.Monthly);
-    setShowAi(false);
-  };
-
   const addSharePerson = () => {
       if(newShareName.trim()) {
           setSharedWith([...sharedWith, newShareName.trim()]);
@@ -139,8 +103,9 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
       setSharedWith(newSw);
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
 
     let finalCardName = 'Cash';
     let finalCardType = undefined;
@@ -173,28 +138,35 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
         }
     }
 
-    onSave({
-      name,
-      price: parseFloat(price) || 0,
-      currency,
-      billingCycle: cycle,
-      firstPaymentDate: date,
-      category,
-      cardName: finalCardName,
-      cardType: finalCardType,
-      cardId: finalCardId,
-      color: selectedColor,
-      sharedCount: isShared ? sharedWith.length + 1 : 1,
-      sharedWith: isShared ? sharedWith : [],
-      status: initialData ? initialData.status : 'Active', 
-      paymentHistory: initialData ? initialData.paymentHistory : {}
-    }, newCardObj);
+    setIsSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        serviceId: serviceId || findExactService(name, catalog.filter(s => s.is_active))?.id,
+        logoUrl,
+        price: parseFloat(price) || 0,
+        currency,
+        billingCycle: cycle,
+        firstPaymentDate: date,
+        category,
+        cardName: finalCardName,
+        cardType: finalCardType,
+        cardId: finalCardId,
+        color: selectedColor,
+        sharedCount: isShared ? sharedWith.length + 1 : 1,
+        sharedWith: isShared ? sharedWith : [],
+        status: initialData ? initialData.status : 'Active',
+        paymentHistory: initialData ? initialData.paymentHistory : {}
+      }, newCardObj);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
       <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
-        <button onClick={onCancel} className="text-secondary hover:text-textMain">
+        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Subscription' : 'New Subscription'}</h2>
@@ -203,52 +175,15 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
 
       <div className="p-4 space-y-6 max-w-lg mx-auto animate-slide-up">
         
-        {!initialData && (
-            <div className="mb-4">
-                <button 
-                type="button"
-                onClick={() => setShowAi(true)}
-                className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 flex items-center justify-between text-white shadow-lg active:scale-95 transition-transform"
-                >
-                    <div className="flex items-center">
-                        <Sparkles size={20} className="mr-3" />
-                        <div className="text-left">
-                            <p className="font-bold text-sm">Browse Popular</p>
-                            <p className="text-[10px] opacity-80">Tap to auto-fill common services</p>
-                        </div>
-                    </div>
-                    <Plus size={20} />
-                </button>
-            </div>
-        )}
-
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="flex items-start space-x-3">
-             <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-surface border border-border flex items-center justify-center overflow-hidden mt-6">
-                 {logoPreview ? (
-                     <img src={logoPreview} alt="" className="w-full h-full object-cover" 
-                        onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.parentElement!.style.backgroundColor = selectedColor;
-                            e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-bold text-lg">${name.charAt(0).toUpperCase()}</span>`;
-                        }}
-                     />
-                 ) : (
-                     <span className="text-secondary text-xs">Logo</span>
-                 )}
-             </div>
-             <div className="flex-1">
-                <label className="block text-xs font-semibold text-secondary uppercase mb-1">Service Name</label>
-                <input 
-                  required
-                  type="text" 
-                  value={name} 
-                  onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Netflix"
-                  className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none transition-colors"
-                />
-             </div>
-          </div>
+          <ServicePicker name={name} serviceId={serviceId} logoUrl={logoUrl}
+            onNameChange={value => { setName(value); setServiceId(undefined); setLogoUrl(undefined); }}
+            onSelect={service => {
+              setName(service.name);
+              setServiceId(service.id);
+              setLogoUrl(undefined);
+              setCategory(service.category);
+            }} />
 
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <div>
@@ -472,84 +407,23 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
             </div>
           </div>
 
-          <button 
+          <button
             type="submit"
-            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6"
+            disabled={isSaving}
+            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6 flex items-center justify-center disabled:opacity-70"
           >
-            {initialData ? 'Update Subscription' : 'Save Subscription'}
+            {isSaving ? (
+              <>
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              initialData ? 'Update Subscription' : 'Save Subscription'
+            )}
           </button>
         </form>
       </div>
 
-      {/* AI Suggestions Modal */}
-      {showAi && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
-          <div className="bg-surface w-full max-w-md h-[85vh] sm:h-[600px] sm:rounded-2xl rounded-t-2xl flex flex-col overflow-hidden shadow-2xl animate-slide-up">
-            <div className="p-4 border-b border-border flex justify-between items-center bg-background">
-              <h3 className="text-textMain font-bold flex items-center">
-                <Sparkles className="text-primary mr-2" size={18} /> 
-                Popular Services
-              </h3>
-              <button onClick={() => setShowAi(false)} className="text-secondary hover:text-textMain">
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-4 bg-background border-b border-border">
-              <div className="flex space-x-2">
-                <input 
-                  type="text"
-                  placeholder="Type to search..."
-                  value={aiQuery}
-                  onChange={(e) => setAiQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAiSearch()}
-                  className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-textMain focus:border-primary outline-none"
-                />
-                <button 
-                  onClick={handleAiSearch}
-                  disabled={loadingAi}
-                  className="bg-primary px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50"
-                >
-                  {loadingAi ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-background">
-               {suggestions.map((s, idx) => (
-                 <button 
-                  key={idx}
-                  onClick={() => applySuggestion(s)}
-                  className="w-full bg-surface border border-border hover:border-primary/50 p-3 rounded-xl flex justify-between items-center group text-left transition-all hover:shadow-md"
-                 >
-                   <div className="flex items-center">
-                     <div className="w-10 h-10 rounded-full bg-indigo-100/10 flex items-center justify-center text-primary font-bold mr-3 text-lg overflow-hidden">
-                        {/* Auto Logo in Suggestions too */}
-                        <img 
-                            src={getLogoUrl(s.name)} 
-                            alt=""
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.parentElement!.innerHTML = s.name.charAt(0);
-                            }}
-                        />
-                     </div>
-                     <div>
-                       <p className="font-bold text-textMain">{s.name}</p>
-                       <p className="text-xs text-secondary">{s.category} • {s.billingCycle}</p>
-                     </div>
-                   </div>
-                   <div className="flex items-center text-primary">
-                     <span className="font-semibold mr-2">${s.estimatedPrice}</span>
-                     <Plus size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                   </div>
-                 </button>
-               ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
           },
           injectManifest: {
             globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+            globIgnores: ['**/service-logos/**'],
           },
         }),
       ],

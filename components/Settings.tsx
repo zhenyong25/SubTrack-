@@ -227,11 +227,11 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
             </div>
 
-            {/* Daily Reminder */}
+            {/* Expense Reminder */}
             <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center mb-4 text-primary">
                     <Bell size={20} className="mr-2" />
-                    <h3 className="font-bold text-lg">Daily Reminder</h3>
+                    <h3 className="font-bold text-lg">Expense Reminder</h3>
                 </div>
 
                 {!pushSupported ? (
@@ -247,7 +247,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         <div className="flex justify-between items-center">
                             <div className="pr-4">
                                 <p className="text-sm font-medium text-textMain">Remind me if I forget to log</p>
-                                <p className="text-[10px] text-secondary mt-0.5">A daily notification if no expense or income was recorded that day.</p>
+                                <p className="text-[10px] text-secondary mt-0.5">A notification every 8 hours until an expense or income is recorded that day.</p>
                             </div>
                             <button
                                 onClick={handleToggleReminder}

@@ -4,6 +4,7 @@ import { Subscription, BillingCycle, CURRENCIES } from '../types';
 import { getUrgencyLevel, convertCurrency } from '../services/storageService';
 import { CalendarClock, ChevronRight, Tag } from 'lucide-react';
 import CardLogo from './CardLogo';
+import SubscriptionLogo from './SubscriptionLogo';
 
 interface SubscriptionListProps {
   subscriptions: Subscription[];
@@ -52,24 +53,6 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
       const start = end - duration;
       const progress = ((now - start) / duration) * 100;
       return Math.min(Math.max(progress, 0), 100);
-  };
-
-  const getLogoUrl = (name: string) => {
-      const cleanName = name.toLowerCase().replace(/\s+/g, '').replace(/premium|plus|pro|standard|family|student|individual|plan/g, '');
-      const domainMap: Record<string, string> = {
-          'netflix': 'netflix.com', 'spotify': 'spotify.com', 'youtube': 'youtube.com', 'amazon': 'amazon.com', 'prime': 'amazon.com',
-          'disney': 'disneyplus.com', 'hulu': 'hulu.com', 'hbo': 'hbo.com', 'max': 'max.com', 'apple': 'apple.com', 'icloud': 'apple.com',
-          'google': 'google.com', 'dropbox': 'dropbox.com', 'slack': 'slack.com', 'adobe': 'adobe.com', 'chatgpt': 'openai.com',
-          'openai': 'openai.com', 'github': 'github.com', 'playstation': 'playstation.com', 'xbox': 'xbox.com', 'nintendo': 'nintendo.com',
-          'steam': 'steampowered.com', 'twitch': 'twitch.tv', 'duolingo': 'duolingo.com', 'canva': 'canva.com', 'notion': 'notion.so',
-          'medium': 'medium.com', 'x': 'twitter.com', 'twitter': 'twitter.com', 'linkedin': 'linkedin.com', 'zoom': 'zoom.us',
-          'discord': 'discord.com', 'figma': 'figma.com', 'tinder': 'tinder.com', 'bumble': 'bumble.com', 'hinge': 'hinge.co',
-          'audible': 'audible.com', 'evernote': 'evernote.com', 'midjourney': 'midjourney.com', 'claude': 'anthropic.com'
-      };
-      for(const key in domainMap) {
-          if(cleanName.includes(key)) return `https://logo.clearbit.com/${domainMap[key]}`;
-      }
-      return `https://logo.clearbit.com/${cleanName}.com`;
   };
 
   const getCycleBadge = (cycle: BillingCycle) => {
@@ -140,7 +123,6 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
       <div className="space-y-3 mt-2">
         {sortedSubs.map((sub) => {
             const isTrial = sub.billingCycle === BillingCycle.FreeTrial;
-            const logoUrl = getLogoUrl(sub.name);
             const daysRemaining = getDaysRemaining(sub.nextPaymentDate);
             const progress = calculateProgress(sub.nextPaymentDate, sub.billingCycle);
             const urgencyLevel = getUrgencyLevel(sub.nextPaymentDate);
@@ -178,19 +160,7 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
                         className="w-12 h-12 flex-shrink-0 rounded-xl bg-background border border-border flex items-center justify-center overflow-hidden mr-3 transition-shadow"
                         style={{ boxShadow: `0 4px 12px -4px ${sub.color || 'transparent'}` }}
                     >
-                        <img 
-                            src={logoUrl} 
-                            alt={sub.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                const fallbackParent = e.currentTarget.parentElement as HTMLDivElement | null;
-                                if (!fallbackParent) return;
-                                fallbackParent.style.background = `linear-gradient(135deg, ${sub.color}, ${sub.color}88)`;
-                                fallbackParent.textContent = sub.name.charAt(0).toUpperCase();
-                                fallbackParent.className = "w-12 h-12 flex-shrink-0 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm mr-3";
-                            }}
-                        />
+                        <SubscriptionLogo name={sub.name} serviceId={sub.serviceId} logoUrl={sub.logoUrl} className="w-full h-full bg-white" />
                     </div>
 
                     {/* Middle: Name & Meta */}

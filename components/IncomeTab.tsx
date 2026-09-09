@@ -262,7 +262,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
           </div>
         </div>
         <div className="h-56 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
             <BarChart data={yearlyData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={0} />
@@ -281,7 +281,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Income by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
               <PieChart>
                 <Pie
                   data={categoryData}

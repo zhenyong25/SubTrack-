@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, Pencil, PiggyBank, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Pencil, PiggyBank, Plus, Search, Trash2, X } from 'lucide-react';
 import { BudgetPlan } from '../types';
 
 interface BudgetPanelProps {
@@ -26,16 +26,19 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [totalLimit, setTotalLimit] = useState('');
   const [categoryLimits, setCategoryLimits] = useState<Record<string, number>>({});
-  const [categoryToAdd, setCategoryToAdd] = useState('');
+  const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
 
   useEffect(() => {
     setTotalLimit(plan?.totalLimit ? String(plan.totalLimit) : '');
     setCategoryLimits(plan?.categoryLimits || {});
+    setIsCategoryPickerOpen(false);
+    setCategorySearch('');
     setIsEditing(false);
   }, [monthKey, plan]);
 
   const spent = useMemo(
-    () => Object.values(spendingByCategory).reduce((sum, value) => sum + value, 0),
+    () => (Object.values(spendingByCategory) as number[]).reduce((sum, value) => sum + value, 0),
     [spendingByCategory],
   );
   const limit = plan?.totalLimit || 0;
@@ -43,6 +46,15 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
   const progress = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
   const isOver = limit > 0 && spent > limit;
   const unusedCategories = availableCategories.filter(category => !(category in categoryLimits));
+  const filteredCategories = unusedCategories.filter(category =>
+    category.toLowerCase().includes(categorySearch.trim().toLowerCase()),
+  );
+  const categoryAllocationTotal = (Object.values(categoryLimits) as number[]).reduce(
+    (sum, value) => sum + (Number.isFinite(value) ? value : 0),
+    0,
+  );
+  const hasIncompleteCategory = (Object.values(categoryLimits) as number[]).some(value => !Number.isFinite(value) || value <= 0);
+  const parsedTotalLimit = Number(totalLimit) || 0;
 
   const beginWith = (source?: BudgetPlan) => {
     setTotalLimit(source?.totalLimit ? String(source.totalLimit) : '');
@@ -57,7 +69,7 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
       month: monthKey,
       totalLimit: parsedLimit,
       categoryLimits: Object.fromEntries(
-        Object.entries(categoryLimits).filter(([, value]) => Number.isFinite(value) && value > 0),
+        (Object.entries(categoryLimits) as Array<[string, number]>).filter(([, value]) => Number.isFinite(value) && value > 0),
       ),
       updatedAt: new Date().toISOString(),
     });
@@ -99,8 +111,13 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
             <div className="flex items-center justify-between gap-3 mb-2">
               <div>
                 <p className="text-xs font-semibold text-secondary">Category limits</p>
-                <p className="text-[10px] text-secondary/80">Optional guardrails inside your total</p>
+                <p className="text-[10px] text-secondary/80">Add as many category budgets as you need</p>
               </div>
+              {Object.keys(categoryLimits).length > 0 && (
+                <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
+                  {Object.keys(categoryLimits).length} categor{Object.keys(categoryLimits).length === 1 ? 'y' : 'ies'}
+                </span>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -128,35 +145,91 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
               ))}
             </div>
 
+            {Object.keys(categoryLimits).length > 0 && (
+              <div className="mt-3 rounded-xl bg-background px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3 text-[10px]">
+                  <span className="text-secondary">Allocated to categories</span>
+                  <span className={`font-bold ${parsedTotalLimit > 0 && categoryAllocationTotal > parsedTotalLimit ? 'text-red-500' : 'text-textMain'}`}>
+                    {categoryAllocationTotal.toFixed(2)} / {parsedTotalLimit.toFixed(2)} {currency}
+                  </span>
+                </div>
+                {hasIncompleteCategory && (
+                  <p className="mt-1.5 text-[10px] font-medium text-amber-500">Enter an amount for every added category before saving.</p>
+                )}
+              </div>
+            )}
+
             {unusedCategories.length > 0 && (
-              <div className="mt-3 flex gap-2">
-                <select
-                  value={categoryToAdd}
-                  onChange={event => setCategoryToAdd(event.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-textMain outline-none focus:border-primary"
-                >
-                  <option value="">Add a category...</option>
-                  {unusedCategories.map(category => <option key={category}>{category}</option>)}
-                </select>
+              <div className="mt-3 overflow-hidden rounded-xl border border-border bg-background">
                 <button
                   onClick={() => {
-                    if (!categoryToAdd) return;
-                    setCategoryLimits(current => ({ ...current, [categoryToAdd]: 0 }));
-                    setCategoryToAdd('');
+                    setIsCategoryPickerOpen(open => !open);
+                    setCategorySearch('');
                   }}
-                  disabled={!categoryToAdd}
-                  className="rounded-lg bg-primary/10 px-3 text-primary disabled:opacity-40"
-                  aria-label="Add category limit"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-surface"
+                  aria-expanded={isCategoryPickerOpen}
                 >
-                  <Plus size={16} />
+                  <span className="flex items-center gap-2 text-xs font-semibold text-textMain">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary"><Plus size={14} /></span>
+                    Add categories
+                  </span>
+                  <ChevronDown size={16} className={`text-secondary transition-transform ${isCategoryPickerOpen ? 'rotate-180' : ''}`} />
                 </button>
+
+                {isCategoryPickerOpen && (
+                  <div className="border-t border-border p-3">
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 focus-within:border-primary">
+                      <Search size={14} className="shrink-0 text-secondary" />
+                      <input
+                        autoFocus
+                        value={categorySearch}
+                        onChange={event => setCategorySearch(event.target.value)}
+                        placeholder="Search categories"
+                        className="w-full bg-transparent py-2.5 text-xs text-textMain outline-none placeholder:text-secondary/70"
+                      />
+                      {categorySearch && (
+                        <button onClick={() => setCategorySearch('')} className="text-secondary hover:text-textMain" aria-label="Clear category search"><X size={14} /></button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1">
+                      {filteredCategories.map(category => (
+                        <button
+                          key={category}
+                          onClick={() => {
+                            setCategoryLimits(current => ({ ...current, [category]: 0 }));
+                            setCategorySearch('');
+                          }}
+                          className="truncate rounded-lg border border-border bg-surface px-3 py-2.5 text-left text-xs font-medium text-textMain transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+                          title={category}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+
+                    {filteredCategories.length === 0 && (
+                      <p className="py-5 text-center text-xs text-secondary">{unusedCategories.length === 0 ? 'All categories have been added' : 'No matching categories'}</p>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setIsCategoryPickerOpen(false);
+                        setCategorySearch('');
+                      }}
+                      className="mt-3 w-full rounded-lg border border-border bg-surface py-2 text-xs font-bold text-textMain hover:border-primary/40 hover:text-primary"
+                    >
+                      Done adding categories
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           <button
             onClick={save}
-            disabled={!Number(totalLimit) || Number(totalLimit) <= 0}
+            disabled={!Number(totalLimit) || Number(totalLimit) <= 0 || hasIncompleteCategory}
             className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white shadow-lg shadow-primary/20 disabled:opacity-40"
           >
             <Check size={16} className="inline mr-2" /> Save budget
@@ -188,7 +261,7 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
     );
   }
 
-  const categories = Object.entries(plan.categoryLimits).sort((a, b) => b[1] - a[1]);
+  const categories = (Object.entries(plan.categoryLimits) as Array<[string, number]>).sort((a, b) => b[1] - a[1]);
 
   return (
     <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Check, CircleDollarSign, Calendar, Tag, X } from 'lucide-react';
+import { Check, CircleDollarSign, Calendar, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Income, IncomeCycle, IncomeKind, IncomeMode } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 
 interface AddIncomeProps {
-  onSave: (income: Omit<Income, 'id'>) => void;
+  onSave: (income: Omit<Income, 'id'>) => void | Promise<void>;
   onCancel: () => void;
   initialData?: Income;
 }
@@ -25,6 +25,7 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
   const [notes, setNotes] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[1]);
   const [status, setStatus] = useState<'Active' | 'Past'>('Active');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!initialData) return;
@@ -42,30 +43,36 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
     setStatus(initialData.status);
   }, [initialData]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
 
-    onSave({
-      name,
-      amount: parseFloat(amount) || 0,
-      currency,
-      incomeType,
-      incomeMode,
-      incomeCycle: incomeMode === 'Recurring' ? incomeCycle : IncomeCycle.Monthly,
-      firstIncomeDate: date,
-      nextIncomeDate: date,
-      incomeDate: date,
-      category,
-      color: selectedColor,
-      notes: notes.trim() || undefined,
-      status,
-    });
+    setIsSaving(true);
+    try {
+      await onSave({
+        name,
+        amount: parseFloat(amount) || 0,
+        currency,
+        incomeType,
+        incomeMode,
+        incomeCycle: incomeMode === 'Recurring' ? incomeCycle : IncomeCycle.Monthly,
+        firstIncomeDate: date,
+        nextIncomeDate: date,
+        incomeDate: date,
+        category,
+        color: selectedColor,
+        notes: notes.trim() || undefined,
+        status,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
       <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
-        <button onClick={onCancel} className="text-secondary hover:text-textMain">
+        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Income' : 'New Income'}</h2>
@@ -244,9 +251,17 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
 
           <button
             type="submit"
-            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6"
+            disabled={isSaving}
+            className="w-full bg-primary hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg transition-all mt-6 flex items-center justify-center disabled:opacity-70"
           >
-            {initialData ? 'Update Income' : 'Save Income'}
+            {isSaving ? (
+              <>
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              initialData ? 'Update Income' : 'Save Income'
+            )}
           </button>
         </form>
       </div>
