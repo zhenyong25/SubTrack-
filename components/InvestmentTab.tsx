@@ -6,6 +6,7 @@ import {
   Coins,
   Eye,
   LineChart as LineChartIcon,
+  Loader2,
   Pencil,
   Plus,
   Shield,
@@ -26,10 +27,12 @@ interface InvestmentTabProps {
   pokerMttTournaments: PokerMttTournament[];
   pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
   onAddTransaction: (transaction: Omit<InvestmentTransaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onDeleteTransaction: (transactionId: string) => Promise<void>;
   onCreateHolding: (holding: InvestmentHolding) => void;
   onAddPokerMttTournament: (tournament: PokerMttTournament) => void;
   onDeletePokerMttTournament: (tournamentId: string) => void;
   onAddPokerMttBankrollTransaction: (event: PokerMttBankrollTransaction) => void;
+  onDeletePokerMttBankrollTransaction: (eventId: string) => Promise<void>;
 }
 
 const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards', 'Poker (MTT)', 'Cash', 'Other'];
@@ -100,12 +103,30 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   pokerMttTournaments,
   pokerMttBankrollTransactions,
   onAddTransaction,
+  onDeleteTransaction,
   onCreateHolding,
   onAddPokerMttTournament,
   onDeletePokerMttTournament,
   onAddPokerMttBankrollTransaction,
+  onDeletePokerMttBankrollTransaction,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<InvestmentCategory>('All');
+  const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [pokerEntryMode, setPokerEntryMode] = useState<'tournament' | 'bankroll' | null>(null);
+  const [deletingBankrollId, setDeletingBankrollId] = useState<string | null>(null);
+  const [bankrollDeleteError, setBankrollDeleteError] = useState('');
+  const pokerLedgerRef = React.useRef<HTMLDivElement>(null);
+  const tournamentFormRef = React.useRef<HTMLFormElement>(null);
+  const bankrollFormRef = React.useRef<HTMLFormElement>(null);
+  React.useEffect(() => {
+    setPokerEntryMode(null);
+    if (selectedCategory === 'Poker (MTT)') pokerLedgerRef.current?.scrollIntoView({ block: 'start' });
+  }, [selectedCategory]);
+  React.useEffect(() => {
+    const form = pokerEntryMode === 'tournament' ? tournamentFormRef.current : pokerEntryMode === 'bankroll' ? bankrollFormRef.current : null;
+    form?.querySelector('input')?.focus({ preventScroll: true });
+  }, [pokerEntryMode]);
   const [rangeMode, setRangeMode] = useState<RangeMode>('1M');
   const [entryMode, setEntryMode] = useState<EntryMode>(investments.length === 0 ? 'holding' : 'transaction');
   const [entryInvestmentId, setEntryInvestmentId] = useState('');
@@ -404,9 +425,12 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     });
 
     resetPokerTournamentForm();
+    setPokerEntryMode(null);
   };
 
   const startEditPokerTournament = (tournament: PokerMttTournament) => {
+    setPokerEntryMode('tournament');
+    pokerLedgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setEditingPokerTournamentId(tournament.id);
     setPokerTournamentInvestmentId(tournament.investmentId);
     setPokerTournamentDate(tournament.tournamentDate);
@@ -447,6 +471,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
     setPokerBankrollAmount('');
     setPokerBankrollNotes('');
+    setPokerEntryMode(null);
   };
 
   const categorySummary = useMemo(() => {
@@ -688,6 +713,9 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       if (event.eventType === 'Withdrawal') return sum - amount;
       return sum + amount;
     }, 0);
+    const totalDeposited = selectedPokerBankrollEvents
+      .filter(event => event.eventType === 'Deposit')
+      .reduce((sum, event) => sum + Number(event.amountUsd || 0), 0);
 
     const netPortfolio = bankrollAdjustments + tournamentProfit;
     const totalEvents = selectedPokerTournaments.length + selectedPokerBankrollEvents.length;
@@ -730,6 +758,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       tournamentBounties,
       tournamentProfit,
       bankrollAdjustments,
+      totalDeposited,
       netPortfolio,
       history,
       minValue,
@@ -767,15 +796,41 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
   return (
     <div className="pb-24 animate-fade-in space-y-6">
-      <div className="flex flex-wrap gap-2">
-        <button className="px-3 py-1.5 rounded-full bg-primary text-white text-sm font-bold shadow-sm">
-          Overview
-        </button>
-        <button className="px-3 py-1.5 rounded-full bg-surface border border-border text-secondary text-sm font-semibold hover:text-textMain">
-          Products
-        </button>
+      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Select a Category</h3>
+            <p className="text-xs text-secondary mt-1">Choose a portfolio to view and add entries.</p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-secondary text-xs">
+            <ChevronDown size={14} />
+            {chartData.label}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIES.map(category => {
+            const count = category === 'All'
+              ? investments.length
+              : investments.filter(investment => investment.kind === category).length;
+
+            return (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                aria-pressed={selectedCategory === category}
+                className={`px-3 py-2 rounded-full border text-xs font-bold transition-colors ${selectedCategory === category ? 'bg-primary text-white border-primary shadow-sm' : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'}`}
+              >
+                {category}
+                <span className="ml-1 opacity-70">({count})</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+
+      {selectedCategory !== 'Poker (MTT)' && (
       <div className="rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
         <div className="absolute inset-0 opacity-60 pointer-events-none bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.06),_transparent_30%)] dark:bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.12),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.08),_transparent_30%)]" />
         <div className="absolute -right-6 -top-8 w-32 h-32 rounded-full bg-cyan-400/10 blur-2xl" />
@@ -876,9 +931,10 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {selectedCategory === 'Poker (MTT)' && (
-        <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm space-y-4">
+        <div ref={pokerLedgerRef} className="scroll-mt-24 bg-surface rounded-2xl border border-border p-4 shadow-sm space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Poker MTT Ledger</h3>
@@ -892,32 +948,210 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             </div>
           </div>
 
+          {selectedPokerHoldings.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+              <button type="button" aria-expanded={pokerEntryMode === 'tournament'} aria-controls="poker-tournament-form" onClick={() => { resetPokerTournamentForm(); setPokerEntryMode(current => current === 'tournament' ? null : 'tournament'); }} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white"><Plus size={14} /> Add tournament</button>
+              <button type="button" aria-expanded={pokerEntryMode === 'bankroll'} aria-controls="poker-bankroll-form" onClick={() => setPokerEntryMode(current => current === 'bankroll' ? null : 'bankroll')} className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-xs font-bold text-primary"><CircleDollarSign size={14} /> Bankroll movement</button>
+          </div>
+          )}
+
           {selectedPokerHoldings.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-background p-5 text-center text-secondary">
               <Shield size={22} className="mx-auto mb-2 opacity-50" />
               <p className="text-sm font-medium">Create a Poker (MTT) holding first.</p>
-              <p className="text-xs mt-1">Use Add Holding to create a poker bankroll account, then log tournaments here.</p>
+              <p className="text-xs mt-1">Set up your poker holding to start logging tournaments and cash movements.</p>
+              <button type="button" onClick={() => { setEntryMode('holding'); setNewHoldingKind('Poker (MTT)'); setIsEntryModalOpen(true); }} className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white">Set up poker</button>
             </div>
           ) : (
             <>
+              {pokerEntryMode === 'tournament' && (
+                <form id="poker-tournament-form" ref={tournamentFormRef} onSubmit={handleAddPokerTournament} className="scroll-mt-24 rounded-2xl border border-border bg-background p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-textMain">{editingPokerTournamentId ? 'Edit Tournament' : 'Add Tournament'}</h4>
+                      <p className="text-xs text-secondary mt-1">Log buy-in, cashout, bounty, and placement.</p>
+                    </div>
+                    <button type="button" onClick={() => setPokerEntryMode(null)} aria-label="Close tournament form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain"><X size={18} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
+                      <input type="date" value={pokerTournamentDate} onChange={e => setPokerTournamentDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
+                      <select value={pokerTournamentInvestmentId} onChange={e => setPokerTournamentInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
+                        {pokerHoldings.map(holding => (
+                          <option key={holding.id} value={holding.id}>{holding.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Tournament</label>
+                    <input type="text" value={pokerTournamentName} onChange={e => setPokerTournamentName(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="e.g. Sunday Mini Main" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Placement</label>
+                      <input type="number" value={pokerTournamentPlacement} onChange={e => setPokerTournamentPlacement(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="42" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Entries</label>
+                      <input type="number" min="1" value={pokerTournamentEntries} onChange={e => setPokerTournamentEntries(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="1" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Buy-in USD</label>
+                      <input type="number" min="0" step="0.01" value={pokerTournamentBuyInUsd} onChange={e => setPokerTournamentBuyInUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="11.00" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Cashout USD</label>
+                      <input type="number" min="0" step="0.01" value={pokerTournamentCashoutUsd} onChange={e => setPokerTournamentCashoutUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Bounty USD</label>
+                      <input type="number" min="0" step="0.01" value={pokerTournamentBountyUsd} onChange={e => setPokerTournamentBountyUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
+                    <input type="text" value={pokerTournamentNotes} onChange={e => setPokerTournamentNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional tournament notes" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="submit" className="flex-1 rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
+                      {editingPokerTournamentId ? 'Update Tournament' : 'Save Tournament'}
+                    </button>
+                      <button
+                        type="button"
+                        onClick={() => { resetPokerTournamentForm(); setPokerEntryMode(null); }}
+                        className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-bold text-secondary hover:text-textMain"
+                      >
+                        Cancel
+                      </button>
+                  </div>
+                </form>
+              )}
+              {pokerEntryMode === 'bankroll' && (
+                <form id="poker-bankroll-form" ref={bankrollFormRef} onSubmit={handleAddPokerBankroll} className="scroll-mt-24 rounded-2xl border border-border bg-background p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-textMain">Bankroll Movement</h4>
+                      <p className="text-xs text-secondary mt-1">Deposit, withdraw, or adjust your poker fund.</p>
+                    </div>
+                    <button type="button" onClick={() => setPokerEntryMode(null)} aria-label="Close bankroll form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain"><X size={18} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
+                    <input type="date" value={pokerBankrollDate} onChange={e => setPokerBankrollDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Type</label>
+                      <select value={pokerBankrollType} onChange={e => setPokerBankrollType(e.target.value as PokerMttBankrollEventType)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
+                        <option value="Deposit">Deposit</option>
+                        <option value="Withdrawal">Withdrawal</option>
+                        <option value="Adjustment">Adjustment</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
+                    <select value={pokerBankrollInvestmentId} onChange={e => setPokerBankrollInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
+                      {pokerHoldings.map(holding => (
+                        <option key={holding.id} value={holding.id}>{holding.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Amount USD</label>
+                    <input type="number" min="0" step="0.01" value={pokerBankrollAmount} onChange={e => setPokerBankrollAmount(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="500.00" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
+                    <input type="text" value={pokerBankrollNotes} onChange={e => setPokerBankrollNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional notes" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                  <button type="submit" className="flex-1 rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
+                    Save Bankroll Entry
+                  </button>
+                  <button type="button" onClick={() => setPokerEntryMode(null)} className="rounded-xl border border-border px-4 py-3 text-sm font-bold text-secondary hover:text-textMain">Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              <section className="rounded-2xl border border-border bg-background p-4">
+                <div className="mb-4 grid gap-3 border-b border-border pb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-textMain">Recent Entries</h4>
+                    <p className="mt-1 text-xs text-secondary">Your bankroll cash movements.</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface px-3 py-2.5 sm:block sm:min-w-[168px] sm:text-right" title="All deposits, before withdrawals and tournament results">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-secondary">Total cash deposited</p>
+                    <p className="whitespace-nowrap text-xl font-extrabold tabular-nums text-textMain sm:mt-1">{formatMoney(pokerStats.totalDeposited, 'USD')}</p>
+                  </div>
+                </div>
+                {bankrollDeleteError && <p role="alert" className="mb-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500">{bankrollDeleteError}</p>}
+                {selectedPokerBankrollEvents.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-secondary">No cash entries yet. Add a deposit using Bankroll Movement above.</p>
+                ) : (
+                  <div className="max-h-72 space-y-2 overflow-y-auto">
+                    {selectedPokerBankrollEvents.slice().reverse().map(event => (
+                      <div key={event.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-textMain">{event.eventType} <span className="ml-2 text-xs font-normal text-secondary">{new Date(`${event.eventDate.split('T')[0]}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span></p>
+                          <p className="mt-1 truncate text-xs text-secondary">{pokerHoldings.find(holding => holding.id === event.investmentId)?.name || 'Poker bankroll'}</p>
+                          {event.notes && <p className="mt-1 break-words text-xs text-secondary">{event.notes}</p>}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <p className={`text-sm font-bold ${event.eventType === 'Withdrawal' ? 'text-red-500' : 'text-emerald-500'}`}>{event.eventType === 'Withdrawal' ? '−' : '+'}{formatMoney(event.amountUsd, 'USD')}</p>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${event.eventType.toLowerCase()} of ${formatMoney(event.amountUsd, 'USD')}`}
+                            title="Delete bankroll entry"
+                            disabled={deletingBankrollId != null}
+                            onClick={async () => {
+                              if (deletingBankrollId != null || !confirm(`Delete this ${event.eventType.toLowerCase()} of ${formatMoney(event.amountUsd, 'USD')}? Your bankroll totals will be recalculated.`)) return;
+                              setDeletingBankrollId(event.id);
+                              setBankrollDeleteError('');
+                              try {
+                                await onDeletePokerMttBankrollTransaction(event.id);
+                              } catch (error) {
+                                setBankrollDeleteError(error instanceof Error ? error.message : 'Could not delete this bankroll entry. Please try again.');
+                              } finally {
+                                setDeletingBankrollId(null);
+                              }
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40"
+                          >
+                            {deletingBankrollId === event.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="rounded-2xl border border-border bg-background p-3">
                   <p className="text-[10px] uppercase text-secondary font-bold">Bankroll</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.netPortfolio, baseCurrency)}</p>
+                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.netPortfolio, "USD")}</p>
                 </div>
                 <div className="rounded-2xl border border-border bg-background p-3">
                   <p className="text-[10px] uppercase text-secondary font-bold">Tournament Profit</p>
                   <p className={`text-lg font-black mt-1 ${pokerStats.tournamentProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                    {pokerStats.tournamentProfit >= 0 ? '+' : ''}{formatMoney(pokerStats.tournamentProfit, baseCurrency)}
+                    {pokerStats.tournamentProfit >= 0 ? '+' : ''}{formatMoney(pokerStats.tournamentProfit, "USD")}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-background p-3">
                   <p className="text-[10px] uppercase text-secondary font-bold">Buy-ins</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCosts, baseCurrency)}</p>
+                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCosts, "USD")}</p>
                 </div>
                 <div className="rounded-2xl border border-border bg-background p-3">
                   <p className="text-[10px] uppercase text-secondary font-bold">Cashouts + Bounties</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCashouts + pokerStats.tournamentBounties, baseCurrency)}</p>
+                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCashouts + pokerStats.tournamentBounties, "USD")}</p>
                 </div>
               </div>
 
@@ -970,131 +1204,16 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                     {pokerGrowthChart.areaPath && <path d={pokerGrowthChart.areaPath} fill="url(#pokerGrowthFill)" />}
                     {pokerGrowthChart.linePath && <path d={pokerGrowthChart.linePath} fill="none" stroke="url(#pokerGrowthLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
                     <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                      {formatMoney(pokerGrowthChart.maxValue, baseCurrency)}
+                      {formatMoney(pokerGrowthChart.maxValue, "USD")}
                     </text>
                     <text x="8" y={pokerGrowthChart.height - 10} fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                      {formatMoney(pokerGrowthChart.minValue, baseCurrency)}
+                      {formatMoney(pokerGrowthChart.minValue, "USD")}
                     </text>
                   </svg>
                 </div>
                 <p className="mt-2 text-xs text-secondary">
                   The chart uses your poker event timeline, so bankroll changes appear in the order you logged them.
                 </p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <form onSubmit={handleAddPokerTournament} className="rounded-2xl border border-border bg-background p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-textMain">{editingPokerTournamentId ? 'Edit Tournament' : 'Add Tournament'}</h4>
-                      <p className="text-xs text-secondary mt-1">Log buy-in, cashout, bounty, and placement.</p>
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-secondary bg-surface border border-border px-2 py-1 rounded-full">MTT</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
-                      <input type="date" value={pokerTournamentDate} onChange={e => setPokerTournamentDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
-                      <select value={pokerTournamentInvestmentId} onChange={e => setPokerTournamentInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                        {pokerHoldings.map(holding => (
-                          <option key={holding.id} value={holding.id}>{holding.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Tournament</label>
-                    <input type="text" value={pokerTournamentName} onChange={e => setPokerTournamentName(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="e.g. Sunday Mini Main" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Placement</label>
-                      <input type="number" value={pokerTournamentPlacement} onChange={e => setPokerTournamentPlacement(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="42" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Entries</label>
-                      <input type="number" min="1" value={pokerTournamentEntries} onChange={e => setPokerTournamentEntries(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="1" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Buy-in USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentBuyInUsd} onChange={e => setPokerTournamentBuyInUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="11.00" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Cashout USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentCashoutUsd} onChange={e => setPokerTournamentCashoutUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Bounty USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentBountyUsd} onChange={e => setPokerTournamentBountyUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
-                    <input type="text" value={pokerTournamentNotes} onChange={e => setPokerTournamentNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional tournament notes" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="submit" className="flex-1 rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
-                      {editingPokerTournamentId ? 'Update Tournament' : 'Save Tournament'}
-                    </button>
-                    {editingPokerTournamentId && (
-                      <button
-                        type="button"
-                        onClick={resetPokerTournamentForm}
-                        className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-bold text-secondary hover:text-textMain"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </form>
-
-                <form onSubmit={handleAddPokerBankroll} className="rounded-2xl border border-border bg-background p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-textMain">Bankroll Movement</h4>
-                      <p className="text-xs text-secondary mt-1">Deposit, withdraw, or adjust your poker fund.</p>
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-secondary bg-surface border border-border px-2 py-1 rounded-full">Ledger</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
-                    <input type="date" value={pokerBankrollDate} onChange={e => setPokerBankrollDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Type</label>
-                      <select value={pokerBankrollType} onChange={e => setPokerBankrollType(e.target.value as PokerMttBankrollEventType)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                        <option value="Deposit">Deposit</option>
-                        <option value="Withdrawal">Withdrawal</option>
-                        <option value="Adjustment">Adjustment</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
-                    <select value={pokerBankrollInvestmentId} onChange={e => setPokerBankrollInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                      {pokerHoldings.map(holding => (
-                        <option key={holding.id} value={holding.id}>{holding.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Amount USD</label>
-                    <input type="number" min="0" step="0.01" value={pokerBankrollAmount} onChange={e => setPokerBankrollAmount(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="500.00" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
-                    <input type="text" value={pokerBankrollNotes} onChange={e => setPokerBankrollNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional notes" />
-                  </div>
-                  <button type="submit" className="w-full rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
-                    Save Bankroll Entry
-                  </button>
-                </form>
               </div>
 
               <div className="rounded-2xl border border-border bg-background p-4">
@@ -1160,6 +1279,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       )}
 
+      {selectedCategory !== 'Poker (MTT)' && (<>
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
@@ -1172,6 +1292,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         </div>
 
+        {deleteError && <p role="alert" className="mb-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500">{deleteError}</p>}
         {selectedTransactions.length === 0 ? (
           <div className="text-center py-8 text-secondary">
             <p className="text-sm font-medium">No transaction logs yet.</p>
@@ -1195,9 +1316,32 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                     {transaction.notes ? ` · ${transaction.notes}` : ''}
                   </p>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right">
                   <p className="text-sm font-bold text-textMain">{transaction.currency}</p>
                   <p className="text-[10px] text-secondary">{transaction.source || 'Manual entry'}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={deletingTransactionId != null}
+                  onClick={async () => {
+                    if (deletingTransactionId != null) return;
+                    setDeleteError('');
+                    setDeletingTransactionId(transaction.id);
+                    try {
+                      await onDeleteTransaction(transaction.id);
+                    } catch (error) {
+                      setDeleteError(error instanceof Error ? error.message : 'Could not delete this entry. Please try again.');
+                    } finally {
+                      setDeletingTransactionId(null);
+                    }
+                  }}
+                  aria-label={`Delete ${transaction.transactionType} entry for ${transaction.source || 'investment'} on ${transaction.tradeDate}`}
+                  title="Delete entry"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40"
+                >
+                  {deletingTransactionId === transaction.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                </button>
                 </div>
               </div>
             ))}
@@ -1219,10 +1363,12 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </button>
       </div>
 
+      </>)}
+
       {isEntryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setIsEntryModalOpen(false)}>
-          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface border border-border shadow-2xl overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-background">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => setIsEntryModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface border border-border shadow-2xl overflow-hidden animate-fade-in sm:my-8 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-background shrink-0">
               <div>
                 <h3 className="text-base font-bold text-textMain">{entryMode === 'holding' ? 'Add Holding' : 'Log Entry'}</h3>
                 <p className="text-xs text-secondary mt-0.5">
@@ -1234,14 +1380,14 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
               <button
                 type="button"
                 onClick={() => setIsEntryModalOpen(false)}
-                className="rounded-full p-2 text-secondary hover:text-textMain hover:bg-border/30"
+                className="rounded-full p-2 text-secondary hover:text-textMain hover:bg-border/30 shrink-0"
                 aria-label="Close log entry modal"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="px-5 pt-4">
+            <div className="px-5 pt-4 shrink-0">
               <div className="flex rounded-2xl border border-border bg-background p-1">
                 <button
                   type="button"
@@ -1265,7 +1411,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             </div>
 
             {entryMode === 'holding' ? (
-              <form onSubmit={handleCreateHolding} className="p-5 space-y-3 max-h-[75vh] overflow-y-auto">
+              <form onSubmit={handleCreateHolding} className="p-5 space-y-3 flex-1 min-h-0 overflow-y-auto">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Name</label>
                   <input
@@ -1379,7 +1525,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleAddEntry} className="p-5 space-y-3 max-h-[75vh] overflow-y-auto">
+              <form onSubmit={handleAddEntry} className="p-5 space-y-3 flex-1 min-h-0 overflow-y-auto">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Investment</label>
                   <select
@@ -1475,6 +1621,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       )}
 
+      {selectedCategory !== 'Poker (MTT)' && (<>
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-2">
           <div>
@@ -1542,37 +1689,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         ))}
       </div>
 
-      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Select a Category</h3>
-            <p className="text-xs text-secondary mt-1">Tap a category to see the holdings inside it.</p>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 text-secondary text-xs">
-            <ChevronDown size={14} />
-            {chartData.label}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map(category => {
-            const count = category === 'All'
-              ? investments.length
-              : investments.filter(investment => investment.kind === category).length;
-
-            return (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-2 rounded-full border text-xs font-bold transition-colors ${selectedCategory === category ? 'bg-primary text-white border-primary shadow-sm' : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'}`}
-              >
-                {category}
-                <span className="ml-1 opacity-70">({count})</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
@@ -1671,6 +1787,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 };

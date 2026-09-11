@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Check, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
+import { Calendar, Check, ChevronDown, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Expense, PaymentCard } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 
@@ -12,6 +12,9 @@ interface AddExpenseProps {
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
+const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Slate'];
+const FIELD_CLASS = 'w-full min-w-0 h-12 bg-surface border border-border rounded-xl px-3 text-sm text-textMain placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors';
+const LABEL_CLASS = 'mb-2 block text-xs font-semibold text-secondary';
 
 const DEFAULT_CATEGORIES = ['Food', 'Bills', 'Groceries', 'Rent', 'Transport', 'Dining', 'Shopping', 'Health', 'Insurance', 'Education', 'Subscriptions'];
 const EXPENSE_CATEGORIES_KEY = 'subtrack_expense_categories_v1';
@@ -110,86 +113,120 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
       <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
-        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
+        <button onClick={onCancel} disabled={isSaving} aria-label="Close expense form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Expense' : 'New Expense'}</h2>
-        <div className="w-6" />
+        <div className="w-10" />
       </div>
 
-      <div className="p-4 space-y-6 max-w-lg mx-auto animate-slide-up">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-[2fr_1fr] gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Expense Name</label>
+      <div className="px-4 py-6 sm:py-8 max-w-lg mx-auto animate-slide-up">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+              <label htmlFor="expense-name" className={LABEL_CLASS}>Expense name</label>
               <input
+                id="expense-name"
                 required
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Netflix"
-                className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none transition-colors"
+                placeholder="e.g. Lunch, groceries, Netflix"
+                className={FIELD_CLASS}
               />
-            </div>
           </div>
 
           <div className="grid grid-cols-[2fr_1fr] gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Amount</label>
+            <div className="min-w-0">
+              <label htmlFor="expense-amount" className={LABEL_CLASS}>Amount</label>
               <div className="relative">
-                <span className="absolute left-3 top-3 text-secondary"><CircleDollarSign size={16} /></span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary"><CircleDollarSign size={16} /></span>
                 <input
+                  id="expense-amount"
                   required
                   type="number"
                   step="0.01"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none no-spinner"
+                  className={`${FIELD_CLASS} pl-9 no-spinner`}
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
-              <select
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-                className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
-              >
-                {CURRENCIES.map(c => <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>)}
-              </select>
+            <div className="min-w-0">
+              <label htmlFor="expense-currency" className={LABEL_CLASS}>Currency</label>
+              <div className="relative">
+                <select
+                  id="expense-currency"
+                  value={currency}
+                  onChange={e => setCurrency(e.target.value)}
+                  className={`${FIELD_CLASS} appearance-none pr-9 cursor-pointer`}
+                >
+                  {CURRENCIES.map(c => <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>)}
+                </select>
+                <ChevronDown size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-secondary" />
+              </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">
-              Expense Date
+            <label htmlFor="expense-date" className={LABEL_CLASS}>
+              Expense date
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-3 text-secondary"><Calendar size={16} /></span>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary"><Calendar size={16} /></span>
               <input
+                id="expense-date"
                 type="date"
                 value={date}
                 onChange={e => setDate(e.target.value)}
-                className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none [color-scheme:dark] dark:[color-scheme:dark] light:[color-scheme:light]"
+                className={`${FIELD_CLASS} pl-9 [color-scheme:light] dark:[color-scheme:dark]`}
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Category</label>
-            <div className="relative mb-2">
-              <span className="absolute left-3 top-3 text-secondary"><Tag size={16} /></span>
+          <div className="border-t border-border pt-6">
+            <label htmlFor="expense-category" className={LABEL_CLASS}>Category</label>
+            <div className="relative mb-3">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary"><Tag size={16} /></span>
               <input
+                id="expense-category"
                 type="text"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
                 placeholder="e.g. Bills"
-                className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none"
+                className={`${FIELD_CLASS} pl-9`}
               />
             </div>
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-wrap gap-2">
+              {categories.map(cat => (
+                <div
+                  key={cat}
+                  className={`flex max-w-full items-center rounded-lg border text-xs transition-colors ${category === cat ? 'bg-primary/10 text-primary border-primary/40' : 'bg-surface text-secondary border-border hover:border-primary/50'}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCategory(cat)}
+                    aria-pressed={category === cat}
+                    className="min-w-0 rounded-lg px-3 py-2 text-left break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    {cat}
+                  </button>
+                  {!DEFAULT_CATEGORIES.includes(cat) && (
+                    <button
+                      type="button"
+                      onClick={() => deleteCategory(cat)}
+                      className="mr-1 shrink-0 rounded-md p-1.5 opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Delete ${cat}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
               <input
+                aria-label="New custom category"
                 type="text"
                 value={newCategory}
                 onChange={e => setNewCategory(e.target.value)}
@@ -199,52 +236,27 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
                     addCategory();
                   }
                 }}
-                placeholder="Add your own category"
-                className="flex-1 bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
+                placeholder="Create a custom category"
+                className={`${FIELD_CLASS} flex-1`}
               />
               <button
                 type="button"
                 onClick={addCategory}
-                className="bg-primary text-white px-4 rounded-xl text-sm font-bold hover:opacity-90"
+                disabled={!newCategory.trim()}
+                className="shrink-0 bg-primary/10 text-primary px-4 rounded-xl text-sm font-semibold transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Add
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {categories.map(cat => (
-                <div
-                  key={cat}
-                  className={`group flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border transition-colors ${category === cat ? 'bg-primary text-white border-primary' : 'bg-surface text-secondary border-border hover:border-primary/50'}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCategory(cat)}
-                    className="flex items-center gap-1"
-                  >
-                    {cat}
-                  </button>
-                  {!DEFAULT_CATEGORIES.includes(cat) && (
-                    <button
-                      type="button"
-                      onClick={() => deleteCategory(cat)}
-                      className="opacity-70 hover:opacity-100"
-                      aria-label={`Delete ${cat}`}
-                    >
-                      <X size={10} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] text-secondary">Tap a category to select it. Custom categories can be added and removed here.</p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Linked Card</label>
+          <div className="border-t border-border pt-6">
+            <label htmlFor="expense-card" className={LABEL_CLASS}>Linked card <span className="font-normal opacity-70">· Optional</span></label>
             <select
+              id="expense-card"
               value={linkedCardId}
               onChange={e => setLinkedCardId(e.target.value)}
-              className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
+              className={FIELD_CLASS}
             >
               <option value="">No card linked</option>
               {cards.map(card => (
@@ -253,34 +265,38 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
                 </option>
               ))}
             </select>
-            <p className="mt-2 text-[10px] text-secondary">Optional. Link this expense to the card used for payment.</p>
+            <p className="mt-2 text-[11px] text-secondary">Choose the card used for this payment.</p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Color Tag</label>
-            <div className="flex flex-wrap gap-3">
-              {COLORS.map(c => (
+          <fieldset>
+            <legend className={LABEL_CLASS}>Color tag</legend>
+            <div className="grid grid-cols-8 gap-2">
+              {COLORS.map((c, index) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setSelectedColor(c)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform ${selectedColor === c ? 'scale-110 ring-2 ring-primary shadow-lg' : 'opacity-70'}`}
+                  aria-label={COLOR_NAMES[index]}
+                  aria-pressed={selectedColor === c}
+                  title={COLOR_NAMES[index]}
+                  className={`h-11 w-full min-w-0 rounded-xl flex items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${selectedColor === c ? 'ring-2 ring-textMain ring-offset-2 ring-offset-background shadow-sm' : 'hover:-translate-y-0.5'}`}
                   style={{ backgroundColor: c }}
                 >
-                  {selectedColor === c && <Check size={14} className="text-white" />}
+                  {selectedColor === c && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/30"><Check size={14} strokeWidth={3} className="text-white" /></span>}
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Notes</label>
+            <label htmlFor="expense-notes" className={LABEL_CLASS}>Notes <span className="font-normal opacity-70">· Optional</span></label>
             <textarea
+              id="expense-notes"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              rows={4}
-              placeholder="Optional notes about this expense"
-              className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none resize-none"
+              rows={3}
+              placeholder="Add a little context…"
+              className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors resize-y min-h-24"
             />
           </div>
 

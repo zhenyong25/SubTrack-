@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Bell, CheckCircle, Plus, Landmark, TrendingUp } from 'lucide-react';
+import { Bell, CheckCircle, Plus, Landmark, TrendingUp, Wallet } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -14,9 +14,11 @@ import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
 import InvestmentTab from './components/InvestmentTab';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction } from './types';
+import { deleteInvestmentTransaction, deletePokerMttBankrollTransaction } from './services/appDataService';
+import CashFlowTab from './components/CashFlowTab';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry } from './types';
 import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 
@@ -26,6 +28,7 @@ enum Tab {
   Expenses = 'Expenses',
   Income = 'Income',
   Investment = 'Investment',
+  CashFlow = 'CashFlow',
   Settings = 'Settings'
 }
 
@@ -49,6 +52,8 @@ function App() {
   const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
   const [pokerMttTournaments, setPokerMttTournaments] = useState<PokerMttTournament[]>([]);
   const [pokerMttBankrollTransactions, setPokerMttBankrollTransactions] = useState<PokerMttBankrollTransaction[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
+  const [cashBalanceEntries, setCashBalanceEntries] = useState<CashBalanceEntry[]>([]);
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
   const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
@@ -146,6 +151,8 @@ function App() {
         setInvestmentTransactions([]);
         setPokerMttTournaments([]);
         setPokerMttBankrollTransactions([]);
+        setCashAccounts([]);
+        setCashBalanceEntries([]);
         setCards([]);
         setCardPointTransactions([]);
         setIsLoading(false);
@@ -205,6 +212,8 @@ function App() {
         setInvestmentTransactions(loaded.investmentTransactions);
         setPokerMttTournaments(loaded.pokerMttTournaments);
         setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
+        setCashAccounts(loaded.cashAccounts);
+        setCashBalanceEntries(loaded.cashBalanceEntries);
         setCards(loaded.cards);
         setCardPointTransactions(loaded.cardPointTransactions);
         setCardBenefits(loaded.cardBenefits);
@@ -293,6 +302,8 @@ function App() {
       setInvestments([]);
       setInvestmentValuations([]);
       setInvestmentTransactions([]);
+      setCashAccounts([]);
+      setCashBalanceEntries([]);
       setCards([]);
       setCardPointTransactions([]);
       setCardBenefits([]);
@@ -315,6 +326,40 @@ function App() {
   const handleUpdateCardPointTransactions = (transactions: CardPointTransaction[]) => {
     setCardPointTransactions(transactions);
     void saveCardPointTransactions(transactions);
+  };
+
+  const handleSaveCashAccount = (account: CashAccount) => {
+    const exists = cashAccounts.some(item => item.id === account.id);
+    const updated = exists
+      ? cashAccounts.map(item => (item.id === account.id ? account : item))
+      : [...cashAccounts, account];
+    setCashAccounts(updated);
+    void saveCashAccounts(updated);
+    showToast(exists ? `Updated ${account.name}` : `Added ${account.name}`);
+  };
+
+  const handleDeleteCashAccount = (accountId: string) => {
+    const updatedAccounts = cashAccounts.filter(item => item.id !== accountId);
+    setCashAccounts(updatedAccounts);
+    void saveCashAccounts(updatedAccounts);
+
+    const updatedEntries = cashBalanceEntries.filter(entry => entry.accountId !== accountId);
+    setCashBalanceEntries(updatedEntries);
+    void saveCashBalanceEntries(updatedEntries);
+    showToast('Account removed');
+  };
+
+  const handleSaveCashBalanceEntry = (entry: CashBalanceEntry) => {
+    const updated = [...cashBalanceEntries, entry];
+    setCashBalanceEntries(updated);
+    void saveCashBalanceEntries(updated);
+    showToast('Balance logged');
+  };
+
+  const handleDeleteCashBalanceEntry = (entryId: string) => {
+    const updated = cashBalanceEntries.filter(entry => entry.id !== entryId);
+    setCashBalanceEntries(updated);
+    void saveCashBalanceEntries(updated);
   };
 
   const handleAddOrUpdateSubscription = (data: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => {
@@ -540,6 +585,16 @@ function App() {
     void saveInvestments(updatedHoldings);
 
     showToast(`Logged ${newTransaction.transactionType} for ${newTransaction.source || 'investment'}`);
+  };
+
+  const handleDeleteInvestmentTransaction = async (transactionId: string) => {
+    const transaction = investmentTransactions.find(entry => entry.id === transactionId);
+    if (!transaction) return;
+    if (!confirm('Delete this transaction log? The holding\'s units and average cost will stay unchanged.')) return;
+
+    await deleteInvestmentTransaction(transactionId);
+    setInvestmentTransactions(current => current.filter(entry => entry.id !== transactionId));
+    showToast('Transaction log deleted.');
   };
 
   const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
@@ -876,6 +931,7 @@ function App() {
                 pokerMttTournaments={pokerMttTournaments}
                 pokerMttBankrollTransactions={pokerMttBankrollTransactions}
                 onAddTransaction={handleAddInvestmentTransaction}
+                onDeleteTransaction={handleDeleteInvestmentTransaction}
                 onCreateHolding={handleAddInvestmentHolding}
                 onAddPokerMttTournament={handleAddPokerMttTournament}
                 onDeletePokerMttTournament={(tournamentId) => {
@@ -884,6 +940,23 @@ function App() {
                   void savePokerMttTournaments(updated);
                 }}
                 onAddPokerMttBankrollTransaction={handleAddPokerMttBankrollTransaction}
+                onDeletePokerMttBankrollTransaction={async eventId => {
+                  await deletePokerMttBankrollTransaction(eventId);
+                  setPokerMttBankrollTransactions(current => current.filter(event => event.id !== eventId));
+                  showToast('Bankroll entry deleted.');
+                }}
+            />
+        )}
+
+        {activeTab === Tab.CashFlow && (
+            <CashFlowTab
+                baseCurrency={userProfile.currency}
+                accounts={cashAccounts}
+                balanceEntries={cashBalanceEntries}
+                onSaveAccount={handleSaveCashAccount}
+                onDeleteAccount={handleDeleteCashAccount}
+                onSaveBalanceEntry={handleSaveCashBalanceEntry}
+                onDeleteBalanceEntry={handleDeleteCashBalanceEntry}
             />
         )}
 
@@ -905,7 +978,7 @@ function App() {
 
       {/* Navigation Tabs */}
       <nav
-        className="fixed left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-6 py-3 flex space-x-6 z-40"
+        className="fixed left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-3 sm:px-6 py-3 flex space-x-3 sm:space-x-5 z-40"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
       >
         <button 
@@ -948,7 +1021,15 @@ function App() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12l5-5 4 4 9-9" /><path d="M21 7v5h-5" /></svg>
           </div>
         </button>
-        <button 
+        <button
+          onClick={() => setActiveTab(Tab.CashFlow)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.CashFlow ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.CashFlow ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <Wallet size={20} />
+          </div>
+        </button>
+        <button
           onClick={() => setActiveTab(Tab.Settings)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Settings ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >

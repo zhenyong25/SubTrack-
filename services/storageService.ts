@@ -16,7 +16,17 @@ const EXCHANGE_RATES: Record<string, number> = {
   'INR': 83.0,
   'CNY': 7.2,
   'MYR': 4.7,
-  'SGD': 1.36
+  'SGD': 1.36,
+  'HKD': 7.8,
+  'THB': 36.0,
+  'IDR': 15600.0,
+  'VND': 24500.0,
+  'PHP': 56.0,
+  'KRW': 1330.0,
+  'TWD': 31.5,
+  'AED': 3.67,
+  'CHF': 0.88,
+  'NZD': 1.65
 };
 
 export const getCurrencySymbol = (code: string): string => {
@@ -30,7 +40,17 @@ export const getCurrencySymbol = (code: string): string => {
         'INR': '₹',
         'CNY': '¥',
         'MYR': 'RM',
-        'SGD': '$'
+        'SGD': '$',
+        'HKD': 'HK$',
+        'THB': '฿',
+        'IDR': 'Rp',
+        'VND': '₫',
+        'PHP': '₱',
+        'KRW': '₩',
+        'TWD': 'NT$',
+        'AED': 'AED',
+        'CHF': 'CHF',
+        'NZD': '$'
     };
     return symbols[code] || code;
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, Copy, Pencil, PiggyBank, Plus, Search, Trash2, X } from 'lucide-react';
 import { BudgetPlan } from '../types';
+import { getCategoryIcon } from '../services/categoryIcons';
 
 interface BudgetPanelProps {
   monthLabel: string;
@@ -97,11 +98,12 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
               <input
                 autoFocus
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="10"
                 value={totalLimit}
                 onChange={event => setTotalLimit(event.target.value)}
-                className="w-full bg-transparent px-3 py-3 text-lg font-bold text-textMain outline-none"
+                className="no-spinner min-w-0 w-full bg-transparent px-3 py-3 text-lg font-bold text-textMain outline-none"
                 placeholder="2,000"
               />
             </div>
@@ -121,17 +123,24 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
             </div>
 
             <div className="space-y-2">
-              {Object.entries(categoryLimits).map(([category, value]) => (
+              {Object.entries(categoryLimits).map(([category, value]) => {
+                const CategoryIcon = getCategoryIcon(category);
+                return (
                 <div key={category} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-textMain">{category}</span>
-                  <div className="flex items-center rounded-lg border border-border bg-background">
+                  <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-xs font-semibold text-textMain">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><CategoryIcon size={13} /></span>
+                    <span className="truncate">{category}</span>
+                  </span>
+                  <div className="flex items-center rounded-lg border border-border bg-background focus-within:border-primary">
                     <span className="pl-2 text-[10px] text-secondary">{currency}</span>
                     <input
                       type="number"
+                      inputMode="decimal"
+                      aria-label={`${category} budget limit`}
                       min="0"
                       value={value || ''}
                       onChange={event => setCategoryLimits(current => ({ ...current, [category]: Number(event.target.value) }))}
-                      className="w-24 bg-transparent px-2 py-2 text-right text-xs font-bold text-textMain outline-none"
+                      className="no-spinner w-24 bg-transparent px-2 py-2 text-right text-xs font-bold text-textMain outline-none"
                     />
                   </div>
                   <button
@@ -142,7 +151,8 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
                     <Trash2 size={15} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {Object.keys(categoryLimits).length > 0 && (
@@ -193,19 +203,23 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
                     </div>
 
                     <div className="mt-3 grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1">
-                      {filteredCategories.map(category => (
-                        <button
-                          key={category}
-                          onClick={() => {
-                            setCategoryLimits(current => ({ ...current, [category]: 0 }));
-                            setCategorySearch('');
-                          }}
-                          className="truncate rounded-lg border border-border bg-surface px-3 py-2.5 text-left text-xs font-medium text-textMain transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
-                          title={category}
-                        >
-                          {category}
-                        </button>
-                      ))}
+                      {filteredCategories.map(category => {
+                        const CategoryIcon = getCategoryIcon(category);
+                        return (
+                          <button
+                            key={category}
+                            onClick={() => {
+                              setCategoryLimits(current => ({ ...current, [category]: 0 }));
+                              setCategorySearch('');
+                            }}
+                            className="flex items-center gap-2 truncate rounded-lg border border-border bg-surface px-3 py-2.5 text-left text-xs font-medium text-textMain transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+                            title={category}
+                          >
+                            <CategoryIcon size={14} className="shrink-0 text-secondary" />
+                            <span className="truncate">{category}</span>
+                          </button>
+                        );
+                      })}
                     </div>
 
                     {filteredCategories.length === 0 && (
@@ -294,11 +308,15 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
           {categories.map(([category, categoryLimit]) => {
             const categorySpent = spendingByCategory[category] || 0;
             const ratio = categoryLimit > 0 ? categorySpent / categoryLimit : 0;
+            const CategoryIcon = getCategoryIcon(category);
             return (
               <div key={category} className="rounded-xl border border-border bg-background p-3">
                 <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="truncate font-semibold text-textMain">{category}</span>
-                  <span className={ratio > 1 ? 'font-bold text-red-500' : 'text-secondary'}>{categorySpent.toFixed(0)} / {categoryLimit.toFixed(0)}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-textMain">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><CategoryIcon size={11} /></span>
+                    <span className="truncate">{category}</span>
+                  </span>
+                  <span className={ratio > 1 ? 'shrink-0 font-bold text-red-500' : 'shrink-0 text-secondary'}>{categorySpent.toFixed(0)} / {categoryLimit.toFixed(0)}</span>
                 </div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
                   <div className={`h-full rounded-full ${ratio > 1 ? 'bg-red-500' : ratio >= .8 ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${Math.min(ratio * 100, 100)}%` }} />

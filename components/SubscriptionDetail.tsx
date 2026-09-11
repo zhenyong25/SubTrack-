@@ -308,8 +308,8 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
 
         {/* Reactivation Modal */}
         {showReactivateModal && (
-             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
-                <div className="bg-surface w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-scale-in border border-border">
+             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-y-auto">
+                <div className="bg-surface w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-scale-in border border-border my-4 sm:my-0 max-h-[90vh] overflow-y-auto">
                     <h3 className="text-lg font-bold text-textMain mb-2">Resuming Subscription?</h3>
                     <p className="text-sm text-secondary mb-6">
                         Are you continuing the same billing cycle (mistake) or starting a fresh one (after a gap)?
@@ -340,8 +340,8 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
 
         {/* Nudge Modal */}
         {nudgeMessage && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
-                <div className="bg-surface w-full max-w-sm rounded-2xl p-5 shadow-2xl animate-scale-in border border-border">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-y-auto">
+                <div className="bg-surface w-full max-w-sm rounded-2xl p-5 shadow-2xl animate-scale-in border border-border my-4 sm:my-0 max-h-[90vh] overflow-y-auto">
                     <div className="flex justify-center mb-4">
                         <div className="bg-accent/10 p-3 rounded-full text-accent">
                              <AlertTriangle size={32} />

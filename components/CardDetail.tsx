@@ -328,14 +328,14 @@ const CardDetail: React.FC<CardDetailProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-border">
-            <div className="p-4 border-b border-border flex justify-between items-center bg-background">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto">
+        <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-border my-4 sm:my-8 max-h-[95vh] flex flex-col">
+            <div className="p-4 border-b border-border flex justify-between items-center bg-background shrink-0">
                 <h3 className="text-lg font-bold text-textMain">{card.id === 'new' ? 'Add New Card' : 'Card Details'}</h3>
-                <button onClick={onClose} className="text-secondary hover:text-textMain"><X size={20}/></button>
+                <button onClick={onClose} className="text-secondary hover:text-textMain p-1 -mr-1"><X size={20}/></button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[80vh]">
+            <div className="p-6 overflow-y-auto flex-1 min-h-0">
                 
                 {/* Visual Card Representation */}
                 <div className="flex justify-center mb-8 perspective-1000">

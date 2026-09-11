@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
+  ArrowLeft,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -8,7 +10,6 @@ import {
   PieChart as PieChartIcon,
   TrendingDown,
   Wallet,
-  Plus,
   Pencil,
   Trash2,
 } from 'lucide-react';
@@ -32,6 +33,128 @@ interface ExpenseTabProps {
 const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
 
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
+
+const MonthNavigator = ({ label, onPrevious, onNext }: {
+  label: string;
+  onPrevious: () => void;
+  onNext: () => void;
+}) => (
+  <div role="group" aria-label="Month navigation" className="flex w-full items-center rounded-xl border border-border bg-background p-1 sm:w-auto">
+    <button type="button" onClick={onPrevious} aria-label="Previous month" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-surface hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+      <ChevronLeft size={16} />
+    </button>
+    <span aria-live="polite" className="flex min-w-[148px] flex-1 items-center justify-center gap-2 px-2 text-xs font-semibold text-textMain">
+      <CalendarDays size={14} className="shrink-0 text-secondary" aria-hidden="true" />
+      {label}
+    </span>
+    <button type="button" onClick={onNext} aria-label="Next month" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-surface hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+      <ChevronRight size={16} />
+    </button>
+  </div>
+);
+
+type LedgerEntryRow = {
+  id: string;
+  name: string;
+  category: string;
+  amount: number;
+  source: 'Expense' | 'Subscription';
+  color: string;
+  originalAmount: number;
+  originalCurrency: string;
+  linkedCardName?: string;
+};
+
+const SWIPE_REVEAL_WIDTH = 96;
+
+const ExpenseLedgerRow: React.FC<{
+  entry: LedgerEntryRow;
+  baseCurrency: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({ entry, baseCurrency, isOpen, onOpenChange, onEdit, onDelete }) => {
+  const canSwipe = entry.source === 'Expense';
+  const [dragX, setDragX] = useState(0);
+  const dragState = useRef({ dragging: false, startX: 0, startOpen: false });
+
+  const translateX = dragState.current.dragging ? dragX : (isOpen ? -SWIPE_REVEAL_WIDTH : 0);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSwipe) return;
+    dragState.current = { dragging: true, startX: e.clientX, startOpen: isOpen };
+    setDragX(isOpen ? -SWIPE_REVEAL_WIDTH : 0);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSwipe || !dragState.current.dragging) return;
+    const base = dragState.current.startOpen ? -SWIPE_REVEAL_WIDTH : 0;
+    const delta = e.clientX - dragState.current.startX;
+    setDragX(Math.min(0, Math.max(-SWIPE_REVEAL_WIDTH, base + delta)));
+  };
+
+  const endDrag = () => {
+    if (!canSwipe || !dragState.current.dragging) return;
+    dragState.current.dragging = false;
+    onOpenChange(dragX <= -SWIPE_REVEAL_WIDTH / 2);
+  };
+
+  return (
+    <div className="relative overflow-hidden bg-surface">
+      {canSwipe && (
+        <div className="absolute inset-y-0 right-0 flex" style={{ width: SWIPE_REVEAL_WIDTH }}>
+          <button
+            onClick={() => { onOpenChange(false); onEdit(); }}
+            className="flex-1 flex items-center justify-center bg-primary text-white"
+            aria-label={`Edit ${entry.name}`}
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            onClick={() => { onOpenChange(false); onDelete(); }}
+            className="flex-1 flex items-center justify-center bg-red-500 text-white"
+            aria-label={`Delete ${entry.name}`}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      )}
+      <div
+        className="relative bg-surface px-4 py-3 touch-pan-y select-none"
+        style={{ transform: `translateX(${translateX}px)`, transition: dragState.current.dragging ? 'none' : 'transform 200ms ease' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClick={() => { if (isOpen) onOpenChange(false); }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 flex items-start gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: entry.color }} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-sm font-semibold text-textMain truncate">{entry.name}</p>
+                {entry.source === 'Subscription' && (
+                  <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-orange-50 text-orange-600 border border-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800/50">
+                    Sub
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 truncate text-[10px] text-secondary">
+                {entry.category}
+                {entry.originalCurrency !== baseCurrency ? ` · ${entry.originalAmount.toFixed(2)} ${entry.originalCurrency}` : ''}
+                {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
+              </p>
+            </div>
+          </div>
+          <div className="text-sm font-bold text-textMain whitespace-nowrap">{entry.amount.toFixed(2)}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 type YearlyExpensePoint = {
   name: string;
@@ -93,12 +216,17 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
   );
 };
 
-const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onAddExpense, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
+const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   const today = new Date();
+
+  useEffect(() => {
+    setOpenEntryId(null);
+  }, [selectedMonth, selectedYear, selectedDay]);
 
   useEffect(() => {
     setSelectedDay(null);
@@ -333,9 +461,6 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   const selectedDateLabel = selectedDay == null
     ? null
     : new Date(selectedYear, selectedMonth, selectedDay).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  const selectedExpenseDate = selectedDay == null
-    ? undefined
-    : `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
 
   const monthLabel = new Date(selectedYear, selectedMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
   const weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -465,17 +590,9 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
       </div>
 
       <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Monthly Calendar</h3>
-          <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-2 py-1">
-            <button onClick={goToPreviousMonth} className="p-1 hover:text-primary">
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold min-w-[130px] text-center">{monthLabel}</span>
-            <button onClick={goToNextMonth} className="p-1 hover:text-primary">
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          <MonthNavigator label={monthLabel} onPrevious={goToPreviousMonth} onNext={goToNextMonth} />
         </div>
 
         <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-secondary mb-2">
@@ -594,7 +711,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
       </div>
 
       <div className="order-1 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className={`mb-4 border-b border-border pb-4 ${selectedDay == null ? 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between' : 'space-y-4'}`}>
           <div className="flex items-center space-x-2">
             <CircleDollarSign className="text-primary" size={18} />
             <div>
@@ -605,25 +722,15 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${selectedDay == null ? 'sm:shrink-0' : ''}`}>
             {selectedDay != null && (
-              <button onClick={() => onAddExpense(selectedExpenseDate)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[10px] font-bold text-white shadow-sm shadow-primary/20 hover:bg-blue-600">
-                <Plus size={13} /> Add transaction
-              </button>
-            )}
-            {selectedDay != null && (
-              <button onClick={() => setSelectedDay(null)} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary hover:text-white">
+              <button type="button" onClick={() => setSelectedDay(null)} className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl bg-primary/10 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <ArrowLeft size={14} aria-hidden="true" />
                 Show full month
               </button>
             )}
-            <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-2 py-1">
-              <button onClick={goToPreviousMonth} className="p-1 hover:text-primary">
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs font-bold min-w-[130px] text-center">{monthLabel}</span>
-              <button onClick={goToNextMonth} className="p-1 hover:text-primary">
-                <ChevronRight size={16} />
-              </button>
+            <div className="w-full sm:ml-auto sm:w-auto">
+              <MonthNavigator label={monthLabel} onPrevious={goToPreviousMonth} onNext={goToNextMonth} />
             </div>
           </div>
         </div>
@@ -648,53 +755,23 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                   </div>
                 )}
                 <div className="divide-y divide-border bg-surface">
-                  {dayGroup.entries.map(entry => (
-                    <div key={`${entry.source}-${entry.id}-${entry.nextDate}`} className="px-4 py-3 bg-surface">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1 flex items-start gap-2.5">
-                          <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: entry.color }} />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <p className="text-sm font-semibold text-textMain truncate">{entry.name}</p>
-                              {entry.source === 'Subscription' && (
-                                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-orange-50 text-orange-600 border border-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800/50">
-                                  Sub
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-0.5 truncate text-[10px] text-secondary">
-                              {entry.category}
-                              {entry.originalCurrency !== baseCurrency ? ` · ${entry.originalAmount.toFixed(2)} ${entry.originalCurrency}` : ''}
-                              {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-sm font-bold text-textMain whitespace-nowrap">{entry.amount.toFixed(2)}</div>
-                      </div>
-
-                      {entry.source === 'Expense' && (
-                        <div className="mt-1.5 flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              const expense = expenses.find(item => item.id === entry.id);
-                              if (expense) onEditExpense(expense);
-                            }}
-                            className="p-1.5 rounded-lg text-primary hover:bg-primary/10"
-                            aria-label={`Edit ${entry.name}`}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => onDeleteExpense(entry.id)}
-                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10"
-                            aria-label={`Delete ${entry.name}`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {dayGroup.entries.map(entry => {
+                    const entryKey = `${entry.source}-${entry.id}-${entry.nextDate}`;
+                    return (
+                      <ExpenseLedgerRow
+                        key={entryKey}
+                        entry={entry}
+                        baseCurrency={baseCurrency}
+                        isOpen={openEntryId === entryKey}
+                        onOpenChange={open => setOpenEntryId(open ? entryKey : null)}
+                        onEdit={() => {
+                          const expense = expenses.find(item => item.id === entry.id);
+                          if (expense) onEditExpense(expense);
+                        }}
+                        onDelete={() => onDeleteExpense(entry.id)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             ))}
