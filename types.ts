@@ -221,6 +221,31 @@ export interface PokerMttBankrollTransaction {
   updatedAt?: string;
 }
 
+export type CashAccountType = 'Bank' | 'EWallet' | 'MultiCurrencyCard' | 'Cash' | 'Other';
+
+export interface CashAccount {
+  id: string;
+  name: string;
+  institution: string;
+  accountType: CashAccountType;
+  country: string;
+  currency: string;
+  color: string;
+  notes?: string;
+  isArchived?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CashBalanceEntry {
+  id: string;
+  accountId: string;
+  balanceDate: string; // ISO date string
+  balance: number;
+  notes?: string;
+  createdAt?: string;
+}
+
 export interface SubscriptionStats {
   totalMonthly: number;
   totalYearly: number;
@@ -245,6 +270,6 @@ export interface UserProfile {
   notificationDays: number; // Days before due date to notify
 }
 
-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'INR', 'CNY', 'MYR', 'SGD'];
+export const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'INR', 'CNY', 'MYR', 'SGD', 'HKD', 'THB', 'IDR', 'VND', 'PHP', 'KRW', 'TWD', 'AED', 'CHF', 'NZD'];
 
 export const DEFAULT_CATEGORIES = ['Entertainment', 'Music', 'Utilities', 'Productivity', 'Social', 'Health', 'Education', 'Shopping', 'Gym', 'Software'];

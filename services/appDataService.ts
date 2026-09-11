@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
+import { BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -14,6 +14,8 @@ const INVESTMENTS_STORAGE_KEY = 'subtrack_investments_v1';
 const INVESTMENT_TRANSACTIONS_STORAGE_KEY = 'subtrack_investment_transactions_v1';
 const POKER_MTT_TOURNAMENTS_STORAGE_KEY = 'subtrack_poker_mtt_tournaments_v1';
 const POKER_MTT_BANKROLL_STORAGE_KEY = 'subtrack_poker_mtt_bankroll_v1';
+const CASH_ACCOUNTS_STORAGE_KEY = 'subtrack_cash_accounts_v1';
+const CASH_BALANCE_ENTRIES_STORAGE_KEY = 'subtrack_cash_balance_entries_v1';
 
 const normalizeCurrency = (currency?: string | null) => {
   if (!currency || currency === 'USD') return 'SGD';
@@ -70,6 +72,8 @@ export interface LoadedAppData {
   investmentTransactions: InvestmentTransaction[];
   pokerMttTournaments: PokerMttTournament[];
   pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
+  cashAccounts: CashAccount[];
+  cashBalanceEntries: CashBalanceEntry[];
   cards: PaymentCard[];
   cardPointTransactions: CardPointTransaction[];
   cardBenefits: CardBenefit[];
@@ -296,6 +300,31 @@ type PokerMttBankrollTransactionRow = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type CashAccountRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  institution: string;
+  account_type: CashAccountType;
+  country: string;
+  currency: string;
+  color: string;
+  notes: string | null;
+  is_archived: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type CashBalanceEntryRow = {
+  id: string;
+  user_id: string;
+  account_id: string;
+  balance_date: string;
+  balance: number;
+  notes: string | null;
+  created_at?: string;
 };
 
 const readLocalJson = <T,>(key: string, fallback: T): T => {
@@ -630,6 +659,51 @@ const mapPokerMttBankrollTransactionRow = (row: PokerMttBankrollTransactionRow):
   updatedAt: row.updated_at,
 });
 
+const mapCashAccountRow = (row: CashAccountRow): CashAccount => ({
+  id: row.id,
+  name: row.name,
+  institution: row.institution,
+  accountType: row.account_type,
+  country: row.country,
+  currency: row.currency,
+  color: row.color,
+  notes: row.notes || undefined,
+  isArchived: row.is_archived ?? false,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapCashAccountToRow = (account: CashAccount, userId: string) => ({
+  id: account.id,
+  user_id: userId,
+  name: account.name,
+  institution: account.institution,
+  account_type: account.accountType,
+  country: account.country,
+  currency: account.currency,
+  color: account.color,
+  notes: account.notes || null,
+  is_archived: account.isArchived ?? false,
+});
+
+const mapCashBalanceEntryRow = (row: CashBalanceEntryRow): CashBalanceEntry => ({
+  id: row.id,
+  accountId: row.account_id,
+  balanceDate: toIsoDate(row.balance_date),
+  balance: Number(row.balance),
+  notes: row.notes || undefined,
+  createdAt: row.created_at,
+});
+
+const mapCashBalanceEntryToRow = (entry: CashBalanceEntry, userId: string) => ({
+  id: entry.id,
+  user_id: userId,
+  account_id: entry.accountId,
+  balance_date: dateOnly(entry.balanceDate),
+  balance: entry.balance,
+  notes: entry.notes || null,
+});
+
 const loadLocalData = (): LoadedAppData => {
   const profile = readLocalJson<UserProfile>(PROFILE_STORAGE_KEY, createDefaultProfile());
   const normalizedProfile = {
@@ -648,6 +722,8 @@ const loadLocalData = (): LoadedAppData => {
   const investmentTransactions = readLocalJson<InvestmentTransaction[]>(INVESTMENT_TRANSACTIONS_STORAGE_KEY, []);
   const pokerMttTournaments = readLocalJson<PokerMttTournament[]>(POKER_MTT_TOURNAMENTS_STORAGE_KEY, []);
   const pokerMttBankrollTransactions = readLocalJson<PokerMttBankrollTransaction[]>(POKER_MTT_BANKROLL_STORAGE_KEY, []);
+  const cashAccounts = readLocalJson<CashAccount[]>(CASH_ACCOUNTS_STORAGE_KEY, []);
+  const cashBalanceEntries = readLocalJson<CashBalanceEntry[]>(CASH_BALANCE_ENTRIES_STORAGE_KEY, []);
   const cards = readLocalJson<PaymentCard[]>(CARDS_STORAGE_KEY, []);
   const cardPointTransactions = readLocalJson<CardPointTransaction[]>(CARD_POINTS_STORAGE_KEY, []);
   const friends = readLocalJson<Friend[]>(FRIENDS_STORAGE_KEY, normalizedProfile.friends || []);
@@ -663,6 +739,8 @@ const loadLocalData = (): LoadedAppData => {
     investmentTransactions,
     pokerMttTournaments,
     pokerMttBankrollTransactions,
+    cashAccounts,
+    cashBalanceEntries,
     cards,
     cardPointTransactions,
     cardBenefits: [],
@@ -677,7 +755,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const userId = await getSupabaseUserId();
   if (!userId) return loadLocalData();
 
-  const [profileResult, subsResult, incomesResult, expensesResult, budgetsResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cardsResult, cardPointsResult, benefitsResult, friendsResult] = await Promise.all([
+  const [profileResult, subsResult, incomesResult, expensesResult, budgetsResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cashAccountsResult, cashBalanceEntriesResult, cardsResult, cardPointsResult, benefitsResult, friendsResult] = await Promise.all([
     supabase.from('profiles').select('id, name, photo_url, currency, notification_days').eq('id', userId).maybeSingle(),
     supabase.from('subscriptions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('incomes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
@@ -690,6 +768,8 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     supabase.from('investment_transactions').select('*').eq('user_id', userId).order('trade_date', { ascending: true }),
     supabase.from('poker_mtt_tournaments').select('*').eq('user_id', userId).order('tournament_date', { ascending: true }),
     supabase.from('poker_mtt_bankroll_transactions').select('*').eq('user_id', userId).order('event_date', { ascending: true }),
+    supabase.from('cash_accounts').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+    supabase.from('cash_balance_entries').select('*').eq('user_id', userId).order('balance_date', { ascending: true }),
     supabase.from('payment_cards').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('card_point_transactions').select('*').eq('user_id', userId).order('activity_date', { ascending: true }),
     supabase.from('card_benefits').select('*').order('sort_order', { ascending: true }),
@@ -710,6 +790,8 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const investmentTransactions = (transactionsResult.data as InvestmentTransactionRow[] | null | undefined)?.map(mapInvestmentTransactionRow) ?? [];
   const pokerMttTournaments = (pokerTournamentsResult.data as PokerMttTournamentRow[] | null | undefined)?.map(mapPokerMttTournamentRow) ?? [];
   const pokerMttBankrollTransactions = (pokerBankrollResult.data as PokerMttBankrollTransactionRow[] | null | undefined)?.map(mapPokerMttBankrollTransactionRow) ?? [];
+  const cashAccounts = (cashAccountsResult.data as CashAccountRow[] | null | undefined)?.map(mapCashAccountRow) ?? [];
+  const cashBalanceEntries = (cashBalanceEntriesResult.data as CashBalanceEntryRow[] | null | undefined)?.map(mapCashBalanceEntryRow) ?? [];
   const cards = (cardsResult.data as PaymentCardRow[] | null | undefined)?.map(mapCardRow) ?? [];
   const cardPointTransactions = (cardPointsResult.data as CardPointTransactionRow[] | null | undefined)?.map(mapCardPointTransactionRow) ?? [];
   const cardBenefits = (benefitsResult.data as CardBenefitRow[] | null | undefined)?.map(mapCardBenefitRow) ?? [];
@@ -735,6 +817,8 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     investmentTransactions,
     pokerMttTournaments,
     pokerMttBankrollTransactions,
+    cashAccounts,
+    cashBalanceEntries,
     cards,
     cardPointTransactions,
     cardBenefits,
@@ -825,6 +909,23 @@ export const saveBudgetPlans = async (plans: BudgetPlan[]) => {
   if (error) console.warn('Budget plans were saved locally but could not be synced.', error.message);
 };
 
+export const deleteInvestmentTransaction = async (transactionId: string) => {
+  if (supabase) {
+    const userId = await getSupabaseUserId();
+    if (!userId) throw new Error('Please sign in again to delete this entry.');
+
+    const { data, error } = await supabase.from('investment_transactions')
+      .delete().eq('user_id', userId).eq('id', transactionId).select('id');
+    if (error) throw new Error('Could not delete this entry. Please try again.');
+    if (!data?.some(row => row.id === transactionId)) {
+      throw new Error('The entry could not be deleted. Refresh and try again.');
+    }
+  }
+
+  const transactions = readLocalJson<InvestmentTransaction[]>(INVESTMENT_TRANSACTIONS_STORAGE_KEY, []);
+  writeLocalJson(INVESTMENT_TRANSACTIONS_STORAGE_KEY, transactions.filter(transaction => transaction.id !== transactionId));
+};
+
 export const saveInvestmentTransactions = async (transactions: InvestmentTransaction[]) => {
   writeLocalJson(INVESTMENT_TRANSACTIONS_STORAGE_KEY, transactions);
 
@@ -888,6 +989,23 @@ export const savePokerMttTournaments = async (tournaments: PokerMttTournament[])
   await supabase.from('poker_mtt_tournaments').upsert(rows, { onConflict: 'id' });
 };
 
+export const deletePokerMttBankrollTransaction = async (eventId: string) => {
+  if (supabase) {
+    const userId = await getSupabaseUserId();
+    if (!userId) throw new Error('Please sign in again to delete this bankroll entry.');
+
+    const { data, error } = await supabase.from('poker_mtt_bankroll_transactions')
+      .delete().eq('user_id', userId).eq('id', eventId).select('id');
+    if (error) throw new Error('Could not delete this bankroll entry. Please try again.');
+    if (!data?.some(row => row.id === eventId)) {
+      throw new Error('The bankroll entry could not be deleted. Refresh and try again.');
+    }
+  }
+
+  const events = readLocalJson<PokerMttBankrollTransaction[]>(POKER_MTT_BANKROLL_STORAGE_KEY, []);
+  writeLocalJson(POKER_MTT_BANKROLL_STORAGE_KEY, events.filter(event => event.id !== eventId));
+};
+
 export const savePokerMttBankrollTransactions = async (events: PokerMttBankrollTransaction[]) => {
   writeLocalJson(POKER_MTT_BANKROLL_STORAGE_KEY, events);
 
@@ -931,6 +1049,58 @@ export const saveInvestments = async (investments: InvestmentHolding[]) => {
 
   const rows = investments.map(holding => mapInvestmentToRow(holding, userId));
   await supabase.from('investments').upsert(rows, { onConflict: 'id' });
+};
+
+export const saveCashAccounts = async (accounts: CashAccount[]) => {
+  writeLocalJson(CASH_ACCOUNTS_STORAGE_KEY, accounts);
+
+  if (!supabase) return;
+  const userId = await getSupabaseUserId();
+  if (!userId) return;
+
+  if (accounts.length === 0) {
+    await supabase.from('cash_accounts').delete().eq('user_id', userId);
+    return;
+  }
+
+  const existingResult = await supabase.from('cash_accounts').select('id').eq('user_id', userId);
+  if (!existingResult.error) {
+    const nextIds = new Set(accounts.map(account => account.id));
+    const existingIds = (existingResult.data ?? []).map(row => row.id);
+    const staleIds = existingIds.filter(id => !nextIds.has(id));
+    if (staleIds.length > 0) {
+      await supabase.from('cash_accounts').delete().eq('user_id', userId).in('id', staleIds);
+    }
+  }
+
+  const rows = accounts.map(account => mapCashAccountToRow(account, userId));
+  await supabase.from('cash_accounts').upsert(rows, { onConflict: 'id' });
+};
+
+export const saveCashBalanceEntries = async (entries: CashBalanceEntry[]) => {
+  writeLocalJson(CASH_BALANCE_ENTRIES_STORAGE_KEY, entries);
+
+  if (!supabase) return;
+  const userId = await getSupabaseUserId();
+  if (!userId) return;
+
+  if (entries.length === 0) {
+    await supabase.from('cash_balance_entries').delete().eq('user_id', userId);
+    return;
+  }
+
+  const existingResult = await supabase.from('cash_balance_entries').select('id').eq('user_id', userId);
+  if (!existingResult.error) {
+    const nextIds = new Set(entries.map(entry => entry.id));
+    const existingIds = (existingResult.data ?? []).map(row => row.id);
+    const staleIds = existingIds.filter(id => !nextIds.has(id));
+    if (staleIds.length > 0) {
+      await supabase.from('cash_balance_entries').delete().eq('user_id', userId).in('id', staleIds);
+    }
+  }
+
+  const rows = entries.map(entry => mapCashBalanceEntryToRow(entry, userId));
+  await supabase.from('cash_balance_entries').upsert(rows, { onConflict: 'id' });
 };
 
 export const saveCards = async (cards: PaymentCard[]) => {
@@ -1016,6 +1186,8 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(INVESTMENT_TRANSACTIONS_STORAGE_KEY);
   localStorage.removeItem(POKER_MTT_TOURNAMENTS_STORAGE_KEY);
   localStorage.removeItem(POKER_MTT_BANKROLL_STORAGE_KEY);
+  localStorage.removeItem(CASH_ACCOUNTS_STORAGE_KEY);
+  localStorage.removeItem(CASH_BALANCE_ENTRIES_STORAGE_KEY);
 
   if (!supabase) return;
   const userId = await getSupabaseUserId();
@@ -1029,6 +1201,8 @@ export const clearStoredAppData = async () => {
     supabase.from('investment_transactions').delete().eq('user_id', userId),
     supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId),
     supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId),
+    supabase.from('cash_accounts').delete().eq('user_id', userId),
+    supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('payment_cards').delete().eq('user_id', userId),
     supabase.from('card_point_transactions').delete().eq('user_id', userId),
     supabase.from('friendships').delete().eq('user_id', userId),
