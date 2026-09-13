@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
+import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -25,6 +25,8 @@ const normalizeCurrency = (currency?: string | null) => {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
+
+const STATEMENTS_BUCKET = 'account-statements';
 
 const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 const budgetSyncEnabled = import.meta.env.VITE_ENABLE_BUDGET_SYNC === 'true';
@@ -77,6 +79,7 @@ export interface LoadedAppData {
   cards: PaymentCard[];
   cardPointTransactions: CardPointTransaction[];
   cardBenefits: CardBenefit[];
+  accountStatements: AccountStatement[];
   friends: Friend[];
   userId: string | null;
 }
@@ -163,7 +166,22 @@ type PaymentCardRow = {
   current_debt?: number | null;
   current_balance?: number | null;
   budget?: number | null;
+  expiry_month?: number | null;
+  expiry_year?: number | null;
   created_at?: string;
+};
+
+type AccountStatementRow = {
+  id: string;
+  user_id: string;
+  account_kind: AccountStatementKind;
+  cash_account_id: string | null;
+  card_id: string | null;
+  file_name: string;
+  storage_path: string;
+  file_size: number | null;
+  statement_period: string | null;
+  uploaded_at: string;
 };
 
 type FriendshipRow = {
@@ -514,6 +532,8 @@ const mapCardRow = (row: PaymentCardRow): PaymentCard => ({
   creditLimit: row.credit_limit ?? row.budget ?? undefined,
   currentDebt: row.current_debt ?? undefined,
   currentBalance: row.current_balance ?? (row.budget != null && row.credit_limit == null ? row.budget : undefined),
+  expiryMonth: row.expiry_month ?? undefined,
+  expiryYear: row.expiry_year ?? undefined,
 });
 
 const mapCardToRow = (card: PaymentCard, userId: string): PaymentCardRow => ({
@@ -528,6 +548,20 @@ const mapCardToRow = (card: PaymentCard, userId: string): PaymentCardRow => ({
   current_debt: card.kind === 'Credit' ? (card.currentDebt ?? 0) : null,
   current_balance: card.kind !== 'Credit' ? (card.currentBalance ?? 0) : null,
   budget: card.kind === 'Credit' ? (card.creditLimit ?? null) : (card.currentBalance ?? null),
+  expiry_month: card.expiryMonth ?? null,
+  expiry_year: card.expiryYear ?? null,
+});
+
+const mapAccountStatementRow = (row: AccountStatementRow): AccountStatement => ({
+  id: row.id,
+  accountKind: row.account_kind,
+  cashAccountId: row.cash_account_id ?? undefined,
+  cardId: row.card_id ?? undefined,
+  fileName: row.file_name,
+  storagePath: row.storage_path,
+  fileSize: row.file_size ?? undefined,
+  statementPeriod: row.statement_period ?? undefined,
+  uploadedAt: row.uploaded_at,
 });
 
 const mapFriendRow = (row: FriendshipRow): Friend => ({
@@ -744,6 +778,7 @@ const loadLocalData = (): LoadedAppData => {
     cards,
     cardPointTransactions,
     cardBenefits: [],
+    accountStatements: [],
     friends,
     userId: null,
   };
@@ -755,7 +790,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const userId = await getSupabaseUserId();
   if (!userId) return loadLocalData();
 
-  const [profileResult, subsResult, incomesResult, expensesResult, budgetsResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cashAccountsResult, cashBalanceEntriesResult, cardsResult, cardPointsResult, benefitsResult, friendsResult] = await Promise.all([
+  const [profileResult, subsResult, incomesResult, expensesResult, budgetsResult, investmentsResult, valuationsResult, transactionsResult, pokerTournamentsResult, pokerBankrollResult, cashAccountsResult, cashBalanceEntriesResult, cardsResult, cardPointsResult, benefitsResult, accountStatementsResult, friendsResult] = await Promise.all([
     supabase.from('profiles').select('id, name, photo_url, currency, notification_days').eq('id', userId).maybeSingle(),
     supabase.from('subscriptions').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('incomes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
@@ -773,6 +808,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     supabase.from('payment_cards').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
     supabase.from('card_point_transactions').select('*').eq('user_id', userId).order('activity_date', { ascending: true }),
     supabase.from('card_benefits').select('*').order('sort_order', { ascending: true }),
+    supabase.from('account_statements').select('*').eq('user_id', userId).order('uploaded_at', { ascending: false }),
     supabase.from('friendships').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
   ]);
 
@@ -795,6 +831,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const cards = (cardsResult.data as PaymentCardRow[] | null | undefined)?.map(mapCardRow) ?? [];
   const cardPointTransactions = (cardPointsResult.data as CardPointTransactionRow[] | null | undefined)?.map(mapCardPointTransactionRow) ?? [];
   const cardBenefits = (benefitsResult.data as CardBenefitRow[] | null | undefined)?.map(mapCardBenefitRow) ?? [];
+  const accountStatements = (accountStatementsResult.data as AccountStatementRow[] | null | undefined)?.map(mapAccountStatementRow) ?? [];
   const cardLookup = new Map(cards.map(card => [card.id, card]));
 
   const hydratedSubscriptions = subscriptions.map(sub => {
@@ -822,6 +859,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     cards,
     cardPointTransactions,
     cardBenefits,
+    accountStatements,
     friends,
     userId,
   };
@@ -1173,6 +1211,75 @@ export const saveFriends = async (friends: Friend[]) => {
   await supabase.from('friendships').upsert(rows, { onConflict: 'id' });
 };
 
+const sanitizeStatementFileName = (fileName: string) =>
+  fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+export interface UploadAccountStatementParams {
+  accountKind: AccountStatementKind;
+  cashAccountId?: string;
+  cardId?: string;
+  statementPeriod?: string;
+}
+
+export const uploadAccountStatement = async (
+  file: File,
+  params: UploadAccountStatementParams,
+): Promise<AccountStatement> => {
+  if (!supabase) throw new Error('Supabase is not configured');
+  const userId = await getSupabaseUserId();
+  if (!userId) throw new Error('You must be signed in to upload statements');
+
+  const accountId = params.accountKind === 'Cash' ? params.cashAccountId : params.cardId;
+  if (!accountId) throw new Error('Missing account for this statement');
+
+  const storagePath = `${userId}/${params.accountKind.toLowerCase()}/${accountId}/${crypto.randomUUID()}_${sanitizeStatementFileName(file.name)}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(STATEMENTS_BUCKET)
+    .upload(storagePath, file, { contentType: file.type || 'application/pdf' });
+  if (uploadError) throw uploadError;
+
+  const row: Omit<AccountStatementRow, 'id' | 'uploaded_at'> = {
+    user_id: userId,
+    account_kind: params.accountKind,
+    cash_account_id: params.accountKind === 'Cash' ? accountId : null,
+    card_id: params.accountKind === 'Card' ? accountId : null,
+    file_name: file.name,
+    storage_path: storagePath,
+    file_size: file.size,
+    statement_period: params.statementPeriod || null,
+  };
+
+  const { data, error: insertError } = await supabase
+    .from('account_statements')
+    .insert(row)
+    .select('*')
+    .single();
+
+  if (insertError) {
+    await supabase.storage.from(STATEMENTS_BUCKET).remove([storagePath]);
+    throw insertError;
+  }
+
+  return mapAccountStatementRow(data as AccountStatementRow);
+};
+
+export const downloadAccountStatement = async (statement: AccountStatement): Promise<Blob> => {
+  if (!supabase) throw new Error('Supabase is not configured');
+  const { data, error } = await supabase.storage.from(STATEMENTS_BUCKET).download(statement.storagePath);
+  if (error || !data) throw error || new Error('Failed to download statement');
+  return data;
+};
+
+export const deleteAccountStatement = async (statement: AccountStatement): Promise<void> => {
+  if (!supabase) return;
+  const userId = await getSupabaseUserId();
+  if (!userId) return;
+
+  await supabase.storage.from(STATEMENTS_BUCKET).remove([statement.storagePath]);
+  await supabase.from('account_statements').delete().eq('id', statement.id).eq('user_id', userId);
+};
+
 export const clearStoredAppData = async () => {
   localStorage.removeItem(PROFILE_STORAGE_KEY);
   localStorage.removeItem(SUBSCRIPTIONS_STORAGE_KEY);
@@ -1193,6 +1300,12 @@ export const clearStoredAppData = async () => {
   const userId = await getSupabaseUserId();
   if (!userId) return;
 
+  const statementsResult = await supabase.from('account_statements').select('storage_path').eq('user_id', userId);
+  const statementPaths = (statementsResult.data as { storage_path: string }[] | null | undefined)?.map(row => row.storage_path) ?? [];
+  if (statementPaths.length > 0) {
+    await supabase.storage.from(STATEMENTS_BUCKET).remove(statementPaths);
+  }
+
   await Promise.all([
     supabase.from('subscriptions').delete().eq('user_id', userId),
     supabase.from('incomes').delete().eq('user_id', userId),
@@ -1205,6 +1318,7 @@ export const clearStoredAppData = async () => {
     supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('payment_cards').delete().eq('user_id', userId),
     supabase.from('card_point_transactions').delete().eq('user_id', userId),
+    supabase.from('account_statements').delete().eq('user_id', userId),
     supabase.from('friendships').delete().eq('user_id', userId),
     supabase.from('profiles').delete().eq('id', userId),
   ]);
