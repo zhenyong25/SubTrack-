@@ -17,6 +17,10 @@ export default defineConfig(({ mode }) => {
           srcDir: '.',
           filename: 'sw.ts',
           registerType: 'autoUpdate',
+          // We register manually in index.tsx via virtual:pwa-register so we get
+          // real update polling and an auto-reload once a new SW takes over —
+          // the default injected script only calls register() once on load.
+          injectRegister: false,
           includeAssets: ['favicon.svg'],
           manifest: {
             name: 'SubTrack AI',

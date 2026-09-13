@@ -1,9 +1,33 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import LogoAttribution from './components/LogoAttribution';
 import { hasLogoDevKey } from './services/subscriptionLogoService';
 import './styles.css';
+
+// The plugin's default injected register script only calls
+// navigator.serviceWorker.register() once on load — it never checks for
+// updates again, so an already-installed PWA can keep serving a stale
+// deployment indefinitely. registerSW() from virtual:pwa-register wires up
+// workbox-window's update detection instead, and with registerType:
+// 'autoUpdate' in vite.config.ts it activates a new service worker and
+// reloads the page automatically as soon as one is found — no user prompt.
+// A manual poll covers PWAs that are resumed from the home screen rather
+// than freshly navigated to, since those don't reliably trigger the
+// browser's own update check.
+if ('serviceWorker' in navigator) {
+  const updateSW = registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      setInterval(() => {
+        void registration.update();
+      }, 60 * 60 * 1000);
+    },
+  });
+  void updateSW;
+}
 
 const shouldIgnoreExternalError = (event: ErrorEvent) => {
   const message = event.message || '';
