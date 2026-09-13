@@ -10,13 +10,14 @@ import AddExpense from './components/AddExpense';
 import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import CardDetail from './components/CardDetail';
+import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
 import InvestmentTab from './components/InvestmentTab';
-import { deleteInvestmentTransaction, deletePokerMttBankrollTransaction } from './services/appDataService';
+import { deleteAccountStatement, deleteInvestmentTransaction, deletePokerMttBankrollTransaction, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry } from './types';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, AccountStatement, AccountStatementKind } from './types';
 import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
 import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
@@ -57,6 +58,7 @@ function App() {
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
   const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
+  const [accountStatements, setAccountStatements] = useState<AccountStatement[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,6 +67,7 @@ function App() {
   
   // Card Management State
   const [addingCard, setAddingCard] = useState<PaymentCard | null>(null);
+  const [viewingCardId, setViewingCardId] = useState<string | null>(null);
 
   // User Profile State
   const [userProfile, setUserProfile] = useState<UserProfile>({ 
@@ -155,6 +158,7 @@ function App() {
         setCashBalanceEntries([]);
         setCards([]);
         setCardPointTransactions([]);
+        setAccountStatements([]);
         setIsLoading(false);
         return;
       }
@@ -217,6 +221,7 @@ function App() {
         setCards(loaded.cards);
         setCardPointTransactions(loaded.cardPointTransactions);
         setCardBenefits(loaded.cardBenefits);
+        setAccountStatements(loaded.accountStatements);
         void saveSubscriptions(updated);
 
         if (loaded.userId) {
@@ -307,6 +312,7 @@ function App() {
       setCards([]);
       setCardPointTransactions([]);
       setCardBenefits([]);
+      setAccountStatements([]);
       setUserProfile(createDefaultProfile());
       setSelectedSubId(null);
       setEditingSub(undefined);
@@ -346,6 +352,12 @@ function App() {
     const updatedEntries = cashBalanceEntries.filter(entry => entry.accountId !== accountId);
     setCashBalanceEntries(updatedEntries);
     void saveCashBalanceEntries(updatedEntries);
+
+    const orphanedStatements = accountStatements.filter(statement => statement.cashAccountId === accountId);
+    if (orphanedStatements.length > 0) {
+      setAccountStatements(accountStatements.filter(statement => statement.cashAccountId !== accountId));
+      void Promise.all(orphanedStatements.map(statement => deleteAccountStatement(statement)));
+    }
     showToast('Account removed');
   };
 
@@ -360,6 +372,48 @@ function App() {
     const updated = cashBalanceEntries.filter(entry => entry.id !== entryId);
     setCashBalanceEntries(updated);
     void saveCashBalanceEntries(updated);
+  };
+
+  const handleUploadStatement = async (
+    file: File,
+    params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string; statementPeriod?: string },
+  ) => {
+    try {
+      const statement = await uploadAccountStatement(file, params);
+      setAccountStatements(prev => [statement, ...prev]);
+      showToast('Statement uploaded');
+    } catch (error) {
+      console.error('Failed to upload statement', error);
+      showToast('Failed to upload statement');
+    }
+  };
+
+  const handleDownloadStatement = async (statement: AccountStatement) => {
+    try {
+      const blob = await downloadAccountStatement(statement);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = statement.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download statement', error);
+      showToast('Failed to download statement');
+    }
+  };
+
+  const handleDeleteStatement = async (statement: AccountStatement) => {
+    setAccountStatements(prev => prev.filter(item => item.id !== statement.id));
+    try {
+      await deleteAccountStatement(statement);
+      showToast('Statement removed');
+    } catch (error) {
+      console.error('Failed to delete statement', error);
+      showToast('Failed to remove statement');
+    }
   };
 
   const handleAddOrUpdateSubscription = (data: Omit<Subscription, 'id' | 'nextPaymentDate'>, newCard?: PaymentCard) => {
@@ -669,6 +723,10 @@ function App() {
       setAddingCard(card);
   };
 
+  const handleViewCardStart = (card: PaymentCard) => {
+      setViewingCardId(card.id);
+  };
+
   const handleAddNewIncomeStart = () => {
       setEditingIncome(undefined);
       setIsAddingIncome(true);
@@ -763,6 +821,7 @@ function App() {
   }
 
   const selectedSub = subscriptions.find(s => s.id === selectedSubId);
+  const viewingCard = cards.find(c => c.id === viewingCardId);
   const upcomingNotifications = getUpcomingNotifications();
 
   if (authChecking || (isSupabaseConfigured() && session && isLoading)) {
@@ -870,15 +929,13 @@ function App() {
         }}
       >
         {activeTab === Tab.Dashboard && (
-          <Dashboard 
-            subscriptions={subscriptions} 
+          <Dashboard
+            subscriptions={subscriptions}
             cards={cards}
             baseCurrency={userProfile.currency}
             onCurrencyChange={handleCurrencyChange}
-            onUpdateCard={handleUpdateCard}
-            cardPointTransactions={cardPointTransactions}
-            onUpdateCardPointTransactions={handleUpdateCardPointTransactions}
             onAddCard={handleAddNewCardStart}
+            onViewCard={handleViewCardStart}
             onDeleteSubscription={handleDelete}
             onSelectSubscription={setSelectedSubId}
           />
@@ -893,6 +950,7 @@ function App() {
                 cardPointTransactions={cardPointTransactions}
                 baseCurrency={userProfile.currency}
                 onAddCard={handleAddNewCardStart}
+                onViewCard={handleViewCardStart}
                 onEditCard={handleEditCardStart}
             />
         )}
@@ -957,6 +1015,11 @@ function App() {
                 onDeleteAccount={handleDeleteCashAccount}
                 onSaveBalanceEntry={handleSaveCashBalanceEntry}
                 onDeleteBalanceEntry={handleDeleteCashBalanceEntry}
+                statements={accountStatements}
+                statementsEnabled={isSupabaseConfigured()}
+                onUploadStatement={handleUploadStatement}
+                onDownloadStatement={handleDownloadStatement}
+                onDeleteStatement={handleDeleteStatement}
             />
         )}
 
@@ -1080,17 +1143,34 @@ function App() {
           />
       )}
 
-      {/* Card Detail / Add Modal */}
-      {addingCard && (
-          <CardDetail 
-              card={addingCard}
+      {/* Card Details Page */}
+      {viewingCard && (
+          <CardDetail
+              card={viewingCard}
               subscriptions={subscriptions}
               expenses={expenses}
               baseCurrency={userProfile.currency}
-              benefits={getCardBenefitsForCard(addingCard.name, cardBenefits)}
-              onUpdate={handleSaveCardFromModal}
+              benefits={getCardBenefitsForCard(viewingCard.name, cardBenefits)}
+              onEdit={handleEditCardStart}
               cardPointTransactions={cardPointTransactions}
               onUpdateCardPointTransactions={handleUpdateCardPointTransactions}
+              onClose={() => setViewingCardId(null)}
+              statements={accountStatements.filter(statement => statement.accountKind === 'Card' && statement.cardId === viewingCard.id)}
+              statementsEnabled={isSupabaseConfigured()}
+              onUploadStatement={handleUploadStatement}
+              onDownloadStatement={handleDownloadStatement}
+              onDeleteStatement={handleDeleteStatement}
+          />
+      )}
+
+      {/* Card Add / Edit Modal */}
+      {addingCard && (
+          <CardEditModal
+              card={addingCard}
+              baseCurrency={userProfile.currency}
+              expenses={expenses}
+              subscriptions={subscriptions}
+              onSave={handleSaveCardFromModal}
               onClose={() => setAddingCard(null)}
           />
       )}

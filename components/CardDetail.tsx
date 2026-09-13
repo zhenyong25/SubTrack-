@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, PaymentCard, Subscription, CardType, PaymentCardKind } from '../types';
+import { AccountStatement, AccountStatementKind, CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, PaymentCard, Subscription } from '../types';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getCardMilesSummary } from '../services/cardBenefitsService';
-import { convertCurrency, getMonthlyCost } from '../services/storageService';
+import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
-import { X, Save, AlertTriangle, Edit3, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import StatementsList from './StatementsList';
+import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
 
 interface CardDetailProps {
   card: PaymentCard;
@@ -12,13 +13,17 @@ interface CardDetailProps {
   expenses: Expense[];
   baseCurrency: string;
   benefits?: CardBenefit[];
-  onUpdate: (card: PaymentCard) => void;
+  onEdit: (card: PaymentCard) => void;
   cardPointTransactions: CardPointTransaction[];
   onUpdateCardPointTransactions: (transactions: CardPointTransaction[]) => void;
   onClose: () => void;
+  statements: AccountStatement[];
+  statementsEnabled: boolean;
+  onUploadStatement: (file: File, params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string }) => void | Promise<void>;
+  onDownloadStatement: (statement: AccountStatement) => void | Promise<void>;
+  onDeleteStatement: (statement: AccountStatement) => void | Promise<void>;
 }
 
-const CARD_TYPES: CardType[] = ['Visa', 'Mastercard', 'Amex', 'Discover', 'Paypal', 'ApplePay', 'GooglePay', 'Other'];
 const POINT_ACTIVITY_TYPES: CardPointsActivityType[] = ['Earned', 'Redeemed', 'Expired', 'Adjusted', 'Transferred In', 'Transferred Out'];
 
 type PointsRangeMode = 'Monthly' | 'Yearly';
@@ -78,36 +83,29 @@ const CardDetail: React.FC<CardDetailProps> = ({
   expenses = [],
   baseCurrency,
   benefits = [],
-  onUpdate,
+  onEdit,
   cardPointTransactions = [],
   onUpdateCardPointTransactions,
-  onClose
+  onClose,
+  statements,
+  statementsEnabled,
+  onUploadStatement,
+  onDownloadStatement,
+  onDeleteStatement,
 }) => {
-  const [name, setName] = useState(card.name);
-  const [type, setType] = useState<CardType>(card.type);
-  const [last4, setLast4] = useState(card.last4Digits);
-  const [kind, setKind] = useState<PaymentCardKind>(card.kind);
-  const [creditLimit, setCreditLimit] = useState(card.creditLimit?.toString() || '');
-  const [currentBalance, setCurrentBalance] = useState(card.currentBalance?.toString() || '');
-  const [color, setColor] = useState(card.color || '#1e293b');
+  const isCreditCard = card.kind === 'Credit';
+  const expiryStatus = getCardExpiryStatus(card);
   const [pointsRange, setPointsRange] = useState<PointsRangeMode>('Monthly');
   const [pointsWindowOffset, setPointsWindowOffset] = useState(0);
   const [isPointsFormOpen, setIsPointsFormOpen] = useState(false);
   const [pointForm, setPointForm] = useState<PointFormState>(createEmptyPointForm());
 
   React.useEffect(() => {
-    setName(card.name);
-    setType(card.type);
-    setKind(card.kind);
-    setLast4(card.last4Digits);
-    setCreditLimit(card.creditLimit?.toString() || '');
-    setCurrentBalance(card.currentBalance?.toString() || '');
-    setColor(card.color || '#1e293b');
     setPointForm(createEmptyPointForm());
     setPointsRange('Monthly');
     setPointsWindowOffset(0);
     setIsPointsFormOpen(false);
-  }, [card]);
+  }, [card.id]);
 
   const benefitRows = useMemo(() => {
     return benefits
@@ -124,35 +122,13 @@ const CardDetail: React.FC<CardDetailProps> = ({
       .sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
   }, [card.id, cardPointTransactions]);
 
-  const liveMonthlyDebt = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const monthlySpend = useMemo(
+    () => getCardMonthlySpend(card, expenses, subscriptions, baseCurrency),
+    [card, expenses, subscriptions, baseCurrency],
+  );
 
-    const expenseTotal = expenses
-      .filter(expense => {
-        const expenseDate = new Date(expense.expenseDate);
-        return (
-          (expense.linkedCardId === card.id || (!expense.linkedCardId && expense.linkedCardName === card.name)) &&
-          expenseDate.getMonth() === currentMonth &&
-          expenseDate.getFullYear() === currentYear
-        );
-      })
-      .reduce(
-        (sum, expense) => sum + convertCurrency(Number(expense.amount || 0), expense.currency || baseCurrency, baseCurrency),
-        0
-      );
-
-    const subscriptionTotal = subscriptions
-      .filter(sub => sub.status === 'Active' && (sub.cardId === card.id || sub.cardName === card.name))
-      .reduce((sum, sub) => sum + getMonthlyCost(sub, baseCurrency), 0);
-
-    return expenseTotal + subscriptionTotal;
-  }, [card.id, card.name, expenses, subscriptions, baseCurrency]);
-
-  const computedCreditDebt = useMemo(() => {
-    return kind === 'Credit' ? liveMonthlyDebt : 0;
-  }, [kind, liveMonthlyDebt]);
+  const computedCreditDebt = isCreditCard ? monthlySpend : 0;
+  const availableCredit = Math.max((card.creditLimit ?? 0) - computedCreditDebt, 0);
 
   const currentPoints = useMemo(() => {
     return pointsEntries.reduce((sum, transaction) => sum + Number(transaction.pointsDelta || 0), 0);
@@ -310,66 +286,120 @@ const CardDetail: React.FC<CardDetailProps> = ({
     }
   };
 
-  const handleSave = () => {
-    if (!name.trim()) return alert("Card name is required");
-    
-    onUpdate({
-        ...card,
-        name,
-        type,
-        kind,
-        last4Digits: last4,
-        creditLimit: kind === 'Credit' ? (creditLimit ? parseFloat(creditLimit) : undefined) : undefined,
-        currentDebt: kind === 'Credit' ? computedCreditDebt : undefined,
-        currentBalance: kind !== 'Credit' ? (currentBalance ? parseFloat(currentBalance) : 0) : undefined,
-        color
-    });
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto">
-        <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-border my-4 sm:my-8 max-h-[95vh] flex flex-col">
-            <div className="p-4 border-b border-border flex justify-between items-center bg-background shrink-0">
-                <h3 className="text-lg font-bold text-textMain">{card.id === 'new' ? 'Add New Card' : 'Card Details'}</h3>
-                <button onClick={onClose} className="text-secondary hover:text-textMain p-1 -mr-1"><X size={20}/></button>
+    <div className="fixed inset-0 bg-background z-50 flex flex-col overflow-hidden animate-slide-up">
+        <div
+          className="flex items-center justify-between p-4 border-b border-border bg-surface shrink-0"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+        >
+            <button onClick={onClose} className="p-2 -ml-2 text-secondary hover:text-textMain" aria-label="Back">
+                <ArrowLeft size={24} />
+            </button>
+            <div className="flex items-center gap-2 min-w-0">
+                <h3 className="text-base font-bold text-textMain truncate">{card.name}</h3>
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full border border-border text-secondary">
+                    {card.kind === 'Credit' ? 'Credit' : card.kind === 'Debit' ? 'Debit' : 'Multi-currency'}
+                </span>
             </div>
+            <button onClick={() => onEdit(card)} className="p-2 text-secondary hover:text-primary" aria-label="Edit card">
+                <Pencil size={20} />
+            </button>
+        </div>
 
-            <div className="p-6 overflow-y-auto flex-1 min-h-0">
-                
-                {/* Visual Card Representation */}
-                <div className="flex justify-center mb-8 perspective-1000">
-                    <div 
-                        className="w-80 h-48 rounded-2xl relative p-6 text-white shadow-2xl transition-transform hover:scale-105"
-                        style={{ background: color, boxShadow: `0 10px 30px -10px ${color}` }}
-                    >
-                        {/* Chip */}
-                        <div className="w-12 h-9 mb-4 bg-yellow-200/20 rounded-md border border-yellow-200/40 relative overflow-hidden">
-                             <div className="absolute top-1/2 w-full h-[1px] bg-yellow-200/40"></div>
-                             <div className="absolute left-1/2 h-full w-[1px] bg-yellow-200/40"></div>
-                             <div className="absolute top-2 left-2 w-4 h-5 border border-yellow-200/30 rounded-sm"></div>
+        <div className="p-6 overflow-y-auto flex-1 min-h-0 max-w-2xl w-full mx-auto">
+
+            {/* Visual Card Representation */}
+            <div className="flex justify-center mb-6 perspective-1000">
+                <div
+                    className="w-80 h-48 rounded-2xl relative p-6 text-white shadow-2xl transition-transform hover:scale-105"
+                    style={{ background: card.color || '#1e293b', boxShadow: `0 10px 30px -10px ${card.color || '#1e293b'}` }}
+                >
+                    {/* Chip */}
+                    <div className="w-12 h-9 mb-4 bg-yellow-200/20 rounded-md border border-yellow-200/40 relative overflow-hidden">
+                         <div className="absolute top-1/2 w-full h-[1px] bg-yellow-200/40"></div>
+                         <div className="absolute left-1/2 h-full w-[1px] bg-yellow-200/40"></div>
+                         <div className="absolute top-2 left-2 w-4 h-5 border border-yellow-200/30 rounded-sm"></div>
+                    </div>
+
+                    {/* Number */}
+                    <div className="mb-4 font-mono text-xl tracking-widest drop-shadow-md">
+                        **** **** **** {card.last4Digits || '0000'}
+                    </div>
+
+                    {/* Bottom Info */}
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <p className="text-[10px] uppercase opacity-70 mb-0.5">Card Holder</p>
+                            <p className="text-sm font-bold tracking-wide uppercase truncate max-w-[120px]">{card.name || 'MY CARD'}</p>
+                            {card.expiryMonth && card.expiryYear && (
+                                <p className="text-[10px] tracking-wide opacity-70 mt-1">
+                                    VALID THRU {card.expiryMonth.toString().padStart(2, '0')}/{card.expiryYear.toString().slice(-2)}
+                                </p>
+                            )}
                         </div>
-
-                        {/* Number */}
-                        <div className="mb-4 font-mono text-xl tracking-widest drop-shadow-md">
-                            **** **** **** {last4 || '0000'}
+                        <div className="scale-125 origin-bottom-right opacity-90">
+                            <CardLogo type={card.type} name={card.name} />
                         </div>
+                    </div>
 
-                        {/* Bottom Info */}
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <p className="text-[10px] uppercase opacity-70 mb-0.5">Card Holder</p>
-                                <p className="text-sm font-bold tracking-wide uppercase truncate max-w-[120px]">{name || 'MY CARD'}</p>
-                            </div>
-                            <div className="scale-125 origin-bottom-right opacity-90">
-                                <CardLogo type={type} name={name} />
-                            </div>
-                        </div>
-
-                        {/* Gloss Effect */}
-                        <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent rounded-2xl pointer-events-none"></div>
+                    {/* Gloss Effect */}
+                    <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent rounded-2xl pointer-events-none"></div>
                     </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                    <div className="rounded-xl border border-border bg-background p-4">
+                        <p className="text-[10px] uppercase tracking-wide text-secondary font-bold">
+                            {isCreditCard ? 'Current debt' : 'Current balance'}
+                        </p>
+                        <p className="text-xl font-black text-textMain mt-1">
+                            {isCreditCard
+                              ? `${computedCreditDebt.toFixed(2)} ${baseCurrency}`
+                              : `${(card.currentBalance ?? 0).toFixed(2)} ${baseCurrency}`}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                        <p className="text-[10px] uppercase tracking-wide text-secondary font-bold">
+                            {isCreditCard ? 'Available credit' : 'Linked monthly spend'}
+                        </p>
+                        <p className="text-xl font-black text-textMain mt-1">
+                            {isCreditCard
+                              ? `${availableCredit.toFixed(2)} ${baseCurrency}`
+                              : `${monthlySpend.toFixed(2)} ${baseCurrency}`}
+                        </p>
+                    </div>
+                </div>
+
+                {(expiryStatus === 'expired' || expiryStatus === 'expiring-soon') && (
+                    <div className={`mb-6 flex items-start gap-2 p-3 rounded-lg ${
+                        expiryStatus === 'expired'
+                          ? 'bg-red-50 dark:bg-red-900/20'
+                          : 'bg-amber-50 dark:bg-amber-900/20'
+                    }`}>
+                        <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${expiryStatus === 'expired' ? 'text-red-500' : 'text-amber-500'}`} />
+                        <p className={`text-xs ${expiryStatus === 'expired' ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                            {expiryStatus === 'expired'
+                              ? `This card expired ${card.expiryMonth?.toString().padStart(2, '0')}/${card.expiryYear?.toString().slice(-2)}. Update it once you have a replacement.`
+                              : `This card expires ${card.expiryMonth?.toString().padStart(2, '0')}/${card.expiryYear?.toString().slice(-2)} — renewal may be coming soon.`}
+                        </p>
+                    </div>
+                )}
+
+                {card.id !== 'new' && (
+                    <div className="mb-6">
+                        <div className="bg-background rounded-xl border border-border p-4">
+                            <StatementsList
+                                statements={statements}
+                                accountKind="Card"
+                                accountId={card.id}
+                                enabled={statementsEnabled}
+                                onUpload={onUploadStatement}
+                                onDownload={onDownloadStatement}
+                                onDelete={onDeleteStatement}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {card.id !== 'new' && (
                     <div className="mb-6">
@@ -651,25 +681,6 @@ const CardDetail: React.FC<CardDetailProps> = ({
                     </div>
                 )}
 
-                {kind === 'Credit' && (
-                    <div className="mb-6 grid grid-cols-2 gap-3">
-                        <div className="rounded-xl border border-border bg-surface p-4">
-                            <p className="text-[10px] uppercase tracking-wide text-secondary font-bold">Current month debt</p>
-                            <p className="text-xl font-black text-textMain mt-1">{computedCreditDebt.toFixed(2)} {baseCurrency}</p>
-                            <p className="text-[10px] text-secondary mt-1">Linked expenses and subscriptions from this month.</p>
-                        </div>
-                        <div className="rounded-xl border border-border bg-surface p-4">
-                            <p className="text-[10px] uppercase tracking-wide text-secondary font-bold">Credit card snapshot</p>
-                            <p className="text-xl font-black text-textMain mt-1">
-                                {creditLimit && parseFloat(creditLimit) > 0
-                                  ? `${Math.max(parseFloat(creditLimit) - computedCreditDebt, 0).toFixed(2)} ${baseCurrency}`
-                                  : `0.00 ${baseCurrency}`}
-                            </p>
-                            <p className="text-[10px] text-secondary mt-1">Remaining credit after linked monthly spend.</p>
-                        </div>
-                    </div>
-                )}
-
                 {benefitRows.length > 0 && (
                     <div className="mb-6 bg-background border border-border rounded-xl p-4">
                         <div className="flex items-center justify-between mb-3">
@@ -722,131 +733,7 @@ const CardDetail: React.FC<CardDetailProps> = ({
                     </div>
                 )}
 
-                {/* Edit Form */}
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-semibold text-secondary uppercase mb-1">Card Kind</label>
-                        <select
-                            value={kind}
-                            onChange={e => setKind(e.target.value as PaymentCardKind)}
-                            className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
-                        >
-                            <option value="Credit">Credit Card</option>
-                            <option value="Debit">Debit Card</option>
-                            <option value="MultiCurrency">Multi-currency Card</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold text-secondary uppercase mb-1">Card Nickname</label>
-                        <input 
-                            type="text"
-                            value={name}
-                            onChange={e => setName(e.target.value)}
-                            placeholder="e.g. Chase Sapphire"
-                            className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Card Type</label>
-                            <select 
-                                value={type}
-                                onChange={e => setType(e.target.value as CardType)}
-                                className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
-                            >
-                                {CARD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                             <label className="block text-xs font-semibold text-secondary uppercase mb-1">Last 4 Digits</label>
-                             <input 
-                                type="text"
-                                maxLength={4}
-                                value={last4}
-                                onChange={e => setLast4(e.target.value)}
-                                placeholder="4242"
-                                className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none font-mono text-center tracking-widest"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        {kind === 'Credit' ? (
-                            <>
-                                <div>
-                                    <label className="block text-xs font-semibold text-secondary uppercase mb-1">Credit Limit</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            value={creditLimit}
-                                            onChange={e => setCreditLimit(e.target.value)}
-                                            placeholder="0.00"
-                                            className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none no-spinner"
-                                        />
-                                        <span className="absolute right-3 top-3 text-xs text-secondary">{baseCurrency}</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-secondary uppercase mb-1">Current Debt</label>
-                                    <div className="rounded-xl border border-border bg-background p-3">
-                                        <p className="text-base font-bold text-textMain">
-                                            {computedCreditDebt.toFixed(2)} {baseCurrency}
-                                        </p>
-                                        <p className="text-[10px] text-secondary mt-1">
-                                            Auto-calculated from this month&apos;s linked expenses and subscriptions.
-                                        </p>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="col-span-2">
-                                <label className="block text-xs font-semibold text-secondary uppercase mb-1">Current Balance</label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={currentBalance}
-                                        onChange={e => setCurrentBalance(e.target.value)}
-                                        placeholder="0.00"
-                                        className="w-full bg-background border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none no-spinner"
-                                    />
-                                    <span className="absolute right-3 top-3 text-xs text-secondary">{baseCurrency}</span>
-                                </div>
-                            </div>
-                        )}
-                        <div className={kind === 'Credit' ? '' : 'col-span-2'}>
-                             <label className="block text-xs font-semibold text-secondary uppercase mb-1">Theme Color</label>
-                             <div className="flex items-center space-x-2 bg-background border border-border rounded-xl p-2">
-                                <input 
-                                    type="color" 
-                                    value={color}
-                                    onChange={e => setColor(e.target.value)}
-                                    className="w-8 h-8 rounded-lg cursor-pointer border-none bg-transparent"
-                                />
-                                <span className="text-xs text-secondary font-mono">{color}</span>
-                             </div>
-                        </div>
-                    </div>
-
-                    {kind === 'Credit' && creditLimit && parseFloat(creditLimit) > 0 && (
-                        <div className="flex items-start bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                            <AlertTriangle size={16} className="text-blue-500 mr-2 mt-0.5" />
-                            <p className="text-xs text-blue-700 dark:text-blue-300">
-                                Credit cards show debt and limit. The remaining credit is calculated automatically.
-                            </p>
-                        </div>
-                    )}
-
-                    <button 
-                        onClick={handleSave}
-                        className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 transition-opacity flex justify-center items-center mt-4"
-                    >
-                        <Save size={18} className="mr-2" /> {card.id === 'new' ? 'Add Card' : 'Save Changes'}
-                    </button>
-                </div>
             </div>
-        </div>
     </div>
   );
 };

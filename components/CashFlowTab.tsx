@@ -13,8 +13,9 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES } from '../types';
+import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES } from '../types';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
+import StatementsList from './StatementsList';
 
 interface CashFlowTabProps {
   baseCurrency: string;
@@ -24,6 +25,11 @@ interface CashFlowTabProps {
   onDeleteAccount: (accountId: string) => void;
   onSaveBalanceEntry: (entry: CashBalanceEntry) => void;
   onDeleteBalanceEntry: (entryId: string) => void;
+  statements: AccountStatement[];
+  statementsEnabled: boolean;
+  onUploadStatement: (file: File, params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string }) => void | Promise<void>;
+  onDownloadStatement: (statement: AccountStatement) => void | Promise<void>;
+  onDeleteStatement: (statement: AccountStatement) => void | Promise<void>;
 }
 
 const INSTITUTIONS = ['Maybank', 'CIMB', 'OCBC', 'DBS', 'UOB', 'HSBC', 'Standard Chartered', 'Trust Bank', 'GXS Bank', 'YouTrip', 'Revolut', 'Wise', 'Other'];
@@ -52,11 +58,20 @@ const ACCOUNT_TYPE_ICON: Record<CashAccountType, React.ComponentType<{ size?: nu
   Other: Banknote,
 };
 
-type RangeMode = 'Monthly' | 'Yearly';
+type RangeMode = 'Daily' | 'Monthly' | 'Yearly';
+
+const BUCKET_COUNTS: Record<RangeMode, number> = { Daily: 30, Monthly: 12, Yearly: 6 };
 
 const formatMonthYear = (date: Date) => date.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+const formatDay = (date: Date) => date.toLocaleString('en-US', { day: 'numeric', month: 'short' });
 
 const getWindowEnd = (range: RangeMode, offset: number) => {
+  if (range === 'Daily') {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (offset * BUCKET_COUNTS.Daily));
+    return date;
+  }
   if (range === 'Monthly') {
     return new Date(new Date().getFullYear(), new Date().getMonth() - (offset * 12), 1);
   }
@@ -65,6 +80,11 @@ const getWindowEnd = (range: RangeMode, offset: number) => {
 
 const endOfMonth = (year: number, month: number) => new Date(year, month + 1, 0, 23, 59, 59, 999);
 const endOfYear = (year: number) => new Date(year, 11, 31, 23, 59, 59, 999);
+const endOfDay = (date: Date) => {
+  const result = new Date(date);
+  result.setHours(23, 59, 59, 999);
+  return result;
+};
 
 const toDateInputValue = (date: Date = new Date()) => {
   const year = date.getFullYear();
@@ -119,9 +139,15 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDeleteAccount,
   onSaveBalanceEntry,
   onDeleteBalanceEntry,
+  statements,
+  statementsEnabled,
+  onUploadStatement,
+  onDownloadStatement,
+  onDeleteStatement,
 }) => {
   const [rangeMode, setRangeMode] = useState<RangeMode>('Monthly');
   const [windowOffset, setWindowOffset] = useState(0);
+  const [expandedStatementsAccountId, setExpandedStatementsAccountId] = useState<string | null>(null);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountForm, setAccountForm] = useState<AccountFormState>(createEmptyAccountForm());
   const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false);
@@ -129,12 +155,29 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState(baseCurrency);
+  const [accountTypeFilter, setAccountTypeFilter] = useState<CashAccountType | 'All'>('All');
 
   useEffect(() => {
     setDisplayCurrency(baseCurrency);
   }, [baseCurrency]);
 
   const activeAccounts = useMemo(() => accounts.filter(account => !account.isArchived), [accounts]);
+
+  const presentAccountTypes = useMemo(
+    () => ACCOUNT_TYPES.filter(option => activeAccounts.some(account => account.accountType === option.type)),
+    [activeAccounts],
+  );
+
+  useEffect(() => {
+    if (accountTypeFilter !== 'All' && !presentAccountTypes.some(option => option.type === accountTypeFilter)) {
+      setAccountTypeFilter('All');
+    }
+  }, [accountTypeFilter, presentAccountTypes]);
+
+  const visibleAccounts = useMemo(
+    () => (accountTypeFilter === 'All' ? activeAccounts : activeAccounts.filter(account => account.accountType === accountTypeFilter)),
+    [activeAccounts, accountTypeFilter],
+  );
 
   const accountsById = useMemo(
     () => new Map(activeAccounts.map(account => [account.id, account])),
@@ -201,10 +244,20 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   const chartAccounts = selectedAccount ? [selectedAccount] : activeAccounts;
 
   const chartBuckets = useMemo(() => {
-    const bucketCount = rangeMode === 'Monthly' ? 12 : 6;
+    const bucketCount = BUCKET_COUNTS[rangeMode];
     const windowEnd = getWindowEnd(rangeMode, windowOffset);
 
     return Array.from({ length: bucketCount }, (_, index) => {
+      if (rangeMode === 'Daily') {
+        const dayOffset = bucketCount - 1 - index;
+        const bucketDate = new Date(windowEnd);
+        bucketDate.setDate(windowEnd.getDate() - dayOffset);
+        return {
+          label: formatDay(bucketDate),
+          asOfDate: endOfDay(bucketDate),
+        };
+      }
+
       if (rangeMode === 'Monthly') {
         const monthOffset = bucketCount - 1 - index;
         const bucketDate = new Date(windowEnd.getFullYear(), windowEnd.getMonth() - monthOffset, 1);
@@ -244,8 +297,13 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   }, [balanceEntries]);
 
   const chartWindowStart = useMemo(() => {
-    const bucketCount = rangeMode === 'Monthly' ? 12 : 6;
+    const bucketCount = BUCKET_COUNTS[rangeMode];
     const windowEnd = getWindowEnd(rangeMode, windowOffset);
+    if (rangeMode === 'Daily') {
+      const start = new Date(windowEnd);
+      start.setDate(windowEnd.getDate() - (bucketCount - 1));
+      return start;
+    }
     if (rangeMode === 'Monthly') {
       return new Date(windowEnd.getFullYear(), windowEnd.getMonth() - (bucketCount - 1), 1);
     }
@@ -381,7 +439,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-background border border-border rounded-full p-1">
-              {(['Monthly', 'Yearly'] as RangeMode[]).map(mode => (
+              {(['Daily', 'Monthly', 'Yearly'] as RangeMode[]).map(mode => (
                 <button
                   key={mode}
                   onClick={() => {
@@ -423,7 +481,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={rangeMode === 'Monthly' ? 1 : 0} />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={rangeMode === 'Daily' ? Math.ceil(BUCKET_COUNTS.Daily / 10) - 1 : 0} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} width={40} />
               <Tooltip cursor={{ fill: 'var(--color-border)', opacity: 0.3 }} content={renderChartTooltip} />
               {chartAccounts.map((account, index) => (
@@ -485,19 +543,60 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </button>
         </div>
 
+        {activeAccounts.length > 0 && presentAccountTypes.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            <button
+              type="button"
+              onClick={() => setAccountTypeFilter('All')}
+              className={`flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border transition-colors ${
+                accountTypeFilter === 'All'
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-background text-secondary border-border hover:border-primary/50'
+              }`}
+            >
+              All
+            </button>
+            {presentAccountTypes.map(option => {
+              const TypeIcon = ACCOUNT_TYPE_ICON[option.type];
+              const isActive = accountTypeFilter === option.type;
+              return (
+                <button
+                  key={option.type}
+                  type="button"
+                  onClick={() => setAccountTypeFilter(option.type)}
+                  className={`flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border transition-colors ${
+                    isActive
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-background text-secondary border-border hover:border-primary/50'
+                  }`}
+                >
+                  <TypeIcon size={12} />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {activeAccounts.length === 0 ? (
           <div className="text-center py-8 border border-dashed border-border rounded-xl">
             <Landmark size={22} className="mx-auto mb-2 text-secondary opacity-60" />
             <p className="text-xs text-secondary">Add your bank accounts, e-wallets, or multi-currency cards to track your net worth.</p>
           </div>
+        ) : visibleAccounts.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-border rounded-xl">
+            <p className="text-xs text-secondary">No accounts match this filter.</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {activeAccounts.map(account => {
+            {visibleAccounts.map(account => {
               const list = balancesByAccount.get(account.id) || [];
               const latest = list[list.length - 1];
               const AccountIcon = ACCOUNT_TYPE_ICON[account.accountType];
               const isExpanded = expandedAccountId === account.id;
               const isSelected = selectedAccountId === account.id;
+              const isStatementsExpanded = expandedStatementsAccountId === account.id;
+              const accountStatementsList = statements.filter(statement => statement.accountKind === 'Cash' && statement.cashAccountId === account.id);
               return (
                 <div
                   key={account.id}
@@ -548,12 +647,20 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                     </div>
                   </button>
                   <div className="px-3 pb-3 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => setExpandedAccountId(isExpanded ? null : account.id)}
-                      className="text-[10px] font-bold text-secondary hover:text-textMain"
-                    >
-                      {isExpanded ? 'Hide history' : `History (${list.length})`}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setExpandedAccountId(isExpanded ? null : account.id)}
+                        className="text-[10px] font-bold text-secondary hover:text-textMain"
+                      >
+                        {isExpanded ? 'Hide history' : `History (${list.length})`}
+                      </button>
+                      <button
+                        onClick={() => setExpandedStatementsAccountId(isStatementsExpanded ? null : account.id)}
+                        className="text-[10px] font-bold text-secondary hover:text-textMain"
+                      >
+                        {isStatementsExpanded ? 'Hide statements' : `Statements (${accountStatementsList.length})`}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => openLogBalance(account.id)}
@@ -601,6 +708,20 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                           </div>
                         ))
                       )}
+                    </div>
+                  )}
+
+                  {isStatementsExpanded && (
+                    <div className="border-t border-border bg-background px-3 py-3">
+                      <StatementsList
+                        statements={accountStatementsList}
+                        accountKind="Cash"
+                        accountId={account.id}
+                        enabled={statementsEnabled}
+                        onUpload={onUploadStatement}
+                        onDownload={onDownloadStatement}
+                        onDelete={onDeleteStatement}
+                      />
                     </div>
                   )}
                 </div>
@@ -779,7 +900,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                   type="date"
                   value={balanceForm.balanceDate}
                   onChange={e => setBalanceForm(prev => (prev ? { ...prev, balanceDate: e.target.value } : prev))}
-                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:border-primary outline-none"
+                  className="w-full h-12 min-w-0 bg-background border border-border rounded-xl px-3 text-sm text-textMain focus:border-primary outline-none [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </div>
 

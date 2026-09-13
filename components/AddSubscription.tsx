@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Subscription, BillingCycle, CURRENCIES, DEFAULT_CATEGORIES, CardType, PaymentCard, PaymentCardKind } from '../types';
-import { X, Plus, Check, DollarSign, Calendar, Loader2, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
+import { X, Plus, Check, DollarSign, Loader2, Tag, CreditCard as CardIcon, Users } from 'lucide-react';
 import { getCurrencySymbol } from '../services/storageService';
 import ServicePicker from './ServicePicker';
 import { findExactService } from '../services/serviceCatalog';
@@ -165,12 +165,15 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
-      <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
+      <div
+        className="sticky top-0 bg-background/95 backdrop-blur z-10 px-4 pb-4 flex justify-between items-center border-b border-border"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+      >
         <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Subscription' : 'New Subscription'}</h2>
-        <div className="w-6" /> 
+        <div className="w-6" />
       </div>
 
       <div className="p-4 space-y-6 max-w-lg mx-auto animate-slide-up">
@@ -353,15 +356,12 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
             <label className="block text-xs font-semibold text-secondary uppercase mb-1">
                {cycle === BillingCycle.FreeTrial ? 'Trial Ends On' : 'First Payment'}
             </label>
-            <div className="relative">
-              <span className="absolute left-3 top-3 text-secondary"><Calendar size={16} /></span>
-              <input 
-                type="date" 
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none [color-scheme:dark] dark:[color-scheme:dark] light:[color-scheme:light]"
-              />
-            </div>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full h-12 bg-surface border border-border rounded-xl px-3 text-textMain focus:border-primary outline-none [color-scheme:light] dark:[color-scheme:dark]"
+            />
           </div>
 
           <div>

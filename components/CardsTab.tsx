@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Landmark, Plus, Pencil } from 'lucide-react';
 import { CardBenefit, CardPointTransaction, Expense, PaymentCard, Subscription } from '../types';
-import { convertCurrency, getMonthlyCost } from '../services/storageService';
+import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
 import { getCardMilesSummary, getCardPointsSummary } from '../services/cardBenefitsService';
 
@@ -13,34 +13,17 @@ interface CardsTabProps {
   cardPointTransactions: CardPointTransaction[];
   baseCurrency: string;
   onAddCard: () => void;
+  onViewCard: (card: PaymentCard) => void;
   onEditCard: (card: PaymentCard) => void;
 }
 
-const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, cardBenefits = [], cardPointTransactions, baseCurrency, onAddCard, onEditCard }) => {
+const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, cardBenefits = [], cardPointTransactions, baseCurrency, onAddCard, onViewCard, onEditCard }) => {
   const [filter, setFilter] = useState<'All' | 'Debit' | 'Credit' | 'MultiCurrency'>('All');
 
   const cardRows = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
     return cards
       .map(card => {
-        const monthlyExpenseSpend = expenses
-          .filter(expense => {
-            const expenseDate = new Date(expense.expenseDate);
-            return (
-              expense.linkedCardId === card.id ||
-              (!expense.linkedCardId && expense.linkedCardName === card.name)
-            ) && expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear;
-          })
-          .reduce((sum, expense) => sum + convertCurrency(Number(expense.amount || 0), expense.currency || baseCurrency, baseCurrency), 0);
-
-        const monthlySubscriptionSpend = subscriptions
-          .filter(sub => sub.status === 'Active' && (sub.cardId === card.id || sub.cardName === card.name))
-          .reduce((sum, sub) => sum + getMonthlyCost(sub, baseCurrency), 0);
-
-        const monthlySpend = monthlyExpenseSpend + monthlySubscriptionSpend;
+        const monthlySpend = getCardMonthlySpend(card, expenses, subscriptions, baseCurrency);
 
         const isCreditCard = card.kind === 'Credit';
         const limitOrBalance = isCreditCard ? (card.creditLimit ?? 0) : (card.currentBalance ?? 0);
@@ -59,6 +42,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
           linkedCount: subscriptions.filter(sub => sub.cardId === card.id || sub.cardName === card.name).length,
           currentPoints: pointsSummary.currentPoints,
           krisflyerMiles: pointsSummary.krisflyerMiles,
+          expiryStatus: getCardExpiryStatus(card),
         };
       })
       .sort((a, b) => b.monthlySpend - a.monthlySpend);
@@ -130,11 +114,23 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredRows.map(({ card, monthlySpend, isCreditCard, limitOrBalance, debt, available, currentBalance, linkedCount, currentPoints, krisflyerMiles }) => (
+          {filteredRows.map(({ card, monthlySpend, isCreditCard, limitOrBalance, debt, available, currentBalance, linkedCount, currentPoints, krisflyerMiles, expiryStatus }) => (
             (() => {
               const milesSummary = getCardMilesSummary(card.name, cardBenefits);
               return (
-            <div key={card.id} className="bg-surface border border-border rounded-2xl p-4 shadow-sm">
+            <div
+              key={card.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onViewCard(card)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onViewCard(card);
+                }
+              }}
+              className="bg-surface border border-border rounded-2xl p-4 shadow-sm cursor-pointer hover:border-primary/40 transition-colors"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center min-w-0">
                   <div
@@ -149,12 +145,33 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
                       <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-secondary">
                         {card.kind === 'Credit' ? 'Credit' : card.kind === 'Debit' ? 'Debit' : 'Multi-currency'}
                       </span>
+                      {expiryStatus === 'expired' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-red-500/40 bg-red-500/10 text-red-500 font-bold">
+                          Expired
+                        </span>
+                      )}
+                      {expiryStatus === 'expiring-soon' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-500 font-bold">
+                          Expiring soon
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-secondary mt-0.5">{card.type} •••• {card.last4Digits || '0000'}</p>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {card.type} •••• {card.last4Digits || '0000'}
+                      {card.expiryMonth && card.expiryYear && (
+                        <> · {card.expiryMonth.toString().padStart(2, '0')}/{card.expiryYear.toString().slice(-2)}</>
+                      )}
+                    </p>
                   </div>
                 </div>
 
-                <button onClick={() => onEditCard(card)} className="text-primary text-xs font-bold flex items-center shrink-0">
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onEditCard(card);
+                  }}
+                  className="text-primary text-xs font-bold flex items-center shrink-0"
+                >
                   <Pencil size={14} className="mr-1" />
                   Edit
                 </button>

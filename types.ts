@@ -70,6 +70,8 @@ export interface PaymentCard {
   creditLimit?: number; // Credit cards only
   currentDebt?: number; // Credit cards only
   currentBalance?: number; // Debit / multicurrency cards
+  expiryMonth?: number; // 1-12
+  expiryYear?: number; // e.g. 2027
 }
 
 export interface CardPointTransaction {
@@ -244,6 +246,20 @@ export interface CashBalanceEntry {
   balance: number;
   notes?: string;
   createdAt?: string;
+}
+
+export type AccountStatementKind = 'Cash' | 'Card';
+
+export interface AccountStatement {
+  id: string;
+  accountKind: AccountStatementKind;
+  cashAccountId?: string; // set when accountKind === 'Cash'
+  cardId?: string; // set when accountKind === 'Card'
+  fileName: string;
+  storagePath: string; // path within the 'account-statements' storage bucket
+  fileSize?: number;
+  statementPeriod?: string; // free-text label, e.g. "August 2026"
+  uploadedAt: string;
 }
 
 export interface SubscriptionStats {

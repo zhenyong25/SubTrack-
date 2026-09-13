@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Check, ChevronDown, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
+import { Check, ChevronDown, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Expense, PaymentCard } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 
@@ -112,7 +112,10 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
-      <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
+      <div
+        className="sticky top-0 bg-background/95 backdrop-blur z-10 px-4 pb-4 flex justify-between items-center border-b border-border"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+      >
         <button onClick={onCancel} disabled={isSaving} aria-label="Close expense form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40">
           <X size={24} />
         </button>
@@ -172,16 +175,13 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
             <label htmlFor="expense-date" className={LABEL_CLASS}>
               Expense date
             </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-secondary"><Calendar size={16} /></span>
-              <input
-                id="expense-date"
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className={`${FIELD_CLASS} pl-9 [color-scheme:light] dark:[color-scheme:dark]`}
-              />
-            </div>
+            <input
+              id="expense-date"
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className={`${FIELD_CLASS} [color-scheme:light] dark:[color-scheme:dark]`}
+            />
           </div>
 
           <div className="border-t border-border pt-6">

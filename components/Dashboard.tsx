@@ -1,23 +1,19 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Subscription, BillingCycle, CURRENCIES, PaymentCard, CardPointTransaction, Expense } from '../types';
+import { Subscription, BillingCycle, CURRENCIES, PaymentCard } from '../types';
 import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { CreditCard, Calendar, TrendingUp, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Clock, PlusCircle } from 'lucide-react';
 import CardLogo from './CardLogo';
-import CardDetail from './CardDetail';
 import SubscriptionList from './SubscriptionList';
 
 interface DashboardProps {
   subscriptions: Subscription[];
   cards: PaymentCard[];
-  expenses: Expense[];
   baseCurrency: string;
   onCurrencyChange: (currency: string) => void;
-  onUpdateCard: (card: PaymentCard) => void;
-  cardPointTransactions: CardPointTransaction[];
-  onUpdateCardPointTransactions: (transactions: CardPointTransaction[]) => void;
   onAddCard: () => void;
+  onViewCard: (card: PaymentCard) => void;
   onDeleteSubscription: (id: string) => void;
   onSelectSubscription: (subId: string) => void;
 }
@@ -26,11 +22,10 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'
 
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
 
-const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, baseCurrency, onCurrencyChange, onUpdateCard, cardPointTransactions, onUpdateCardPointTransactions, onAddCard, onDeleteSubscription, onSelectSubscription }) => {
+const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrency, onCurrencyChange, onAddCard, onViewCard, onDeleteSubscription, onSelectSubscription }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [cardFilterDate, setCardFilterDate] = useState(new Date());
-  const [selectedCardForDetail, setSelectedCardForDetail] = useState<PaymentCard | null>(null);
-  
+
   // Year state for Chart
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -431,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, b
                         return (
                             <div 
                                 key={item.name} 
-                                onClick={() => item.instance && setSelectedCardForDetail(item.instance)}
+                                onClick={() => item.instance && onViewCard(item.instance)}
                                 className={`flex items-center justify-between p-3 rounded-lg border border-border/50 transition-colors cursor-pointer hover:border-primary/50 ${statusColor}`}
                             >
                                 <div className="flex items-center">
@@ -512,19 +507,6 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, expenses, b
           ))}
         </div>
       </div>
-
-      {selectedCardForDetail && (
-              <CardDetail 
-              card={selectedCardForDetail} 
-              subscriptions={subscriptions}
-              expenses={expenses}
-              baseCurrency={baseCurrency}
-              onUpdate={onUpdateCard}
-              cardPointTransactions={cardPointTransactions}
-              onUpdateCardPointTransactions={onUpdateCardPointTransactions}
-              onClose={() => setSelectedCardForDetail(null)}
-          />
-      )}
     </div>
   );
 };

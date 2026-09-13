@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, CircleDollarSign, Calendar, Loader2, Tag, X } from 'lucide-react';
+import { Check, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Income, IncomeCycle, IncomeKind, IncomeMode } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 
@@ -71,7 +71,10 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
 
   return (
     <div className="bg-background min-h-screen pb-20 transition-colors duration-300">
-      <div className="sticky top-0 bg-background/95 backdrop-blur z-10 p-4 flex justify-between items-center border-b border-border">
+      <div
+        className="sticky top-0 bg-background/95 backdrop-blur z-10 px-4 pb-4 flex justify-between items-center border-b border-border"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+      >
         <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
@@ -157,15 +160,12 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
             <label className="block text-xs font-semibold text-secondary uppercase mb-1">
               {incomeMode === 'One-time' ? 'Income Date' : status === 'Past' ? 'Ended On' : 'Start Date'}
             </label>
-            <div className="relative">
-              <span className="absolute left-3 top-3 text-secondary"><Calendar size={16} /></span>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full bg-surface border border-border rounded-xl p-3 pl-9 text-textMain focus:border-primary outline-none [color-scheme:dark] dark:[color-scheme:dark] light:[color-scheme:light]"
-              />
-            </div>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full h-12 bg-surface border border-border rounded-xl px-3 text-textMain focus:border-primary outline-none [color-scheme:light] dark:[color-scheme:dark]"
+            />
           </div>
 
           {incomeMode === 'Recurring' && (

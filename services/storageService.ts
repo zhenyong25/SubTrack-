@@ -241,6 +241,51 @@ export const getMonthlyCost = (sub: Subscription, targetCurrency: string = 'USD'
   return convertCurrency(myShare, sub.currency || 'USD', targetCurrency);
 };
 
+// Last day of the card's expiry month, or null if no expiry is set
+export const getCardExpiryDate = (card: PaymentCard): Date | null => {
+  if (!card.expiryMonth || !card.expiryYear) return null;
+  return new Date(card.expiryYear, card.expiryMonth, 0, 23, 59, 59, 999);
+};
+
+export const getCardExpiryStatus = (card: PaymentCard): 'expired' | 'expiring-soon' | 'ok' | null => {
+  const expiryDate = getCardExpiryDate(card);
+  if (!expiryDate) return null;
+
+  const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'expired';
+  if (diffDays <= 60) return 'expiring-soon';
+  return 'ok';
+};
+
+// Current month's linked expenses + active subscriptions for a card, converted to baseCurrency
+export const getCardMonthlySpend = (
+  card: PaymentCard,
+  expenses: Expense[],
+  subscriptions: Subscription[],
+  baseCurrency: string,
+): number => {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const expenseTotal = expenses
+    .filter(expense => {
+      const expenseDate = new Date(expense.expenseDate);
+      return (
+        (expense.linkedCardId === card.id || (!expense.linkedCardId && expense.linkedCardName === card.name)) &&
+        expenseDate.getMonth() === currentMonth &&
+        expenseDate.getFullYear() === currentYear
+      );
+    })
+    .reduce((sum, expense) => sum + convertCurrency(Number(expense.amount || 0), expense.currency || baseCurrency, baseCurrency), 0);
+
+  const subscriptionTotal = subscriptions
+    .filter(sub => sub.status === 'Active' && (sub.cardId === card.id || sub.cardName === card.name))
+    .reduce((sum, sub) => sum + getMonthlyCost(sub, baseCurrency), 0);
+
+  return expenseTotal + subscriptionTotal;
+};
+
 export const getMonthlyIncome = (income: Income, targetCurrency: string = 'USD'): number => {
   if (income.incomeMode === 'One-time') {
     return 0;

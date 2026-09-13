@@ -135,7 +135,10 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
   return (
     <div className="fixed inset-0 bg-background z-50 flex flex-col overflow-hidden animate-slide-up">
         {/* Header */}
-        <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50 backdrop-blur">
+        <div
+          className="px-4 pb-4 border-b border-border flex items-center justify-between bg-surface/50 backdrop-blur shrink-0"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+        >
             <button onClick={onClose} className="p-2 -ml-2 text-secondary hover:text-textMain">
                 <ArrowLeft size={24} />
             </button>
