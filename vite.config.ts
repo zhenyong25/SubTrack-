@@ -12,6 +12,44 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [
         react(),
+        {
+          // Mirrors server/index.ts's proxy route for local `vite dev`, which doesn't run
+          // the Cloudflare Worker: forwards to Hugging Face with the token read server-side
+          // here (via loadEnv, in this Node process) so it's never bundled into client JS
+          // even in dev, and so scanning a statement works locally without deploying first.
+          name: 'hf-chat-proxy',
+          configureServer(server) {
+            server.middlewares.use('/api/hf/chat', async (req, res) => {
+              if (req.method !== 'POST') {
+                res.statusCode = 405;
+                res.end();
+                return;
+              }
+
+              const chunks: Buffer[] = [];
+              for await (const chunk of req) chunks.push(chunk as Buffer);
+              const body = Buffer.concat(chunks).toString('utf8');
+
+              try {
+                const upstream = await fetch('https://router.huggingface.co/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${env.HF_TOKEN || ''}`,
+                  },
+                  body,
+                });
+                res.statusCode = upstream.status;
+                res.setHeader('Content-Type', upstream.headers.get('Content-Type') || 'application/json');
+                res.end(await upstream.text());
+              } catch (error) {
+                res.statusCode = 502;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : 'Proxy request failed' } }));
+              }
+            });
+          },
+        },
         VitePWA({
           strategies: 'injectManifest',
           srcDir: '.',
@@ -52,7 +90,6 @@ export default defineConfig(({ mode }) => {
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.HF_TOKEN': JSON.stringify(env.HF_TOKEN)
       },
       resolve: {
         alias: {
