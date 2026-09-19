@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, Subscription, UserProfile } from '../types';
+import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -1278,6 +1278,103 @@ export const deleteAccountStatement = async (statement: AccountStatement): Promi
 
   await supabase.storage.from(STATEMENTS_BUCKET).remove([statement.storagePath]);
   await supabase.from('account_statements').delete().eq('id', statement.id).eq('user_id', userId);
+};
+
+type StatementTransactionRow = {
+  id: string;
+  user_id: string;
+  statement_id: string;
+  transaction_date: string;
+  description: string;
+  amount: number;
+  currency: string;
+  direction: StatementTransactionDirection;
+  matched_expense_id: string | null;
+  dismissed?: boolean | null;
+  created_at?: string;
+};
+
+const mapStatementTransactionRow = (row: StatementTransactionRow): StatementTransaction => ({
+  id: row.id,
+  statementId: row.statement_id,
+  transactionDate: dateOnly(row.transaction_date),
+  description: row.description,
+  amount: Number(row.amount),
+  currency: row.currency,
+  direction: row.direction,
+  matchedExpenseId: row.matched_expense_id ?? undefined,
+  dismissed: row.dismissed ?? false,
+  createdAt: row.created_at,
+});
+
+export const fetchStatementTransactions = async (statementId: string): Promise<StatementTransaction[]> => {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('account_statement_transactions')
+    .select('*')
+    .eq('statement_id', statementId)
+    .order('transaction_date', { ascending: true });
+
+  if (error) {
+    console.error('Failed to fetch statement transactions', error);
+    return [];
+  }
+
+  return (data as StatementTransactionRow[] | null | undefined)?.map(mapStatementTransactionRow) ?? [];
+};
+
+export const saveParsedStatementTransactions = async (
+  statementId: string,
+  parsed: ParsedStatementTransaction[],
+): Promise<StatementTransaction[]> => {
+  if (!supabase) throw new Error('Supabase is not configured');
+  const userId = await getSupabaseUserId();
+  if (!userId) throw new Error('You must be signed in to save parsed transactions');
+
+  if (parsed.length === 0) return [];
+
+  const rows = parsed.map(row => ({
+    user_id: userId,
+    statement_id: statementId,
+    transaction_date: row.transactionDate,
+    description: row.description,
+    amount: row.amount,
+    currency: row.currency,
+    direction: row.direction,
+  }));
+
+  const { data, error } = await supabase.from('account_statement_transactions').insert(rows).select('*');
+  if (error) throw error;
+
+  return (data as StatementTransactionRow[] | null | undefined)?.map(mapStatementTransactionRow) ?? [];
+};
+
+export const clearStatementTransactions = async (statementId: string): Promise<void> => {
+  if (!supabase) return;
+  await supabase.from('account_statement_transactions').delete().eq('statement_id', statementId);
+};
+
+export const markStatementTransactionMatched = async (
+  statementTransactionId: string,
+  matchedExpenseId: string | null,
+): Promise<void> => {
+  if (!supabase) return;
+  await supabase
+    .from('account_statement_transactions')
+    .update({ matched_expense_id: matchedExpenseId })
+    .eq('id', statementTransactionId);
+};
+
+export const markStatementTransactionDismissed = async (
+  statementTransactionId: string,
+  dismissed: boolean,
+): Promise<void> => {
+  if (!supabase) return;
+  await supabase
+    .from('account_statement_transactions')
+    .update({ dismissed })
+    .eq('id', statementTransactionId);
 };
 
 export const clearStoredAppData = async () => {

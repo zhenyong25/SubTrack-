@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileText, Loader2, Trash2, Upload } from 'lucide-react';
+import { FileText, GitCompare, Loader2, Trash2, Upload } from 'lucide-react';
 import { AccountStatement, AccountStatementKind } from '../types';
 
 interface StatementsListProps {
@@ -10,6 +10,7 @@ interface StatementsListProps {
   onUpload: (file: File, params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string }) => void | Promise<void>;
   onDownload: (statement: AccountStatement) => void | Promise<void>;
   onDelete: (statement: AccountStatement) => void | Promise<void>;
+  onReconcile?: (statement: AccountStatement) => void;
 }
 
 const formatFileSize = (bytes?: number) => {
@@ -21,7 +22,7 @@ const formatFileSize = (bytes?: number) => {
 const formatUploadDate = (isoDate: string) =>
   new Date(isoDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
-const StatementsList: React.FC<StatementsListProps> = ({ statements, accountKind, accountId, enabled, onUpload, onDownload, onDelete }) => {
+const StatementsList: React.FC<StatementsListProps> = ({ statements, accountKind, accountId, enabled, onUpload, onDownload, onDelete, onReconcile }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -105,6 +106,17 @@ const StatementsList: React.FC<StatementsListProps> = ({ statements, accountKind
                   </span>
                 </span>
               </button>
+              {onReconcile && (
+                <button
+                  type="button"
+                  onClick={() => onReconcile(statement)}
+                  className="text-secondary hover:text-primary shrink-0"
+                  aria-label={`Reconcile ${statement.fileName}`}
+                  title="Compare against recorded transactions"
+                >
+                  <GitCompare size={14} />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

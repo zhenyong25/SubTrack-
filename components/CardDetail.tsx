@@ -5,6 +5,7 @@ import { getCardMilesSummary } from '../services/cardBenefitsService';
 import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
 import StatementsList from './StatementsList';
+import StatementReconcilePanel from './StatementReconcilePanel';
 import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
 
 interface CardDetailProps {
@@ -22,6 +23,8 @@ interface CardDetailProps {
   onUploadStatement: (file: File, params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string }) => void | Promise<void>;
   onDownloadStatement: (statement: AccountStatement) => void | Promise<void>;
   onDeleteStatement: (statement: AccountStatement) => void | Promise<void>;
+  onAddExpense: (expense: Omit<Expense, 'id'>) => Promise<Expense>;
+  onUpdateExpense: (expense: Expense) => Promise<void>;
 }
 
 const POINT_ACTIVITY_TYPES: CardPointsActivityType[] = ['Earned', 'Redeemed', 'Expired', 'Adjusted', 'Transferred In', 'Transferred Out'];
@@ -92,6 +95,8 @@ const CardDetail: React.FC<CardDetailProps> = ({
   onUploadStatement,
   onDownloadStatement,
   onDeleteStatement,
+  onAddExpense,
+  onUpdateExpense,
 }) => {
   const isCreditCard = card.kind === 'Credit';
   const expiryStatus = getCardExpiryStatus(card);
@@ -99,6 +104,7 @@ const CardDetail: React.FC<CardDetailProps> = ({
   const [pointsWindowOffset, setPointsWindowOffset] = useState(0);
   const [isPointsFormOpen, setIsPointsFormOpen] = useState(false);
   const [pointForm, setPointForm] = useState<PointFormState>(createEmptyPointForm());
+  const [reconcilingStatement, setReconcilingStatement] = useState<AccountStatement | null>(null);
 
   React.useEffect(() => {
     setPointForm(createEmptyPointForm());
@@ -396,6 +402,7 @@ const CardDetail: React.FC<CardDetailProps> = ({
                                 onUpload={onUploadStatement}
                                 onDownload={onDownloadStatement}
                                 onDelete={onDeleteStatement}
+                                onReconcile={setReconcilingStatement}
                             />
                         </div>
                     </div>
@@ -734,6 +741,19 @@ const CardDetail: React.FC<CardDetailProps> = ({
                 )}
 
             </div>
+
+        {reconcilingStatement && (
+            <StatementReconcilePanel
+                statement={reconcilingStatement}
+                card={card}
+                expenses={expenses}
+                subscriptions={subscriptions}
+                baseCurrency={baseCurrency}
+                onAddExpense={onAddExpense}
+                onUpdateExpense={onUpdateExpense}
+                onClose={() => setReconcilingStatement(null)}
+            />
+        )}
     </div>
   );
 };
