@@ -262,6 +262,26 @@ export interface AccountStatement {
   uploadedAt: string;
 }
 
+export type StatementTransactionDirection = 'debit' | 'credit';
+
+// A single line item extracted from an uploaded statement PDF, before it has
+// been persisted (id/statementId are assigned once saved).
+export interface ParsedStatementTransaction {
+  transactionDate: string; // ISO date string (YYYY-MM-DD)
+  description: string;
+  amount: number; // always positive; sign is conveyed via `direction`
+  currency: string;
+  direction: StatementTransactionDirection;
+}
+
+export interface StatementTransaction extends ParsedStatementTransaction {
+  id: string;
+  statementId: string;
+  matchedExpenseId?: string; // set once the user imports this row as an Expense
+  dismissed?: boolean; // hidden from "not recorded" - the user decided not to import it
+  createdAt?: string;
+}
+
 export interface SubscriptionStats {
   totalMonthly: number;
   totalYearly: number;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, ChevronDown, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
 import { CURRENCIES, Expense, PaymentCard } from '../types';
-import { getCurrencySymbol } from '../services/storageService';
+import { DEFAULT_EXPENSE_CATEGORIES as DEFAULT_CATEGORIES, getCurrencySymbol, getExpenseCategories, saveExpenseCategories } from '../services/storageService';
 
 interface AddExpenseProps {
   onSave: (expense: Omit<Expense, 'id'>) => void | Promise<void>;
@@ -15,21 +15,6 @@ const COLORS = ['#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#8b5cf6'
 const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Slate'];
 const FIELD_CLASS = 'w-full min-w-0 h-12 bg-surface border border-border rounded-xl px-3 text-sm text-textMain placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors';
 const LABEL_CLASS = 'mb-2 block text-xs font-semibold text-secondary';
-
-const DEFAULT_CATEGORIES = ['Food', 'Bills', 'Groceries', 'Rent', 'Transport', 'Dining', 'Shopping', 'Health', 'Insurance', 'Education', 'Subscriptions'];
-const EXPENSE_CATEGORIES_KEY = 'subtrack_expense_categories_v1';
-
-const loadStoredCategories = () => {
-  try {
-    const raw = localStorage.getItem(EXPENSE_CATEGORIES_KEY);
-    if (!raw) return DEFAULT_CATEGORIES;
-    const parsed = JSON.parse(raw) as string[];
-    const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...parsed.filter(Boolean)]));
-    return merged.length > 0 ? merged : DEFAULT_CATEGORIES;
-  } catch {
-    return DEFAULT_CATEGORIES;
-  }
-};
 
 const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, initialDate, cards }) => {
   const [name, setName] = useState('');
@@ -45,7 +30,7 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setCategories(loadStoredCategories());
+    setCategories(getExpenseCategories());
     if (!initialData) {
       if (initialDate) setDate(initialDate);
       return;
@@ -62,9 +47,8 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
   }, [initialData, initialDate]);
 
   const persistCategories = (nextCategories: string[]) => {
-    const normalized = Array.from(new Set(nextCategories.map(cat => cat.trim()).filter(Boolean)));
+    const normalized = saveExpenseCategories(nextCategories);
     setCategories(normalized);
-    localStorage.setItem(EXPENSE_CATEGORIES_KEY, JSON.stringify(normalized));
     if (!normalized.includes(category)) {
       setCategory(normalized[0] || 'Food');
     }

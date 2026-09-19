@@ -39,13 +39,20 @@ export default defineConfig(({ mode }) => {
           },
           injectManifest: {
             globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
-            globIgnores: ['**/service-logos/**'],
+            // service-logos are fetched on demand; the pdf.js worker is only needed
+            // when reconciling a statement, so keep both out of the eager install precache.
+            globIgnores: ['**/service-logos/**', '**/pdf.worker*.mjs'],
+            // Default is 2 MiB; the main bundle has grown past that (Supabase, pdf.js,
+            // recharts, etc.), which would silently drop it from the precache manifest
+            // and break offline support for anyone with the app installed.
+            maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           },
         }),
       ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.HF_TOKEN': JSON.stringify(env.HF_TOKEN)
       },
       resolve: {
         alias: {

@@ -5,6 +5,27 @@ const STORAGE_KEY = 'subtrack_data_v1';
 const STORAGE_KEY_CARDS = 'subtrack_cards_v1';
 const STORAGE_KEY_FRIENDS = 'subtrack_friends_v1';
 
+export const DEFAULT_EXPENSE_CATEGORIES = ['Food', 'Bills', 'Groceries', 'Rent', 'Transport', 'Dining', 'Shopping', 'Health', 'Insurance', 'Education', 'Subscriptions'];
+const EXPENSE_CATEGORIES_STORAGE_KEY = 'subtrack_expense_categories_v1';
+
+export const getExpenseCategories = (): string[] => {
+  try {
+    const raw = localStorage.getItem(EXPENSE_CATEGORIES_STORAGE_KEY);
+    if (!raw) return DEFAULT_EXPENSE_CATEGORIES;
+    const parsed = JSON.parse(raw) as string[];
+    const merged = Array.from(new Set([...DEFAULT_EXPENSE_CATEGORIES, ...parsed.filter(Boolean)]));
+    return merged.length > 0 ? merged : DEFAULT_EXPENSE_CATEGORIES;
+  } catch {
+    return DEFAULT_EXPENSE_CATEGORIES;
+  }
+};
+
+export const saveExpenseCategories = (categories: string[]) => {
+  const normalized = Array.from(new Set(categories.map(cat => cat.trim()).filter(Boolean)));
+  localStorage.setItem(EXPENSE_CATEGORIES_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+};
+
 // Static rates for demo purposes (Base is USD)
 const EXCHANGE_RATES: Record<string, number> = {
   'USD': 1.0,

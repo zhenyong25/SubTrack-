@@ -527,6 +527,25 @@ function App() {
     setActiveTab(Tab.Expenses);
   };
 
+  const handleAddExpenseFromStatement = async (data: Omit<Expense, 'id'>): Promise<Expense> => {
+    const newExpense: Expense = {
+      ...data,
+      id: crypto.randomUUID(),
+    };
+    const updatedList = [...expenses, newExpense];
+    setExpenses(updatedList);
+    const saved = await saveExpenses(updatedList);
+    showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase`);
+    return newExpense;
+  };
+
+  const handleUpdateExpenseFromStatement = async (updated: Expense): Promise<void> => {
+    const updatedList = expenses.map(expense => (expense.id === updated.id ? updated : expense));
+    setExpenses(updatedList);
+    const saved = await saveExpenses(updatedList);
+    showToast(saved ? `Updated ${updated.name}` : `Failed to save ${updated.name} to Supabase`);
+  };
+
   const handleCloneSubscription = (originalSub: Subscription) => {
       const newSub: Subscription = {
           ...originalSub,
@@ -1160,6 +1179,8 @@ function App() {
               onUploadStatement={handleUploadStatement}
               onDownloadStatement={handleDownloadStatement}
               onDeleteStatement={handleDeleteStatement}
+              onAddExpense={handleAddExpenseFromStatement}
+              onUpdateExpense={handleUpdateExpenseFromStatement}
           />
       )}
 
