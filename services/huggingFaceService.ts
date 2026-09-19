@@ -6,7 +6,6 @@ import { ParsedStatementTransaction } from '../types';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
-const HF_TOKEN = process.env.HF_TOKEN || '';
 // Any instruction-tuned model hosted on Hugging Face's Inference Providers works here;
 // Qwen2.5-7B-Instruct is a solid free-tier default for structured JSON extraction.
 // Pinned to a specific provider ("featherless-ai") rather than letting the router
@@ -17,7 +16,12 @@ const HF_TOKEN = process.env.HF_TOKEN || '';
 // Check what's currently live for a model via:
 //   https://huggingface.co/api/models/<model-id>?expand[]=inferenceProviderMapping
 const HF_MODEL = 'Qwen/Qwen2.5-7B-Instruct:featherless-ai';
-const HF_CHAT_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
+// Same-origin proxy (server/index.ts), not Hugging Face's endpoint directly - calling their
+// router straight from the browser depended on their CORS response being reliable, which
+// wasn't the case in production (a preflight failed there despite the exact same request
+// succeeding moments later from curl). Routing through our own Worker sidesteps browser CORS
+// entirely and keeps the API token server-side instead of bundled into public client JS.
+const HF_CHAT_ENDPOINT = '/api/hf/chat';
 const MAX_STATEMENT_CHARS = 45000;
 
 // Bank e-statement PDFs are digitally generated (not scanned images), so pdf.js can
@@ -278,10 +282,6 @@ export const parseStatementTransactions = async (
   currencyHint?: string,
   onProgress?: (progress: ParseProgress) => void,
 ): Promise<StatementParseResult> => {
-  if (!HF_TOKEN) {
-    throw new Error('AI parsing requires a Hugging Face access token (HF_TOKEN) to be configured for this app.');
-  }
-
   const nonEmptyPages = pages.map(page => page.trim()).filter(Boolean);
   if (nonEmptyPages.length === 0) {
     throw new Error('Could not read any text from this PDF - it may be a scanned image without selectable text.');
@@ -297,7 +297,6 @@ export const parseStatementTransactions = async (
     const response = await fetch(HF_CHAT_ENDPOINT, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${HF_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -310,7 +309,7 @@ export const parseStatementTransactions = async (
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      throw new Error(`Hugging Face request failed (${response.status}): ${errorText || response.statusText}`);
+      throw new Error(`Statement parsing request failed (${response.status}): ${errorText || response.statusText}`);
     }
 
     const data = await response.json();
@@ -366,10 +365,6 @@ export const extractStatementTotal = async (
   statementText: string,
   currencyHint?: string,
 ): Promise<StatementTotalCheck> => {
-  if (!HF_TOKEN) {
-    throw new Error('AI parsing requires a Hugging Face access token (HF_TOKEN) to be configured for this app.');
-  }
-
   const trimmedText = statementText.trim();
   if (!trimmedText) return { found: false, amount: 0, label: '' };
 
@@ -393,7 +388,6 @@ ${trimmedText.slice(0, MAX_STATEMENT_CHARS)}
   const response = await fetch(HF_CHAT_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${HF_TOKEN}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -406,7 +400,7 @@ ${trimmedText.slice(0, MAX_STATEMENT_CHARS)}
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`Hugging Face request failed (${response.status}): ${errorText || response.statusText}`);
+    throw new Error(`Statement parsing request failed (${response.status}): ${errorText || response.statusText}`);
   }
 
   const data = await response.json();

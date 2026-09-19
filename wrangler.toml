@@ -1,8 +1,11 @@
-# Deploys the built SPA as a Cloudflare Worker with static assets.
-# This is the "subtrack" Worker visible in the Cloudflare dashboard
+# Deploys the built SPA as a Cloudflare Worker with static assets, plus a small server-side
+# route (server/index.ts) that proxies statement-parsing requests to Hugging Face - see that
+# file for why. This is the "subtrack" Worker visible in the Cloudflare dashboard
 # (Workers & Pages > subtrack), served at subtrack.zhenyong25.workers.dev.
 name = "subtrack"
+main = "server/index.ts"
 compatibility_date = "2024-09-23"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
