@@ -228,7 +228,51 @@ const mergeForeignAmountDisclosures = (
 
 const MAX_CHUNK_CHARS = 6000;
 
-const buildTransactionPrompt = (chunkText: string, currencyHint?: string) => `You are reading raw text extracted from a bank or credit card e-statement. Extract every individual
+// A statement is chunked across multiple model calls (see parseStatementTransactions below),
+// but "Statement Date" / the billing period only appears once, near the top of the document.
+// A chunk that doesn't happen to include it has no way to correctly infer the year for dates
+// that only show day/month, and reliably guesses wrong (observed in practice: a statement
+// dated April 2026 came back with ~95% of its transactions dated 2023) - extracting the year
+// once from the first page and passing it into every chunk's prompt fixes that at the source,
+// the same way currencyHint already does for currency.
+const extractStatementYear = async (firstPageText: string): Promise<number | null> => {
+  const trimmedText = firstPageText.trim();
+  if (!trimmedText) return null;
+
+  const prompt = `You are reading the first page of a bank or credit card e-statement. Find the year this statement's
+billing cycle falls in - look for "Statement Date", "Statement Period", or similar, near the top of the page.
+
+Respond with ONLY this compact JSON object, no prose, no markdown fences: {"year": number}
+Use the 4-digit year from that statement date/period, not the current year or a copyright year in a footer.
+
+Statement text:
+"""
+${trimmedText.slice(0, 3000)}
+"""`;
+
+  const response = await fetch(HF_CHAT_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: HF_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      max_tokens: 100,
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const content: string | undefined = data?.choices?.[0]?.message?.content;
+  if (!content) return null;
+
+  const [row] = extractJsonObjects(content);
+  const year = Number(row?.year);
+  return Number.isInteger(year) && year > 1990 && year < 2100 ? year : null;
+};
+
+const buildTransactionPrompt = (chunkText: string, currencyHint?: string, yearHint?: number) => `You are reading raw text extracted from a bank or credit card e-statement. Extract every individual
 transaction line item (purchases, payments, refunds, fees, interest, cashback - everything with a date and an amount).
 
 Do NOT extract anything from the account summary / payment summary section - things like "Statement Date", "Total
@@ -242,7 +286,7 @@ transactions, a few, or none at all. If this excerpt is only the cover page, acc
 or legal notices with no real transaction lines in it, output nothing rather than inventing one.
 
 For each transaction return:
-- transactionDate: ISO date (YYYY-MM-DD). Infer the year from the statement period if a line only shows day/month.
+- transactionDate: ISO date (YYYY-MM-DD).${yearHint ? ` This statement's billing cycle is ${yearHint} - use ${yearHint} as the year for any line that only shows day/month (e.g. "27 AUG" or "27-08"), unless that specific line explicitly prints a different year itself.` : ' Infer the year from the statement period if a line only shows day/month.'}
 - description: the merchant or line item text, cleaned up but not summarized away. Keep any foreign-currency amount shown
   in the description text itself (e.g. "Merchant AUD 18.00") so it isn't lost, even though it isn't the returned amount.
 - amount: a positive number - the amount actually billed to the account in its statement (billing) currency. Some lines
@@ -287,6 +331,8 @@ export const parseStatementTransactions = async (
     throw new Error('Could not read any text from this PDF - it may be a scanned image without selectable text.');
   }
 
+  const yearHint = (await extractStatementYear(nonEmptyPages[0])) ?? undefined;
+
   const chunks = chunkPages(nonEmptyPages, MAX_CHUNK_CHARS);
   const rawTransactions: ParsedStatementTransaction[] = [];
   let truncated = false;
@@ -301,7 +347,7 @@ export const parseStatementTransactions = async (
       },
       body: JSON.stringify({
         model: HF_MODEL,
-        messages: [{ role: 'user', content: buildTransactionPrompt(chunks[i], currencyHint) }],
+        messages: [{ role: 'user', content: buildTransactionPrompt(chunks[i], currencyHint, yearHint) }],
         temperature: 0,
         max_tokens: 8000,
       }),
