@@ -22,7 +22,6 @@ const HF_MODEL = 'Qwen/Qwen2.5-7B-Instruct:featherless-ai';
 // succeeding moments later from curl). Routing through our own Worker sidesteps browser CORS
 // entirely and keeps the API token server-side instead of bundled into public client JS.
 const HF_CHAT_ENDPOINT = '/api/hf/chat';
-const MAX_STATEMENT_CHARS = 45000;
 
 // Bank e-statement PDFs are digitally generated (not scanned images), so pdf.js can
 // read the selectable text directly - no OCR or ML needed for this step. Returns one
@@ -86,6 +85,11 @@ const chunkPages = (pages: string[], maxChars: number): string[] => {
   return chunks.length > 0 ? chunks : [''];
 };
 
+interface StatementPeriod {
+  year: number;
+  month: number; // 1-12, the month the statement closes in
+}
+
 const clampToValidDate = (year: number, month: number, day: number): string | null => {
   if (month < 1 || month > 12 || day < 1) return null;
   const lastDayOfMonth = new Date(year, month, 0).getDate();
@@ -93,47 +97,61 @@ const clampToValidDate = (year: number, month: number, day: number): string | nu
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
 };
 
+// The model reads day/month off a statement line reliably, but reasoning about which YEAR a
+// bare day/month date belongs to - especially near a Dec/Jan cycle boundary - is not reliable
+// even with an explicit hint in the prompt (observed in practice: identical input, same
+// temperature-0 request, produced 20 correct 2026 dates and 20 incorrectly bumped to 2027 in
+// one run, all correct in the next). Rather than trust the model's year arithmetic at all,
+// recompute it deterministically here from the statement's known closing month: a transaction
+// dated later in the calendar than the closing month is from the tail end of the previous
+// cycle. This only overrides the year - day and month still come from what the model read.
+const resolveYear = (month: number, modelYear: number, period?: StatementPeriod): number => {
+  if (!period) return modelYear;
+  return month > period.month ? period.year - 1 : period.year;
+};
+
 const MONTH_ABBREVIATIONS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-// The model can hallucinate a calendar-invalid date (e.g. "2026-09-31" - September only has
-// 30 days), which Postgres' `date` column rejects outright and fails the whole insert. It's
-// also asked for ISO (YYYY-MM-DD) but repeatedly drifts to whatever format the source
-// statement itself uses instead (seen in practice: "27-08-2026", "27 AUG 2026") - recovering
-// those is worth more than strict compliance, since silently dropping every transaction that
-// doesn't come back in exact ISO has turned out to be the more common failure in testing.
+// The model can also hallucinate a calendar-invalid date (e.g. "2026-09-31" - September only
+// has 30 days), which Postgres' `date` column rejects outright and fails the whole insert. It's
+// asked for ISO (YYYY-MM-DD) but sometimes drifts to whatever format the source statement
+// itself uses instead (seen in practice: "27-08-2026", "27 AUG 2026") - recovering those is
+// worth more than strict compliance, since silently dropping every transaction that doesn't
+// come back in exact ISO has turned out to be the more common failure in testing.
 // Clamps an out-of-range day to the last real day of that month rather than dropping the
-// transaction outright - a day-of-month slip is the most common single-field error - and
-// returns null only when the string isn't a plausible date in any recognized form.
-const normalizeTransactionDate = (value: string): string | null => {
+// transaction outright, and returns null only when the string isn't a plausible date at all.
+const normalizeTransactionDate = (value: string, period?: StatementPeriod): string | null => {
   const trimmed = value.trim();
 
   const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) {
-    return clampToValidDate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+    const month = Number(isoMatch[2]);
+    return clampToValidDate(resolveYear(month, Number(isoMatch[1]), period), month, Number(isoMatch[3]));
   }
 
   // Numeric day-first: "27-08-2026" or "27/08/2026". Day-first (not month-first) because
   // every drift observed in practice has echoed the source statement's own day-first format.
   const numericDmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
   if (numericDmyMatch) {
-    return clampToValidDate(Number(numericDmyMatch[3]), Number(numericDmyMatch[2]), Number(numericDmyMatch[1]));
+    const month = Number(numericDmyMatch[2]);
+    return clampToValidDate(resolveYear(month, Number(numericDmyMatch[3]), period), month, Number(numericDmyMatch[1]));
   }
 
   // "27 AUG 2026" / "27-Aug-2026" / "27 Aug, 2026"
   const dayMonthNameMatch = trimmed.match(/^(\d{1,2})[\s-]+([A-Za-z]{3,9})\.?,?[\s-]+(\d{4})/);
   if (dayMonthNameMatch) {
     const month = MONTH_ABBREVIATIONS[dayMonthNameMatch[2].slice(0, 3).toLowerCase()];
-    if (month) return clampToValidDate(Number(dayMonthNameMatch[3]), month, Number(dayMonthNameMatch[1]));
+    if (month) return clampToValidDate(resolveYear(month, Number(dayMonthNameMatch[3]), period), month, Number(dayMonthNameMatch[1]));
   }
 
   // "Aug 27, 2026" / "Aug 27 2026"
   const monthNameDayMatch = trimmed.match(/^([A-Za-z]{3,9})\.?[\s-]+(\d{1,2}),?[\s-]+(\d{4})/);
   if (monthNameDayMatch) {
     const month = MONTH_ABBREVIATIONS[monthNameDayMatch[1].slice(0, 3).toLowerCase()];
-    if (month) return clampToValidDate(Number(monthNameDayMatch[3]), month, Number(monthNameDayMatch[2]));
+    if (month) return clampToValidDate(resolveYear(month, Number(monthNameDayMatch[3]), period), month, Number(monthNameDayMatch[2]));
   }
 
   return null;
@@ -226,12 +244,35 @@ const mergeForeignAmountDisclosures = (
   return merged;
 };
 
-const MAX_CHUNK_CHARS = 6000;
+// For a foreign-currency purchase, the model is told to always report the converted/billed
+// amount, never the foreign one - but sometimes it emits the SAME transaction twice: once
+// correctly converted, once left in the original foreign currency (observed in practice: a
+// Korean purchase came back both as "SGD 32.63" and, on the same date with the same
+// description, "KRW 36000" - which downstream code would otherwise treat as a second, wildly
+// larger transaction). Since a duplicate only ever shows up in a currency other than the
+// statement's billing currency, dropping it can't affect two genuinely separate same-day
+// purchases at the same merchant - those would both be billed in the same currency.
+const dropUnconvertedForeignDuplicates = (
+  transactions: ParsedStatementTransaction[],
+  currencyHint?: string,
+): ParsedStatementTransaction[] => {
+  if (!currencyHint) return transactions;
+  const billingCurrency = currencyHint.toUpperCase();
 
-interface StatementPeriod {
-  year: number;
-  month: number; // 1-12, the month the statement closes in
-}
+  return transactions.filter(txn => {
+    if (txn.currency === billingCurrency) return true;
+    const hasBillingCurrencySibling = transactions.some(
+      other =>
+        other !== txn &&
+        other.currency === billingCurrency &&
+        other.transactionDate === txn.transactionDate &&
+        other.description.trim().toLowerCase() === txn.description.trim().toLowerCase(),
+    );
+    return !hasBillingCurrencySibling;
+  });
+};
+
+const MAX_CHUNK_CHARS = 6000;
 
 // A statement is chunked across multiple model calls (see parseStatementTransactions below),
 // but "Statement Date" / the billing period only appears once, near the top of the document.
@@ -382,7 +423,7 @@ export const parseStatementTransactions = async (
           console.error('Dropping likely account-summary field misread as a transaction', row);
           return;
         }
-        const transactionDate = normalizeTransactionDate(String(row.transactionDate));
+        const transactionDate = normalizeTransactionDate(String(row.transactionDate), period);
         if (!transactionDate) {
           console.error('Dropping transaction with unparseable date', row);
           return;
@@ -401,73 +442,9 @@ export const parseStatementTransactions = async (
     throw new Error('The model did not return any recognizable transaction lines.');
   }
 
-  const transactions = mergeForeignAmountDisclosures(rawTransactions);
+  const merged = mergeForeignAmountDisclosures(rawTransactions);
+  const transactions = dropUnconvertedForeignDuplicates(merged, currencyHint);
 
   return { transactions, truncated };
 };
 
-export interface StatementTotalCheck {
-  found: boolean;
-  amount: number;
-  label: string;
-}
-
-// A second, separate call asking only for the single "Sub Total" / "New Balance" figure
-// the bank already printed for this cycle. Comparing that against the sum of the extracted
-// transactions is an accuracy check the model can't game by construction - it has to locate
-// and read a completely different part of the document than the transaction table itself.
-export const extractStatementTotal = async (
-  statementText: string,
-  currencyHint?: string,
-): Promise<StatementTotalCheck> => {
-  const trimmedText = statementText.trim();
-  if (!trimmedText) return { found: false, amount: 0, label: '' };
-
-  const prompt = `You are reading raw text extracted from a bank or credit card e-statement. Find the single figure that
-represents the TOTAL of this cycle's new transactions for the main card/account on this statement - usually printed as
-"Sub Total", "Total Balance", "New Balance", or "Total Amount Due" right after the transaction listing. This is NOT the
-previous balance, minimum payment due, or credit limit. If there are multiple cards/sections, use the one with the most
-transaction lines.
-
-Respond with ONLY this compact JSON object, no prose, no markdown fences:
-{"found": boolean, "amount": number, "label": string}
-- found: true only if you are confident you located this exact figure.
-- amount: the positive number itself, in the statement's main currency${currencyHint ? ` (${currencyHint})` : ''}.
-- label: the exact text printed next to the figure (e.g. "Sub Total").
-
-Statement text:
-"""
-${trimmedText.slice(0, MAX_STATEMENT_CHARS)}
-"""`;
-
-  const response = await fetch(HF_CHAT_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: HF_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0,
-      max_tokens: 200,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(`Statement parsing request failed (${response.status}): ${errorText || response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!content) return { found: false, amount: 0, label: '' };
-
-  const [row] = extractJsonObjects(content);
-  if (!row || !Number.isFinite(Number(row.amount))) return { found: false, amount: 0, label: '' };
-
-  return {
-    found: Boolean(row.found),
-    amount: Math.abs(Number(row.amount)),
-    label: String(row.label || '').trim(),
-  };
-};
