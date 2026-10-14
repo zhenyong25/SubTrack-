@@ -13,9 +13,12 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES } from '../types';
+import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES, InvestmentHolding, InvestmentKind, InvestmentValuation, RetirementBalanceEntry, RetirementFund } from '../types';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import StatementsList from './StatementsList';
+import RetirementFundsPanel from './RetirementFundsPanel';
+import { balancesAsOf, RETIREMENT_SCHEME_COLORS, sumBalances } from '../services/retirementService';
+import { colorForInvestmentKind, compareValuations, getPositionMetrics } from '../services/investmentService';
 
 interface CashFlowTabProps {
   baseCurrency: string;
@@ -25,6 +28,14 @@ interface CashFlowTabProps {
   onDeleteAccount: (accountId: string) => void;
   onSaveBalanceEntry: (entry: CashBalanceEntry) => void;
   onDeleteBalanceEntry: (entryId: string) => void;
+  investments: InvestmentHolding[];
+  investmentValuations: InvestmentValuation[];
+  retirementFunds: RetirementFund[];
+  retirementEntries: RetirementBalanceEntry[];
+  onSaveRetirementFund: (fund: RetirementFund) => void;
+  onDeleteRetirementFund: (fundId: string) => void;
+  onSaveRetirementEntries: (entries: RetirementBalanceEntry[]) => void;
+  onDeleteRetirementSnapshot: (fundId: string, balanceDate: string) => void;
   statements: AccountStatement[];
   statementsEnabled: boolean;
   onUploadStatement: (file: File, params: { accountKind: AccountStatementKind; cashAccountId?: string; cardId?: string }) => void | Promise<void>;
@@ -129,6 +140,44 @@ const createEmptyBalanceForm = (accountId: string): BalanceFormState => ({
   notes: '',
 });
 
+type TrendSeries = {
+  id: string;
+  name: string;
+  color: string;
+  currency: string;
+  balanceAsOf: (date: Date) => number | null;
+};
+
+type BreakdownMode = 'type' | 'currency' | 'liquidity';
+
+const BREAKDOWN_MODES: Array<{ mode: BreakdownMode; label: string }> = [
+  { mode: 'type', label: 'Type' },
+  { mode: 'currency', label: 'Currency' },
+  { mode: 'liquidity', label: 'Liquidity' },
+];
+
+const ACCOUNT_TYPE_COLORS: Record<CashAccountType, string> = {
+  Bank: '#3b82f6',
+  EWallet: '#22c55e',
+  MultiCurrencyCard: '#a855f7',
+  Cash: '#84cc16',
+  Other: '#64748b',
+};
+
+const CURRENCY_COLORS = ['#0ea5e9', '#8b5cf6', '#f97316', '#10b981', '#ec4899', '#eab308', '#14b8a6', '#64748b'];
+const ACCESSIBLE_COLOR = '#0ea5e9';
+const INVESTED_COLOR = '#6366f1';
+const LOCKED_COLOR = '#d4a838';
+
+const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
+  Crypto: 'Crypto',
+  Stocks: 'Stocks',
+  'Pokemon Cards': 'Pokemon Cards',
+  'Poker (MTT)': 'Poker (MTT)',
+  Cash: 'Cash holdings',
+  Other: 'Other investments',
+};
+
 const formatAmount = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const CashFlowTab: React.FC<CashFlowTabProps> = ({
@@ -139,6 +188,14 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDeleteAccount,
   onSaveBalanceEntry,
   onDeleteBalanceEntry,
+  investments,
+  investmentValuations,
+  retirementFunds,
+  retirementEntries,
+  onSaveRetirementFund,
+  onDeleteRetirementFund,
+  onSaveRetirementEntries,
+  onDeleteRetirementSnapshot,
   statements,
   statementsEnabled,
   onUploadStatement,
@@ -156,6 +213,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState(baseCurrency);
   const [accountTypeFilter, setAccountTypeFilter] = useState<CashAccountType | 'All'>('All');
+  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('type');
 
   useEffect(() => {
     setDisplayCurrency(baseCurrency);
@@ -178,19 +236,6 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     () => (accountTypeFilter === 'All' ? activeAccounts : activeAccounts.filter(account => account.accountType === accountTypeFilter)),
     [activeAccounts, accountTypeFilter],
   );
-
-  const accountsById = useMemo(
-    () => new Map(activeAccounts.map(account => [account.id, account])),
-    [activeAccounts],
-  );
-
-  useEffect(() => {
-    if (selectedAccountId && !accountsById.has(selectedAccountId)) {
-      setSelectedAccountId(null);
-    }
-  }, [selectedAccountId, accountsById]);
-
-  const selectedAccount = selectedAccountId ? accountsById.get(selectedAccountId) ?? null : null;
 
   const toggleSelectedAccount = (accountId: string) => {
     setSelectedAccountId(current => (current === accountId ? null : accountId));
@@ -221,27 +266,195 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     return result;
   };
 
-  const getNetWorthAsOf = (asOfDate: Date) => activeAccounts.reduce((sum, account) => {
-    const balance = getAccountBalanceAsOf(account.id, asOfDate);
+  const activeFunds = useMemo(() => retirementFunds.filter(fund => !fund.isArchived), [retirementFunds]);
+
+  const retirementEntriesByFund = useMemo(() => {
+    const map = new Map<string, RetirementBalanceEntry[]>();
+    retirementEntries.forEach(entry => {
+      const list = map.get(entry.fundId) || [];
+      list.push(entry);
+      map.set(entry.fundId, list);
+    });
+    return map;
+  }, [retirementEntries]);
+
+  const getFundBalanceAsOf = (fundId: string, asOfDate: Date): number | null => {
+    const list = retirementEntriesByFund.get(fundId);
+    if (!list || list.length === 0) return null;
+    const balances = balancesAsOf(list, toDateInputValue(asOfDate));
+    return Object.keys(balances).length === 0 ? null : sumBalances(balances);
+  };
+
+  const valuationsByHolding = useMemo(() => {
+    const map = new Map<string, InvestmentValuation[]>();
+    investmentValuations.forEach(valuation => {
+      const list = map.get(valuation.investmentId) || [];
+      list.push(valuation);
+      map.set(valuation.investmentId, list);
+    });
+    map.forEach(list => list.sort(compareValuations));
+    return map;
+  }, [investmentValuations]);
+
+  // With logged valuations, use the latest one on/before the date (nothing before the first).
+  // Without any, the holding is only known at its current value, so show that from its
+  // acquired date onwards rather than inventing a past.
+  const getHoldingValueAsOf = (holding: InvestmentHolding, asOfDate: Date): number | null => {
+    const asOf = toDateInputValue(asOfDate);
+    const valuations = valuationsByHolding.get(holding.id);
+    if (valuations && valuations.length > 0) {
+      let result: number | null = null;
+      for (const valuation of valuations) {
+        if (valuation.valuationDate.split('T')[0] <= asOf) result = Number(valuation.marketValue);
+        else break;
+      }
+      return result;
+    }
+    if (holding.acquiredDate && holding.acquiredDate.split('T')[0] > asOf) return null;
+    return getPositionMetrics(holding).currentValue;
+  };
+
+  const holdingsByKind = useMemo(() => {
+    const map = new Map<InvestmentKind, InvestmentHolding[]>();
+    investments.forEach(holding => {
+      const list = map.get(holding.kind) || [];
+      list.push(holding);
+      map.set(holding.kind, list);
+    });
+    return map;
+  }, [investments]);
+
+  // Everything that counts towards net worth, so the total, the trend chart and its legend
+  // all agree on what's included.
+  const trendSeries = useMemo<TrendSeries[]>(() => [
+    ...activeAccounts.map(account => ({
+      id: account.id,
+      name: account.name,
+      color: account.color,
+      currency: account.currency,
+      balanceAsOf: (date: Date) => getAccountBalanceAsOf(account.id, date),
+    })),
+    ...activeFunds.map(fund => ({
+      id: fund.id,
+      name: fund.name,
+      color: RETIREMENT_SCHEME_COLORS[fund.scheme],
+      currency: fund.currency,
+      balanceAsOf: (date: Date) => getFundBalanceAsOf(fund.id, date),
+    })),
+    // One series per portfolio type (Stocks, Crypto, ...), already converted to the display currency.
+    ...Array.from(holdingsByKind.entries()).map(([kind, holdings]) => ({
+      id: `portfolio:${kind}`,
+      name: INVESTMENT_KIND_LABELS[kind],
+      color: colorForInvestmentKind(kind),
+      currency: displayCurrency,
+      balanceAsOf: (date: Date) => {
+        let total = 0;
+        let any = false;
+        holdings.forEach(holding => {
+          const value = getHoldingValueAsOf(holding, date);
+          if (value == null) return;
+          any = true;
+          total += convertCurrency(value, holding.currency, displayCurrency);
+        });
+        return any ? total : null;
+      },
+    })),
+  ], [activeAccounts, activeFunds, holdingsByKind, valuationsByHolding, balancesByAccount, retirementEntriesByFund, displayCurrency]);
+
+  const trendSeriesById = useMemo(() => new Map(trendSeries.map(series => [series.id, series])), [trendSeries]);
+
+  useEffect(() => {
+    if (selectedAccountId && !trendSeriesById.has(selectedAccountId)) {
+      setSelectedAccountId(null);
+    }
+  }, [selectedAccountId, trendSeriesById]);
+
+  const selectedSeries = selectedAccountId ? trendSeriesById.get(selectedAccountId) ?? null : null;
+
+  const getNetWorthAsOf = (asOfDate: Date) => trendSeries.reduce((sum, series) => {
+    const balance = series.balanceAsOf(asOfDate);
     if (balance == null) return sum;
-    return sum + convertCurrency(balance, account.currency, displayCurrency);
+    return sum + convertCurrency(balance, series.currency, displayCurrency);
   }, 0);
 
   const netWorthNow = useMemo(
     () => getNetWorthAsOf(new Date()),
-    [activeAccounts, balancesByAccount, displayCurrency],
+    [trendSeries, displayCurrency],
   );
 
   const netWorthOneMonthAgo = useMemo(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
     return getNetWorthAsOf(date);
-  }, [activeAccounts, balancesByAccount, displayCurrency]);
+  }, [trendSeries, displayCurrency]);
+
+  const breakdownRows = useMemo(() => {
+    const now = new Date();
+    const groups = new Map<string, { key: string; label: string; color: string; value: number }>();
+    const add = (key: string, label: string, color: string, value: number) => {
+      const existing = groups.get(key);
+      if (existing) existing.value += value;
+      else groups.set(key, { key, label, color, value });
+    };
+
+    activeAccounts.forEach(account => {
+      const balance = getAccountBalanceAsOf(account.id, now);
+      if (balance == null) return;
+      const value = convertCurrency(balance, account.currency, displayCurrency);
+      if (breakdownMode === 'type') {
+        const label = ACCOUNT_TYPES.find(option => option.type === account.accountType)?.label ?? account.accountType;
+        add(account.accountType, label, ACCOUNT_TYPE_COLORS[account.accountType], value);
+      } else if (breakdownMode === 'currency') {
+        add(account.currency, account.currency, '', value);
+      } else {
+        add('accessible', 'Accessible', ACCESSIBLE_COLOR, value);
+      }
+    });
+
+    activeFunds.forEach(fund => {
+      const balance = getFundBalanceAsOf(fund.id, now);
+      if (balance == null) return;
+      const value = convertCurrency(balance, fund.currency, displayCurrency);
+      if (breakdownMode === 'type') {
+        add(fund.scheme, fund.scheme, RETIREMENT_SCHEME_COLORS[fund.scheme], value);
+      } else if (breakdownMode === 'currency') {
+        add(fund.currency, fund.currency, '', value);
+      } else {
+        add('locked', 'Retirement (locked)', LOCKED_COLOR, value);
+      }
+    });
+
+    holdingsByKind.forEach((holdings, kind) => {
+      const value = holdings.reduce(
+        (sum, holding) => sum + convertCurrency(getPositionMetrics(holding).currentValue, holding.currency, displayCurrency),
+        0,
+      );
+      if (breakdownMode === 'type') {
+        add(`portfolio:${kind}`, INVESTMENT_KIND_LABELS[kind], colorForInvestmentKind(kind), value);
+      } else if (breakdownMode === 'liquidity') {
+        add('invested', 'Investments', INVESTED_COLOR, value);
+      }
+    });
+
+    if (breakdownMode === 'currency') {
+      investments.forEach(holding => {
+        add(holding.currency, holding.currency, '', convertCurrency(getPositionMetrics(holding).currentValue, holding.currency, displayCurrency));
+      });
+    }
+
+    const rows = Array.from(groups.values()).sort((a, b) => b.value - a.value);
+    if (breakdownMode === 'currency') {
+      rows.forEach((row, index) => { row.color = CURRENCY_COLORS[index % CURRENCY_COLORS.length]; });
+    }
+    return rows;
+  }, [activeAccounts, activeFunds, investments, holdingsByKind, balancesByAccount, retirementEntriesByFund, displayCurrency, breakdownMode]);
+
+  const breakdownPositiveTotal = breakdownRows.reduce((sum, row) => sum + Math.max(row.value, 0), 0);
 
   const netWorthDelta = netWorthNow - netWorthOneMonthAgo;
   const netWorthDeltaPct = netWorthOneMonthAgo !== 0 ? (netWorthDelta / Math.abs(netWorthOneMonthAgo)) * 100 : null;
 
-  const chartAccounts = selectedAccount ? [selectedAccount] : activeAccounts;
+  const chartSeries = selectedSeries ? [selectedSeries] : trendSeries;
 
   const chartBuckets = useMemo(() => {
     const bucketCount = BUCKET_COUNTS[rangeMode];
@@ -278,13 +491,13 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
 
   const chartData = useMemo(() => chartBuckets.map(bucket => {
     const row: Record<string, number | string> = { label: bucket.label };
-    chartAccounts.forEach(account => {
-      const balance = getAccountBalanceAsOf(account.id, bucket.asOfDate);
-      const converted = balance == null ? 0 : convertCurrency(balance, account.currency, displayCurrency);
-      row[account.id] = parseFloat(converted.toFixed(2));
+    chartSeries.forEach(series => {
+      const balance = series.balanceAsOf(bucket.asOfDate);
+      const converted = balance == null ? 0 : convertCurrency(balance, series.currency, displayCurrency);
+      row[series.id] = parseFloat(converted.toFixed(2));
     });
     return row;
-  }), [chartBuckets, chartAccounts, balancesByAccount, displayCurrency]);
+  }), [chartBuckets, chartSeries, displayCurrency]);
 
   const chartWindowLabel = chartData.length > 0 ? `${chartData[0].label} - ${chartData[chartData.length - 1].label}` : '';
 
@@ -326,12 +539,12 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
               .filter(item => item.value > 0)
               .sort((a, b) => b.value - a.value)
               .map(item => {
-                const account = accountsById.get(item.dataKey);
+                const series = trendSeriesById.get(item.dataKey);
                 return (
                   <div key={item.dataKey} className="flex items-center justify-between gap-3 text-[11px]">
                     <span className="flex items-center gap-1.5 truncate text-textMain">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="truncate">{account?.name ?? item.dataKey}</span>
+                      <span className="truncate">{series?.name ?? item.dataKey}</span>
                     </span>
                     <span className="font-semibold text-secondary shrink-0">{formatAmount(item.value)}</span>
                   </div>
@@ -425,15 +638,62 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </div>
         )}
         <p className="mt-2 text-[10px] text-secondary">
-          Across {activeAccounts.length} account{activeAccounts.length === 1 ? '' : 's'}, converted to {displayCurrency} using the latest logged balance for each.
+          Across {activeAccounts.length} account{activeAccounts.length === 1 ? '' : 's'}
+          {activeFunds.length > 0 && `, ${activeFunds.length} retirement fund${activeFunds.length === 1 ? '' : 's'}`}
+          {investments.length > 0 && `, ${investments.length} portfolio holding${investments.length === 1 ? '' : 's'}`}
+          , converted to {displayCurrency} using the latest logged balance or value for each.
         </p>
+
+        {breakdownRows.length > 0 && (
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">Breakdown</p>
+              <div className="flex items-center gap-1 bg-background border border-border rounded-full p-1">
+                {BREAKDOWN_MODES.map(option => (
+                  <button
+                    key={option.mode}
+                    type="button"
+                    onClick={() => setBreakdownMode(option.mode)}
+                    aria-pressed={breakdownMode === option.mode}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${
+                      breakdownMode === option.mode ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {breakdownPositiveTotal > 0 && (
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-border/60" aria-hidden="true">
+                {breakdownRows.filter(row => row.value > 0).map(row => (
+                  <div key={row.key} style={{ width: `${(row.value / breakdownPositiveTotal) * 100}%`, backgroundColor: row.color }} />
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 space-y-2">
+              {breakdownRows.map(row => (
+                <div key={row.key} className="flex items-center gap-2.5 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                  <span className="min-w-0 flex-1 truncate font-semibold text-textMain">{row.label}</span>
+                  <span className="shrink-0 font-bold text-textMain">{formatAmount(row.value)} {displayCurrency}</span>
+                  <span className="w-12 shrink-0 text-right text-[10px] text-secondary">
+                    {breakdownPositiveTotal > 0 ? `${((Math.max(row.value, 0) / breakdownPositiveTotal) * 100).toFixed(1)}%` : '-'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">
-              {selectedAccount ? `${selectedAccount.name} Trend` : 'Portfolio Trend'}
+              {selectedSeries ? `${selectedSeries.name} Trend` : 'Portfolio Trend'}
             </h3>
             <p className="text-[10px] text-secondary mt-0.5">{chartWindowLabel}</p>
           </div>
@@ -484,35 +744,35 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
               <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={rangeMode === 'Daily' ? Math.ceil(BUCKET_COUNTS.Daily / 10) - 1 : 0} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} width={40} />
               <Tooltip cursor={{ fill: 'var(--color-border)', opacity: 0.3 }} content={renderChartTooltip} />
-              {chartAccounts.map((account, index) => (
+              {chartSeries.map((series, index) => (
                 <Bar
-                  key={account.id}
-                  dataKey={account.id}
-                  name={account.name}
-                  stackId={selectedAccount ? undefined : 'net-worth'}
-                  fill={account.color}
-                  radius={selectedAccount ? [6, 6, 0, 0] : (index === chartAccounts.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0])}
+                  key={series.id}
+                  dataKey={series.id}
+                  name={series.name}
+                  stackId={selectedSeries ? undefined : 'net-worth'}
+                  fill={series.color}
+                  radius={selectedSeries ? [6, 6, 0, 0] : (index === chartSeries.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0])}
                 />
               ))}
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {activeAccounts.length > 0 && (
+        {trendSeries.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {activeAccounts.map(account => (
+            {trendSeries.map(series => (
               <button
-                key={account.id}
+                key={series.id}
                 type="button"
-                onClick={() => toggleSelectedAccount(account.id)}
+                onClick={() => toggleSelectedAccount(series.id)}
                 className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors ${
-                  selectedAccountId === account.id
+                  selectedAccountId === series.id
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background text-secondary hover:text-textMain'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: account.color }} />
-                {account.name}
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
+                {series.name}
               </button>
             ))}
             {selectedAccountId && (
@@ -527,7 +787,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </div>
         )}
 
-        {balanceEntries.length === 0 && (
+        {balanceEntries.length === 0 && retirementEntries.length === 0 && investments.length === 0 && (
           <p className="mt-2 text-center text-[10px] text-secondary">Log a balance for each account to start seeing your trend.</p>
         )}
       </section>
@@ -730,6 +990,15 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </div>
         )}
       </section>
+
+      <RetirementFundsPanel
+        funds={retirementFunds}
+        entries={retirementEntries}
+        onSaveFund={onSaveRetirementFund}
+        onDeleteFund={onDeleteRetirementFund}
+        onSaveEntries={onSaveRetirementEntries}
+        onDeleteSnapshot={onDeleteRetirementSnapshot}
+      />
 
       {isAccountModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setIsAccountModalOpen(false)}>

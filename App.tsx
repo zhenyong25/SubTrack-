@@ -15,11 +15,12 @@ import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
 import InvestmentTab from './components/InvestmentTab';
-import { deleteAccountStatement, deleteInvestmentTransaction, deletePokerMttBankrollTransaction, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
+import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, AccountStatement, AccountStatementKind } from './types';
-import { calculateNextPayment, isUpcoming, getUrgencyLevel } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveExpenses, saveIncomes, saveInvestmentTransactions, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { applyInvestmentTransaction, isPortfolioHolding } from './services/investmentService';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind } from './types';
+import { calculateNextPayment, getExpenseCategoryColor, isUpcoming, getUrgencyLevel } from './services/storageService';
+import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 
@@ -32,6 +33,12 @@ enum Tab {
   CashFlow = 'CashFlow',
   Settings = 'Settings'
 }
+
+const applyCategoryColorsToExpenses = (items: Expense[]): Expense[] =>
+  items.map(expense => {
+    const categoryColor = getExpenseCategoryColor(expense.category);
+    return expense.color === categoryColor ? expense : { ...expense, color: categoryColor };
+  });
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Dashboard);
@@ -51,13 +58,17 @@ function App() {
   const [investments, setInvestments] = useState<InvestmentHolding[]>([]);
   const [investmentValuations, setInvestmentValuations] = useState<InvestmentValuation[]>([]);
   const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
+  const [investmentAccounts, setInvestmentAccounts] = useState<InvestmentAccount[]>([]);
   const [pokerMttTournaments, setPokerMttTournaments] = useState<PokerMttTournament[]>([]);
   const [pokerMttBankrollTransactions, setPokerMttBankrollTransactions] = useState<PokerMttBankrollTransaction[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cashBalanceEntries, setCashBalanceEntries] = useState<CashBalanceEntry[]>([]);
+  const [retirementFunds, setRetirementFunds] = useState<RetirementFund[]>([]);
+  const [retirementEntries, setRetirementEntries] = useState<RetirementBalanceEntry[]>([]);
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
   const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
+  const [cashbackPrograms, setCashbackPrograms] = useState<CashbackProgram[]>([]);
   const [accountStatements, setAccountStatements] = useState<AccountStatement[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
@@ -152,12 +163,16 @@ function App() {
         setInvestments([]);
         setInvestmentValuations([]);
         setInvestmentTransactions([]);
+        setInvestmentAccounts([]);
         setPokerMttTournaments([]);
         setPokerMttBankrollTransactions([]);
         setCashAccounts([]);
         setCashBalanceEntries([]);
+        setRetirementFunds([]);
+        setRetirementEntries([]);
         setCards([]);
         setCardPointTransactions([]);
+        setCashbackPrograms([]);
         setAccountStatements([]);
         setIsLoading(false);
         return;
@@ -209,25 +224,31 @@ function App() {
         });
         setSubscriptions(updated);
         setIncomes(loaded.incomes);
-        setExpenses(loaded.expenses);
+        const categoryColoredExpenses = applyCategoryColorsToExpenses(loaded.expenses);
+        setExpenses(categoryColoredExpenses);
         setBudgetPlans(loaded.budgetPlans ?? []);
         setInvestments(loaded.investments);
         setInvestmentValuations(loaded.investmentValuations);
         setInvestmentTransactions(loaded.investmentTransactions);
+        setInvestmentAccounts(loaded.investmentAccounts);
         setPokerMttTournaments(loaded.pokerMttTournaments);
         setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
         setCashAccounts(loaded.cashAccounts);
         setCashBalanceEntries(loaded.cashBalanceEntries);
+        setRetirementFunds(loaded.retirementFunds);
+        setRetirementEntries(loaded.retirementEntries);
         setCards(loaded.cards);
         setCardPointTransactions(loaded.cardPointTransactions);
         setCardBenefits(loaded.cardBenefits);
+        setCashbackPrograms(loaded.cashbackPrograms);
         setAccountStatements(loaded.accountStatements);
         void saveSubscriptions(updated);
 
         if (loaded.userId) {
           void saveProfile({ ...loaded.profile, isLoggedIn: true });
           void saveIncomes(loaded.incomes);
-          void saveExpenses(loaded.expenses);
+          const recoloredExpenses = categoryColoredExpenses.filter((expense, index) => expense !== loaded.expenses[index]);
+          if (recoloredExpenses.length > 0) void saveExpenses(categoryColoredExpenses, recoloredExpenses);
           void saveInvestmentTransactions(loaded.investmentTransactions);
           void savePokerMttTournaments(loaded.pokerMttTournaments);
           void savePokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
@@ -307,11 +328,15 @@ function App() {
       setInvestments([]);
       setInvestmentValuations([]);
       setInvestmentTransactions([]);
+      setInvestmentAccounts([]);
       setCashAccounts([]);
       setCashBalanceEntries([]);
+      setRetirementFunds([]);
+      setRetirementEntries([]);
       setCards([]);
       setCardPointTransactions([]);
       setCardBenefits([]);
+      setCashbackPrograms([]);
       setAccountStatements([]);
       setUserProfile(createDefaultProfile());
       setSelectedSubId(null);
@@ -332,6 +357,22 @@ function App() {
   const handleUpdateCardPointTransactions = (transactions: CardPointTransaction[]) => {
     setCardPointTransactions(transactions);
     void saveCardPointTransactions(transactions);
+  };
+
+  const handleSaveCashbackProgram = async (program: CashbackProgram) => {
+    setCashbackPrograms(previous =>
+      previous.some(item => item.id === program.id)
+        ? previous.map(item => (item.id === program.id ? program : item))
+        : [...previous, program],
+    );
+    const saved = await saveCashbackProgram(program);
+    showToast(saved ? `Saved ${program.name}` : `${program.name} saved locally, but database sync failed`);
+  };
+
+  const handleDeleteCashbackProgram = async (programId: string) => {
+    setCashbackPrograms(previous => previous.filter(item => item.id !== programId));
+    const deleted = await deleteCashbackProgram(programId);
+    showToast(deleted ? 'Cashback rule set deleted' : 'Removed locally, but database sync failed');
   };
 
   const handleSaveCashAccount = (account: CashAccount) => {
@@ -372,6 +413,45 @@ function App() {
     const updated = cashBalanceEntries.filter(entry => entry.id !== entryId);
     setCashBalanceEntries(updated);
     void saveCashBalanceEntries(updated);
+  };
+
+  const handleSaveRetirementFund = (fund: RetirementFund) => {
+    const exists = retirementFunds.some(item => item.id === fund.id);
+    const updated = exists
+      ? retirementFunds.map(item => (item.id === fund.id ? fund : item))
+      : [...retirementFunds, fund];
+    setRetirementFunds(updated);
+    void saveRetirementFunds(updated);
+    showToast(exists ? `Updated ${fund.name}` : `Added ${fund.name}`);
+  };
+
+  const handleDeleteRetirementFund = (fundId: string) => {
+    const updatedFunds = retirementFunds.filter(item => item.id !== fundId);
+    setRetirementFunds(updatedFunds);
+    void saveRetirementFunds(updatedFunds);
+
+    const updatedEntries = retirementEntries.filter(entry => entry.fundId !== fundId);
+    setRetirementEntries(updatedEntries);
+    void saveRetirementEntries(updatedEntries);
+    showToast('Fund removed');
+  };
+
+  // Logging the same fund + sub-account + date again replaces that figure (matches the table's
+  // unique constraint) instead of stacking a duplicate.
+  const handleSaveRetirementEntries = (entries: RetirementBalanceEntry[]) => {
+    const keyOf = (entry: RetirementBalanceEntry) => `${entry.fundId}|${entry.subAccount}|${entry.balanceDate}`;
+    const incoming = new Map(entries.map(entry => [keyOf(entry), entry]));
+    const kept = retirementEntries.filter(entry => !incoming.has(keyOf(entry)));
+    const updated = [...kept, ...incoming.values()];
+    setRetirementEntries(updated);
+    void saveRetirementEntries(updated);
+    showToast('Balance logged');
+  };
+
+  const handleDeleteRetirementSnapshot = (fundId: string, balanceDate: string) => {
+    const updated = retirementEntries.filter(entry => !(entry.fundId === fundId && entry.balanceDate === balanceDate));
+    setRetirementEntries(updated);
+    void saveRetirementEntries(updated);
   };
 
   const handleUploadStatement = async (
@@ -497,28 +577,34 @@ function App() {
     setActiveTab(Tab.Income);
   };
 
+  const saveErrorSuffix = () => {
+    const reason = getLastSaveError();
+    return reason ? `: ${reason}` : '';
+  };
+
   const handleAddOrUpdateExpense = async (data: Omit<Expense, 'id'>) => {
+    const categoryColoredData = { ...data, color: getExpenseCategoryColor(data.category) };
     if (editingExpense) {
-      const updatedList = expenses.map(expense =>
+      const updatedList = applyCategoryColorsToExpenses(expenses.map(expense =>
         expense.id === editingExpense.id
           ? {
-              ...data,
+              ...categoryColoredData,
               id: editingExpense.id,
             }
           : expense
-      );
+      ));
       setExpenses(updatedList);
-      const saved = await saveExpenses(updatedList);
-      showToast(saved ? `Updated ${data.name}` : `Failed to save ${data.name} to Supabase`);
+      const saved = await saveExpenses(updatedList, updatedList.filter(expense => expense.id === editingExpense.id));
+      showToast(saved ? `Updated ${data.name}` : `Failed to save ${data.name} to Supabase${saveErrorSuffix()}`);
     } else {
       const newExpense: Expense = {
-        ...data,
+        ...categoryColoredData,
         id: crypto.randomUUID(),
       };
-      const updatedList = [...expenses, newExpense];
+      const updatedList = applyCategoryColorsToExpenses([...expenses, newExpense]);
       setExpenses(updatedList);
-      const saved = await saveExpenses(updatedList);
-      showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase`);
+      const saved = await saveExpenses(updatedList, updatedList.filter(expense => expense.id === newExpense.id));
+      showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase${saveErrorSuffix()}`);
     }
 
     setIsAddingExpense(false);
@@ -530,20 +616,45 @@ function App() {
   const handleAddExpenseFromStatement = async (data: Omit<Expense, 'id'>): Promise<Expense> => {
     const newExpense: Expense = {
       ...data,
+      color: getExpenseCategoryColor(data.category),
       id: crypto.randomUUID(),
     };
-    const updatedList = [...expenses, newExpense];
+    const updatedList = applyCategoryColorsToExpenses([...expenses, newExpense]);
     setExpenses(updatedList);
-    const saved = await saveExpenses(updatedList);
-    showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase`);
+    const saved = await saveExpenses(updatedList, updatedList.filter(expense => expense.id === newExpense.id));
+    showToast(saved ? `Added ${newExpense.name}` : `Failed to save ${newExpense.name} to Supabase${saveErrorSuffix()}`);
     return newExpense;
   };
 
   const handleUpdateExpenseFromStatement = async (updated: Expense): Promise<void> => {
-    const updatedList = expenses.map(expense => (expense.id === updated.id ? updated : expense));
+    const categoryColoredUpdate = { ...updated, color: getExpenseCategoryColor(updated.category) };
+    const updatedList = applyCategoryColorsToExpenses(
+      expenses.map(expense => (expense.id === updated.id ? categoryColoredUpdate : expense)),
+    );
     setExpenses(updatedList);
-    const saved = await saveExpenses(updatedList);
-    showToast(saved ? `Updated ${updated.name}` : `Failed to save ${updated.name} to Supabase`);
+    const saved = await saveExpenses(updatedList, updatedList.filter(expense => expense.id === updated.id));
+    showToast(saved ? `Updated ${updated.name}` : `Failed to save ${updated.name} to Supabase${saveErrorSuffix()}`);
+  };
+
+  // A statement line that's a credit (money coming in - salary, a transfer from someone else,
+  // a refund) isn't an expense, so the statement reconciliation panel routes those to the
+  // existing Income ledger instead. saveIncomes() doesn't report success/failure the way
+  // saveExpenses() does, so this mirrors handleAddOrUpdateIncome's existing toast behavior
+  // rather than inventing a different one just for this path.
+  const handleAddIncomeFromStatement = async (data: Omit<Income, 'id'>): Promise<Income> => {
+    const newIncome: Income = { ...data, id: crypto.randomUUID() };
+    const updatedList = [...incomes, newIncome];
+    setIncomes(updatedList);
+    void saveIncomes(updatedList);
+    showToast(`Added ${newIncome.name}`);
+    return newIncome;
+  };
+
+  const handleUpdateIncomeFromStatement = async (updated: Income): Promise<void> => {
+    const updatedList = incomes.map(income => (income.id === updated.id ? updated : income));
+    setIncomes(updatedList);
+    void saveIncomes(updatedList);
+    showToast(`Updated ${updated.name}`);
   };
 
   const handleCloneSubscription = (originalSub: Subscription) => {
@@ -598,66 +709,42 @@ function App() {
     if (confirm('Are you sure you want to delete this expense permanently?')) {
       const updated = expenses.filter(expense => expense.id !== id);
       setExpenses(updated);
-      void saveExpenses(updated);
-      showToast('Expense deleted.');
+      void deleteExpenseRecord(id, updated).then(deleted => {
+        showToast(deleted ? 'Expense deleted.' : `Deleted here, but the database refused it${saveErrorSuffix()}`);
+      });
     }
   };
 
   const handleAddInvestmentTransaction = async (transaction: Omit<InvestmentTransaction, 'id' | 'createdAt' | 'updatedAt'>) => {
+    // How the trade changes the holding (and the P&L it locks in) is worked out first, so the
+    // realized figure is stored with the transaction itself.
+    let realizedPnl: number | undefined;
+    const updatedHoldings = investments.map(holding => {
+      if (holding.id !== transaction.investmentId) return holding;
+      const result = applyInvestmentTransaction(holding, transaction);
+      realizedPnl = result.realizedPnl;
+      return result.holding;
+    });
+
     const newTransaction: InvestmentTransaction = {
       ...transaction,
       id: crypto.randomUUID(),
+      realizedPnl,
     };
 
     const updatedTransactions = [...investmentTransactions, newTransaction].sort(
       (a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
     );
     setInvestmentTransactions(updatedTransactions);
-    void saveInvestmentTransactions(updatedTransactions);
-
-    const updatedHoldings = investments.map(holding => {
-      if (holding.id !== newTransaction.investmentId) return holding;
-
-      const prevUnits = holding.units;
-      const prevBasis = prevUnits * holding.averageCost;
-      const tradeUnits = Math.max(0, newTransaction.units);
-      const tradeValue = tradeUnits * newTransaction.price;
-
-      if (newTransaction.transactionType === 'Buy' || newTransaction.transactionType === 'Transfer In') {
-        const nextUnits = prevUnits + tradeUnits;
-        const nextBasis = prevBasis + tradeValue + newTransaction.fees;
-        return {
-          ...holding,
-          units: nextUnits,
-          averageCost: nextUnits > 0 ? nextBasis / nextUnits : 0,
-          acquiredDate: holding.acquiredDate || newTransaction.tradeDate,
-        };
-      }
-
-      if (newTransaction.transactionType === 'Sell' || newTransaction.transactionType === 'Transfer Out') {
-        const nextUnits = Math.max(0, prevUnits - tradeUnits);
-        return {
-          ...holding,
-          units: nextUnits,
-          averageCost: nextUnits > 0 ? holding.averageCost : 0,
-        };
-      }
-
-      if (newTransaction.transactionType === 'Fee') {
-        const nextBasis = prevBasis + newTransaction.fees;
-        return {
-          ...holding,
-          averageCost: prevUnits > 0 ? nextBasis / prevUnits : holding.averageCost,
-        };
-      }
-
-      return holding;
-    });
+    void saveInvestmentTransactions(updatedTransactions).then(reportSyncFailure);
 
     setInvestments(updatedHoldings);
     void saveInvestments(updatedHoldings);
 
-    showToast(`Logged ${newTransaction.transactionType} for ${newTransaction.source || 'investment'}`);
+    const pnlNote = realizedPnl === undefined || realizedPnl === 0
+      ? ''
+      : ` - realized ${realizedPnl > 0 ? '+' : ''}${realizedPnl.toFixed(2)} ${newTransaction.currency}`;
+    showToast(`Logged ${newTransaction.transactionType} for ${newTransaction.source || 'investment'}${pnlNote}`);
   };
 
   const handleDeleteInvestmentTransaction = async (transactionId: string) => {
@@ -670,26 +757,96 @@ function App() {
     showToast('Transaction log deleted.');
   };
 
+  // The data is always kept on this device; this just says when the database refused it.
+  const reportSyncFailure = (failure: string | null) => {
+    if (failure) showToast(`Saved on this device, but the database rejected it: ${failure}`);
+  };
+
   const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
     const updatedHoldings = [...investments, holding];
     setInvestments(updatedHoldings);
-    await saveInvestments(updatedHoldings);
-    showToast(`Added ${holding.name}`);
+    const failure = await saveInvestments(updatedHoldings);
+    if (failure) reportSyncFailure(failure);
+    else showToast(`Added ${holding.name}`);
   };
 
-  const handleAddPokerMttTournament = async (tournament: PokerMttTournament) => {
-    const updated = [...pokerMttTournaments.filter(item => item.id !== tournament.id), tournament].sort((a, b) => new Date(a.tournamentDate).getTime() - new Date(b.tournamentDate).getTime());
-    setPokerMttTournaments(updated);
-    await savePokerMttTournaments(updated);
-    showToast('Poker tournament saved.');
+  const handleUpdateInvestmentHolding = async (holding: InvestmentHolding, silent = false) => {
+    // Functional form, not a closure over `investments` - a background price refresh can
+    // call this for several holdings back-to-back, and closing over the render's snapshot
+    // would let a later call silently overwrite an earlier one's change before either
+    // triggers a re-render.
+    let updatedHoldings: InvestmentHolding[] = [];
+    setInvestments(prev => {
+      updatedHoldings = prev.map(item => (item.id === holding.id ? holding : item));
+      return updatedHoldings;
+    });
+    const failure = await saveInvestments(updatedHoldings);
+    if (failure) reportSyncFailure(failure);
+    else if (!silent) showToast(`Updated ${holding.name}`);
   };
 
-  const handleAddPokerMttBankrollTransaction = async (event: PokerMttBankrollTransaction) => {
-    const updated = [...pokerMttBankrollTransactions, event].sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
-    setPokerMttBankrollTransactions(updated);
-    await savePokerMttBankrollTransactions(updated);
-    showToast('Poker bankroll entry saved.');
+  // Every logged value is kept, including several on the same day (ordered by when they were logged).
+  const handleSaveInvestmentValuation = (valuation: InvestmentValuation) => {
+    const updated = [...investmentValuations, valuation];
+    setInvestmentValuations(updated);
+    void saveInvestmentValuations(updated).then(failure => { if (!failure) showToast('Value logged'); else reportSyncFailure(failure); });
   };
+
+  const handleDeleteInvestmentValuation = (valuationId: string) => {
+    const updated = investmentValuations.filter(item => item.id !== valuationId);
+    setInvestmentValuations(updated);
+    void saveInvestmentValuations(updated);
+  };
+
+  const handleDeleteInvestmentHolding = async (holdingId: string) => {
+    const holding = investments.find(item => item.id === holdingId);
+    if (!holding) return;
+    if (!confirm(`Delete "${holding.name}"? This also removes its logged transactions and valuations.`)) return;
+
+    await deleteInvestmentHolding(holdingId);
+    setInvestments(current => current.filter(item => item.id !== holdingId));
+    setInvestmentTransactions(current => current.filter(transaction => transaction.investmentId !== holdingId));
+    setInvestmentValuations(current => current.filter(valuation => valuation.investmentId !== holdingId));
+    showToast(`Deleted ${holding.name}`);
+  };
+
+  const handleSaveInvestmentAccount = async (account: InvestmentAccount) => {
+    const exists = investmentAccounts.some(item => item.id === account.id);
+    const updated = exists
+      ? investmentAccounts.map(item => (item.id === account.id ? account : item))
+      : [...investmentAccounts, account];
+    setInvestmentAccounts(updated);
+    const failure = await saveInvestmentAccounts(updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast(exists ? `Updated ${account.name}` : `Added ${account.name}`);
+  };
+
+  // The holdings stay in the portfolio, just untagged - Supabase does the same server-side via
+  // `on delete set null`, this keeps local state (and the device copy) in step.
+  const handleDeleteInvestmentAccount = async (accountId: string) => {
+    const account = investmentAccounts.find(item => item.id === accountId);
+    if (!account) return;
+    const taggedCount = investments.filter(holding => holding.accountId === accountId).length;
+    const holdingNote = taggedCount > 0 ? ` Its ${taggedCount} holding${taggedCount === 1 ? '' : 's'} will be kept as unassigned.` : '';
+    if (!confirm(`Delete the account "${account.name}"?${holdingNote}`)) return;
+
+    const updatedAccounts = investmentAccounts.filter(item => item.id !== accountId);
+    setInvestmentAccounts(updatedAccounts);
+    const failure = await saveInvestmentAccounts(updatedAccounts);
+
+    if (taggedCount > 0) {
+      const updatedHoldings = investments.map(holding => (
+        holding.accountId === accountId ? { ...holding, accountId: undefined } : holding
+      ));
+      setInvestments(updatedHoldings);
+      void saveInvestments(updatedHoldings);
+    }
+
+    if (failure) reportSyncFailure(failure);
+    else showToast(`Deleted ${account.name}`);
+  };
+
+  const portfolioHoldings = investments.filter(isPortfolioHolding);
 
   const handleClearData = async () => {
       if(confirm("This will wipe all your subscriptions, income sources, expenses, and cards. Are you sure?")) {
@@ -701,8 +858,11 @@ function App() {
           setInvestments([]);
           setInvestmentValuations([]);
           setInvestmentTransactions([]);
+          setInvestmentAccounts([]);
           setPokerMttTournaments([]);
           setPokerMttBankrollTransactions([]);
+          setRetirementFunds([]);
+          setRetirementEntries([]);
           setUserProfile(createDefaultProfile());
           setEditingSub(undefined);
           setEditingIncome(undefined);
@@ -720,6 +880,72 @@ function App() {
       setCards(updatedCards);
       void saveCards(updatedCards);
       showToast("Card details updated");
+  };
+
+  const handleDeleteCard = async (card: PaymentCard) => {
+      const linkedSubscriptions = subscriptions.filter(
+          subscription => subscription.cardId === card.id || (!subscription.cardId && subscription.cardName === card.name),
+      );
+      const linkedExpenses = expenses.filter(
+          expense => expense.linkedCardId === card.id || (!expense.linkedCardId && expense.linkedCardName === card.name),
+      );
+      const cardStatements = accountStatements.filter(statement => statement.cardId === card.id);
+      const cardRewards = cardPointTransactions.filter(transaction => transaction.cardId === card.id);
+      const cardPrograms = cashbackPrograms.filter(program => program.cardId === card.id);
+      const details = [
+          linkedSubscriptions.length > 0 ? `${linkedSubscriptions.length} subscription${linkedSubscriptions.length === 1 ? '' : 's'}` : null,
+          linkedExpenses.length > 0 ? `${linkedExpenses.length} expense${linkedExpenses.length === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(' and ');
+      const destructiveDetails = [
+          cardRewards.length > 0 ? `${cardRewards.length} points entr${cardRewards.length === 1 ? 'y' : 'ies'}` : null,
+          cardPrograms.length > 0 ? `${cardPrograms.length} cashback rule set${cardPrograms.length === 1 ? '' : 's'}` : null,
+          cardStatements.length > 0 ? `${cardStatements.length} statement${cardStatements.length === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(', ');
+
+      const message = [
+          `Delete “${card.name}” ending in ${card.last4Digits || '0000'}?`,
+          details ? `${details} will be kept but unlinked from this card.` : null,
+          destructiveDetails ? `${destructiveDetails} will be permanently deleted.` : null,
+          'This action cannot be undone.',
+      ].filter(Boolean).join('\n\n');
+
+      if (!confirm(message)) return;
+
+      try {
+          await deletePaymentCard(card.id);
+
+          const updatedSubscriptions = subscriptions.map(subscription =>
+              subscription.cardId === card.id || (!subscription.cardId && subscription.cardName === card.name)
+                  ? { ...subscription, cardId: undefined, cardName: 'Cash', cardType: undefined }
+                  : subscription,
+          );
+          const updatedExpenses = expenses.map(expense =>
+              expense.linkedCardId === card.id || (!expense.linkedCardId && expense.linkedCardName === card.name)
+                  ? { ...expense, linkedCardId: undefined, linkedCardName: undefined, cashbackCategoryId: undefined }
+                  : expense,
+          );
+          const updatedPointTransactions = cardPointTransactions.filter(transaction => transaction.cardId !== card.id);
+
+          setCards(previous => previous.filter(item => item.id !== card.id));
+          setSubscriptions(updatedSubscriptions);
+          setExpenses(updatedExpenses);
+          setCardPointTransactions(updatedPointTransactions);
+          setCashbackPrograms(previous => previous.filter(program => program.cardId !== card.id));
+          setAccountStatements(previous => previous.filter(statement => statement.cardId !== card.id));
+          setViewingCardId(null);
+          setAddingCard(previous => previous?.id === card.id ? null : previous);
+
+          await Promise.all([
+              saveSubscriptions(updatedSubscriptions),
+              saveExpenses(updatedExpenses, updatedExpenses.filter((expense, index) => expense !== expenses[index])),
+              saveCardPointTransactions(updatedPointTransactions),
+              ...cardPrograms.map(program => deleteCashbackProgram(program.id)),
+          ]);
+          showToast(`${card.name} deleted`);
+      } catch (error) {
+          console.error('Failed to delete card', error);
+          showToast(error instanceof Error ? error.message : 'Could not delete this card. Please try again.');
+      }
   };
 
   // Start "Add Card" flow - Open modal with blank card
@@ -768,13 +994,13 @@ function App() {
       setIsAddingExpense(true);
   };
 
-  const handleSaveBudgetPlan = (plan: BudgetPlan) => {
+  const handleSaveBudgetPlan = async (plan: BudgetPlan) => {
       const updated = budgetPlans.some(item => item.month === plan.month)
         ? budgetPlans.map(item => item.month === plan.month ? plan : item)
         : [...budgetPlans, plan];
       setBudgetPlans(updated);
-      void saveBudgetPlans(updated);
-      showToast('Budget plan saved');
+      const saved = await saveBudgetPlans(updated);
+      showToast(saved ? 'Budget plan saved' : 'Budget saved locally, but database sync failed');
   };
 
   // Save new or existing card from modal
@@ -835,6 +1061,8 @@ function App() {
         initialData={editingExpense}
         initialDate={presetExpenseDate}
         cards={cards}
+        expenses={expenses}
+        cashbackPrograms={cashbackPrograms}
       />
     );
   }
@@ -971,6 +1199,7 @@ function App() {
                 onAddCard={handleAddNewCardStart}
                 onViewCard={handleViewCardStart}
                 onEditCard={handleEditCardStart}
+                onDeleteCard={handleDeleteCard}
             />
         )}
 
@@ -1002,26 +1231,19 @@ function App() {
         {activeTab === Tab.Investment && (
         <InvestmentTab
                 baseCurrency={userProfile.currency}
-                investments={investments}
+                investments={portfolioHoldings}
+                accounts={investmentAccounts}
+                onSaveAccount={handleSaveInvestmentAccount}
+                onDeleteAccount={handleDeleteInvestmentAccount}
                 valuations={investmentValuations}
                 transactions={investmentTransactions}
-                pokerMttTournaments={pokerMttTournaments}
-                pokerMttBankrollTransactions={pokerMttBankrollTransactions}
                 onAddTransaction={handleAddInvestmentTransaction}
                 onDeleteTransaction={handleDeleteInvestmentTransaction}
                 onCreateHolding={handleAddInvestmentHolding}
-                onAddPokerMttTournament={handleAddPokerMttTournament}
-                onDeletePokerMttTournament={(tournamentId) => {
-                  const updated = pokerMttTournaments.filter(tournament => tournament.id !== tournamentId);
-                  setPokerMttTournaments(updated);
-                  void savePokerMttTournaments(updated);
-                }}
-                onAddPokerMttBankrollTransaction={handleAddPokerMttBankrollTransaction}
-                onDeletePokerMttBankrollTransaction={async eventId => {
-                  await deletePokerMttBankrollTransaction(eventId);
-                  setPokerMttBankrollTransactions(current => current.filter(event => event.id !== eventId));
-                  showToast('Bankroll entry deleted.');
-                }}
+                onUpdateHolding={handleUpdateInvestmentHolding}
+                onDeleteHolding={handleDeleteInvestmentHolding}
+                onSaveValuation={handleSaveInvestmentValuation}
+                onDeleteValuation={handleDeleteInvestmentValuation}
             />
         )}
 
@@ -1034,6 +1256,14 @@ function App() {
                 onDeleteAccount={handleDeleteCashAccount}
                 onSaveBalanceEntry={handleSaveCashBalanceEntry}
                 onDeleteBalanceEntry={handleDeleteCashBalanceEntry}
+                investments={portfolioHoldings}
+                investmentValuations={investmentValuations}
+                retirementFunds={retirementFunds}
+                retirementEntries={retirementEntries}
+                onSaveRetirementFund={handleSaveRetirementFund}
+                onDeleteRetirementFund={handleDeleteRetirementFund}
+                onSaveRetirementEntries={handleSaveRetirementEntries}
+                onDeleteRetirementSnapshot={handleDeleteRetirementSnapshot}
                 statements={accountStatements}
                 statementsEnabled={isSupabaseConfigured()}
                 onUploadStatement={handleUploadStatement}
@@ -1171,8 +1401,12 @@ function App() {
               baseCurrency={userProfile.currency}
               benefits={getCardBenefitsForCard(viewingCard.name, cardBenefits)}
               onEdit={handleEditCardStart}
+              onDelete={handleDeleteCard}
               cardPointTransactions={cardPointTransactions}
               onUpdateCardPointTransactions={handleUpdateCardPointTransactions}
+              cashbackPrograms={cashbackPrograms.filter(program => program.cardId === viewingCard.id)}
+              onSaveCashbackProgram={handleSaveCashbackProgram}
+              onDeleteCashbackProgram={handleDeleteCashbackProgram}
               onClose={() => setViewingCardId(null)}
               statements={accountStatements.filter(statement => statement.accountKind === 'Card' && statement.cardId === viewingCard.id)}
               statementsEnabled={isSupabaseConfigured()}
@@ -1181,6 +1415,9 @@ function App() {
               onDeleteStatement={handleDeleteStatement}
               onAddExpense={handleAddExpenseFromStatement}
               onUpdateExpense={handleUpdateExpenseFromStatement}
+              incomes={incomes}
+              onAddIncome={handleAddIncomeFromStatement}
+              onUpdateIncome={handleUpdateIncomeFromStatement}
           />
       )}
 

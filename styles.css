@@ -47,6 +47,14 @@
   }
 }
 
+@layer components {
+  @media (min-width: 640px) {
+    .expense-ledger-swipe-surface {
+      transform: translateX(0) !important;
+    }
+  }
+}
+
 @layer utilities {
   @keyframes fadeIn {
     from {

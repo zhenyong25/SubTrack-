@@ -1,7 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, CircleDollarSign, Loader2, Tag, X } from 'lucide-react';
-import { CURRENCIES, Expense, PaymentCard } from '../types';
-import { DEFAULT_EXPENSE_CATEGORIES as DEFAULT_CATEGORIES, getCurrencySymbol, getExpenseCategories, saveExpenseCategories } from '../services/storageService';
+import { CashbackProgram, CURRENCIES, Expense, PaymentCard } from '../types';
+import { computeCashback, getProgramForCycle, getStatementCycle, isCashbackCard } from '../services/cashbackService';
+import {
+  DEFAULT_EXPENSE_CATEGORIES as DEFAULT_CATEGORIES,
+  deleteExpenseCategoryColor,
+  EXPENSE_COLOR_PALETTE,
+  getCurrencySymbol,
+  getExpenseCategories,
+  getExpenseCategoryColor,
+  saveExpenseCategories,
+  saveExpenseCategoryColor,
+} from '../services/storageService';
 
 interface AddExpenseProps {
   onSave: (expense: Omit<Expense, 'id'>) => void | Promise<void>;
@@ -9,14 +19,63 @@ interface AddExpenseProps {
   initialData?: Expense;
   initialDate?: string;
   cards: PaymentCard[];
+  expenses?: Expense[];
+  cashbackPrograms?: CashbackProgram[];
 }
 
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
 const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Slate'];
 const FIELD_CLASS = 'w-full min-w-0 h-12 bg-surface border border-border rounded-xl px-3 text-sm text-textMain placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors';
 const LABEL_CLASS = 'mb-2 block text-xs font-semibold text-secondary';
 
-const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, initialDate, cards }) => {
+interface CashbackCategoryHintProps {
+  program: CashbackProgram;
+  categoryId: string;
+  cycleLabel: string;
+  before: ReturnType<typeof computeCashback> | null;
+  after: ReturnType<typeof computeCashback> | null;
+}
+
+const CashbackCategoryHint: React.FC<CashbackCategoryHintProps> = ({ program, categoryId, cycleLabel, before, after }) => {
+  const category = program.categories.find(item => item.id === categoryId);
+  if (!category || !before) return null;
+
+  const symbol = getCurrencySymbol(program.currency);
+  const money = (value: number) => `${symbol}${value.toFixed(2)}`;
+  const current = before.categories.find(item => item.category.id === category.id);
+  const projected = after?.categories.find(item => item.category.id === category.id);
+  const spend = current?.spend ?? 0;
+
+  return (
+    <div className="mt-3 space-y-1.5 text-[11px] text-secondary">
+      <p>
+        <span className="font-semibold text-textMain">Min spend</span> {category.minSpend > 0 ? money(category.minSpend) : 'none'}
+        <span className="mx-1.5 opacity-40">·</span>
+        <span className="font-semibold text-textMain">Monthly cap</span> {category.monthlyCap != null ? money(category.monthlyCap) : 'unlimited'}
+        {category.capGroup && category.groupMonthlyCap != null && (
+          <span> (shared {money(category.groupMonthlyCap)} with {category.capGroup})</span>
+        )}
+      </p>
+      <p>
+        Spent in this category ({cycleLabel}): <span className="font-semibold text-textMain">{money(spend)}</span>
+        {category.minSpend > 0 && (
+          spend >= category.minSpend
+            ? <span className="text-emerald-500"> · minimum met</span>
+            : <span> · {money(category.minSpend - spend)} more to unlock</span>
+        )}
+      </p>
+      {after && (
+        <p>
+          Card cashback this cycle: <span className="font-semibold text-textMain">{money(before.totalCashback)}</span>
+          {' → '}
+          <span className="font-semibold text-primary">{money(after.totalCashback)}</span>
+          {projected?.capped && <span className="text-amber-500"> · category cap reached</span>}
+        </p>
+      )}
+    </div>
+  );
+};
+
+const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, initialDate, cards, expenses = [], cashbackPrograms = [] }) => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('SGD');
@@ -25,9 +84,50 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [newCategory, setNewCategory] = useState('');
   const [notes, setNotes] = useState('');
-  const [selectedColor, setSelectedColor] = useState(COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState(() => getExpenseCategoryColor('Food'));
   const [linkedCardId, setLinkedCardId] = useState('');
+  const [cashbackCategoryId, setCashbackCategoryId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const linkedCard = cards.find(card => card.id === linkedCardId);
+  const isCashback = isCashbackCard(linkedCard);
+  const cycle = useMemo(
+    () => (isCashback && linkedCard ? getStatementCycle(date || new Date().toISOString().split('T')[0], linkedCard.statementDay) : null),
+    [isCashback, linkedCard, date],
+  );
+  const program = useMemo(
+    () => (cycle && linkedCard ? getProgramForCycle(cashbackPrograms, linkedCard.id, cycle.end) : undefined),
+    [cycle, linkedCard, cashbackPrograms],
+  );
+
+  // Keep the tag valid for whichever rule set covers the chosen date.
+  useEffect(() => {
+    if (!program) return;
+    setCashbackCategoryId(current =>
+      program.categories.some(category => category.id === current)
+        ? current
+        : program.categories.find(category => category.isDefault)?.id ?? '');
+  }, [program]);
+
+  const cashbackPreview = useMemo(() => {
+    if (!program || !linkedCard || !cycle) return null;
+    const others = expenses.filter(expense => expense.id !== initialData?.id);
+    const before = computeCashback(program, linkedCard, others, cycle);
+    const draftAmount = parseFloat(amount);
+    if (!(draftAmount > 0)) return { before, after: null };
+    const draft: Expense = {
+      id: '__draft__',
+      name,
+      amount: draftAmount,
+      currency,
+      expenseDate: date,
+      category,
+      color: selectedColor,
+      linkedCardId: linkedCard.id,
+      cashbackCategoryId: cashbackCategoryId || undefined,
+    };
+    return { before, after: computeCashback(program, linkedCard, [...others, draft], cycle) };
+  }, [program, linkedCard, cycle, expenses, initialData?.id, amount, name, currency, date, category, selectedColor, cashbackCategoryId]);
 
   useEffect(() => {
     setCategories(getExpenseCategories());
@@ -44,14 +144,33 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
     setNotes(initialData.notes || '');
     setSelectedColor(initialData.color);
     setLinkedCardId(initialData.linkedCardId || '');
+    setCashbackCategoryId(initialData.cashbackCategoryId || '');
   }, [initialData, initialDate]);
 
   const persistCategories = (nextCategories: string[]) => {
     const normalized = saveExpenseCategories(nextCategories);
     setCategories(normalized);
     if (!normalized.includes(category)) {
-      setCategory(normalized[0] || 'Food');
+      const nextCategory = normalized[0] || 'Food';
+      setCategory(nextCategory);
+      setSelectedColor(getExpenseCategoryColor(nextCategory));
     }
+  };
+
+  const selectCategory = (value: string) => {
+    setCategory(value);
+    setSelectedColor(getExpenseCategoryColor(value));
+  };
+
+  const updateCategoryInput = (value: string) => {
+    setCategory(value);
+    const existingCategory = categories.find(cat => cat.toLowerCase() === value.trim().toLowerCase());
+    if (existingCategory) setSelectedColor(getExpenseCategoryColor(existingCategory));
+  };
+
+  const selectCategoryColor = (color: string) => {
+    setSelectedColor(color);
+    saveExpenseCategoryColor(category, color);
   };
 
   const addCategory = () => {
@@ -62,13 +181,14 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
       return;
     }
     persistCategories([...categories, value]);
-    setCategory(value);
+    selectCategory(value);
     setNewCategory('');
   };
 
   const deleteCategory = (value: string) => {
     if (DEFAULT_CATEGORIES.includes(value)) return;
     const nextCategories = categories.filter(cat => cat !== value);
+    deleteExpenseCategoryColor(value);
     persistCategories(nextCategories);
   };
 
@@ -88,6 +208,7 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
         notes: notes.trim() || undefined,
         linkedCardId: linkedCardId || undefined,
         linkedCardName: linkedCardId ? cards.find(card => card.id === linkedCardId)?.name || undefined : undefined,
+        cashbackCategoryId: isCashback && program && cashbackCategoryId ? cashbackCategoryId : undefined,
       });
     } finally {
       setIsSaving(false);
@@ -176,7 +297,7 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
                 id="expense-category"
                 type="text"
                 value={category}
-                onChange={e => setCategory(e.target.value)}
+                onChange={e => updateCategoryInput(e.target.value)}
                 placeholder="e.g. Bills"
                 className={`${FIELD_CLASS} pl-9`}
               />
@@ -189,10 +310,11 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
                 >
                   <button
                     type="button"
-                    onClick={() => setCategory(cat)}
+                    onClick={() => selectCategory(cat)}
                     aria-pressed={category === cat}
                     className="min-w-0 rounded-lg px-3 py-2 text-left break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
+                    <span className="mr-2 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle" style={{ backgroundColor: getExpenseCategoryColor(cat) }} />
                     {cat}
                   </button>
                   {!DEFAULT_CATEGORIES.includes(cat) && (
@@ -250,16 +372,53 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
               ))}
             </select>
             <p className="mt-2 text-[11px] text-secondary">Choose the card used for this payment.</p>
+
+            {isCashback && (
+              <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <label htmlFor="expense-cashback-category" className={LABEL_CLASS}>Cashback category</label>
+                {program && cycle ? (
+                  <>
+                    <div className="relative">
+                      <select
+                        id="expense-cashback-category"
+                        value={cashbackCategoryId}
+                        onChange={e => setCashbackCategoryId(e.target.value)}
+                        className={`${FIELD_CLASS} appearance-none pr-9 cursor-pointer`}
+                      >
+                        {program.categories
+                          .slice()
+                          .sort((a, b) => a.sortOrder - b.sortOrder)
+                          .map(item => (
+                            <option key={item.id} value={item.id}>{item.name}</option>
+                          ))}
+                      </select>
+                      <ChevronDown size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-secondary" />
+                    </div>
+                    <CashbackCategoryHint
+                      program={program}
+                      categoryId={cashbackCategoryId}
+                      cycleLabel={cycle.label}
+                      before={cashbackPreview?.before ?? null}
+                      after={cashbackPreview?.after ?? null}
+                    />
+                  </>
+                ) : (
+                  <p className="text-xs text-secondary">
+                    No cashback criteria cover the statement cycle for this date. Open the card and add a rule set, then tag this expense.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <fieldset>
-            <legend className={LABEL_CLASS}>Color tag</legend>
+            <legend className={LABEL_CLASS}>Category color</legend>
             <div className="grid grid-cols-8 gap-2">
-              {COLORS.map((c, index) => (
+              {EXPENSE_COLOR_PALETTE.map((c, index) => (
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setSelectedColor(c)}
+                  onClick={() => selectCategoryColor(c)}
                   aria-label={COLOR_NAMES[index]}
                   aria-pressed={selectedColor === c}
                   title={COLOR_NAMES[index]}
@@ -270,6 +429,9 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[11px] text-secondary">
+              Saved as the default for <span className="font-semibold text-textMain">{category.trim() || 'this category'}</span>. Selecting this category next time will apply the color automatically.
+            </p>
           </fieldset>
 
           <div>

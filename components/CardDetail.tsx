@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { AccountStatement, AccountStatementKind, CardBenefit, CardPointTransaction, CardPointsActivityType, Expense, PaymentCard, Subscription } from '../types';
+import { AccountStatement, AccountStatementKind, CardBenefit, CardPointTransaction, CardPointsActivityType, CashbackProgram, Expense, Income, PaymentCard, Subscription } from '../types';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getCardMilesSummary } from '../services/cardBenefitsService';
+import { isCashbackCard } from '../services/cashbackService';
 import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
+import CashbackPanel from './CashbackPanel';
 import StatementsList from './StatementsList';
 import StatementReconcilePanel from './StatementReconcilePanel';
 import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
@@ -15,8 +17,12 @@ interface CardDetailProps {
   baseCurrency: string;
   benefits?: CardBenefit[];
   onEdit: (card: PaymentCard) => void;
+  onDelete: (card: PaymentCard) => void | Promise<void>;
   cardPointTransactions: CardPointTransaction[];
   onUpdateCardPointTransactions: (transactions: CardPointTransaction[]) => void;
+  cashbackPrograms?: CashbackProgram[];
+  onSaveCashbackProgram?: (program: CashbackProgram) => void | Promise<void>;
+  onDeleteCashbackProgram?: (programId: string) => void | Promise<void>;
   onClose: () => void;
   statements: AccountStatement[];
   statementsEnabled: boolean;
@@ -25,6 +31,9 @@ interface CardDetailProps {
   onDeleteStatement: (statement: AccountStatement) => void | Promise<void>;
   onAddExpense: (expense: Omit<Expense, 'id'>) => Promise<Expense>;
   onUpdateExpense: (expense: Expense) => Promise<void>;
+  incomes: Income[];
+  onAddIncome: (income: Omit<Income, 'id'>) => Promise<Income>;
+  onUpdateIncome: (income: Income) => Promise<void>;
 }
 
 const POINT_ACTIVITY_TYPES: CardPointsActivityType[] = ['Earned', 'Redeemed', 'Expired', 'Adjusted', 'Transferred In', 'Transferred Out'];
@@ -87,8 +96,12 @@ const CardDetail: React.FC<CardDetailProps> = ({
   baseCurrency,
   benefits = [],
   onEdit,
+  onDelete,
   cardPointTransactions = [],
   onUpdateCardPointTransactions,
+  cashbackPrograms = [],
+  onSaveCashbackProgram,
+  onDeleteCashbackProgram,
   onClose,
   statements,
   statementsEnabled,
@@ -97,8 +110,12 @@ const CardDetail: React.FC<CardDetailProps> = ({
   onDeleteStatement,
   onAddExpense,
   onUpdateExpense,
+  incomes = [],
+  onAddIncome,
+  onUpdateIncome,
 }) => {
   const isCreditCard = card.kind === 'Credit';
+  const isCashback = isCashbackCard(card);
   const expiryStatus = getCardExpiryStatus(card);
   const [pointsRange, setPointsRange] = useState<PointsRangeMode>('Monthly');
   const [pointsWindowOffset, setPointsWindowOffset] = useState(0);
@@ -307,9 +324,14 @@ const CardDetail: React.FC<CardDetailProps> = ({
                     {card.kind === 'Credit' ? 'Credit' : card.kind === 'Debit' ? 'Debit' : 'Multi-currency'}
                 </span>
             </div>
-            <button onClick={() => onEdit(card)} className="p-2 text-secondary hover:text-primary" aria-label="Edit card">
-                <Pencil size={20} />
-            </button>
+            <div className="flex items-center">
+                <button onClick={() => onEdit(card)} className="p-2 text-secondary hover:text-primary" aria-label="Edit card">
+                    <Pencil size={20} />
+                </button>
+                <button onClick={() => void onDelete(card)} className="p-2 -mr-2 text-secondary hover:text-red-500" aria-label="Delete card">
+                    <Trash2 size={20} />
+                </button>
+            </div>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 min-h-0 max-w-2xl w-full mx-auto">
@@ -408,7 +430,19 @@ const CardDetail: React.FC<CardDetailProps> = ({
                     </div>
                 )}
 
-                {card.id !== 'new' && (
+                {card.id !== 'new' && isCashback && onSaveCashbackProgram && onDeleteCashbackProgram && (
+                    <CashbackPanel
+                        card={card}
+                        expenses={expenses}
+                        programs={cashbackPrograms}
+                        onSaveProgram={onSaveCashbackProgram}
+                        onDeleteProgram={onDeleteCashbackProgram}
+                        onUpdateExpense={onUpdateExpense}
+                        onEditCard={() => onEdit(card)}
+                    />
+                )}
+
+                {card.id !== 'new' && !isCashback && (
                     <div className="mb-6">
                         <div className="bg-background rounded-xl border border-border p-4">
                             <div className="flex items-center justify-between gap-3 mb-4">
@@ -688,7 +722,7 @@ const CardDetail: React.FC<CardDetailProps> = ({
                     </div>
                 )}
 
-                {benefitRows.length > 0 && (
+                {!isCashback && benefitRows.length > 0 && (
                     <div className="mb-6 bg-background border border-border rounded-xl p-4">
                         <div className="flex items-center justify-between mb-3">
                             <div>
@@ -751,6 +785,9 @@ const CardDetail: React.FC<CardDetailProps> = ({
                 baseCurrency={baseCurrency}
                 onAddExpense={onAddExpense}
                 onUpdateExpense={onUpdateExpense}
+                incomes={incomes}
+                onAddIncome={onAddIncome}
+                onUpdateIncome={onUpdateIncome}
                 onClose={() => setReconcilingStatement(null)}
             />
         )}

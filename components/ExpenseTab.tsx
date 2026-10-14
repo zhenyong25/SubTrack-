@@ -8,15 +8,18 @@ import {
   CircleDollarSign,
   ListFilter,
   PieChart as PieChartIcon,
+  Search,
   TrendingDown,
   Wallet,
   Pencil,
   Trash2,
+  X,
 } from 'lucide-react';
 import { Cell, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts';
 import { BudgetPlan, CURRENCIES, Expense, Subscription } from '../types';
-import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
+import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getExpenseCategoryColor, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
 import BudgetPanel from './BudgetPanel';
+import { expenseMatchesSearch, splitSearchTerms } from '../services/expenseSearch';
 
 interface ExpenseTabProps {
   expenses: Expense[];
@@ -29,8 +32,6 @@ interface ExpenseTabProps {
   onDeleteExpense: (id: string) => void;
   onSaveBudgetPlan: (plan: BudgetPlan) => void;
 }
-
-const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
 
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
 
@@ -59,6 +60,7 @@ type LedgerEntryRow = {
   category: string;
   amount: number;
   source: 'Expense' | 'Subscription';
+  nextDate: string;
   color: string;
   originalAmount: number;
   originalCurrency: string;
@@ -67,6 +69,14 @@ type LedgerEntryRow = {
 
 const SWIPE_REVEAL_WIDTH = 96;
 
+const SEARCH_PAGE_SIZE = 100;
+
+const formatResultDate = (isoDate: string) => {
+  const date = new Date(`${isoDate.split('T')[0]}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const ExpenseLedgerRow: React.FC<{
   entry: LedgerEntryRow;
   baseCurrency: string;
@@ -74,7 +84,8 @@ const ExpenseLedgerRow: React.FC<{
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ entry, baseCurrency, isOpen, onOpenChange, onEdit, onDelete }) => {
+  showDate?: boolean;
+}> = ({ entry, baseCurrency, isOpen, onOpenChange, onEdit, onDelete, showDate }) => {
   const canSwipe = entry.source === 'Expense';
   const [dragX, setDragX] = useState(0);
   const dragState = useRef({ dragging: false, startX: 0, startOpen: false });
@@ -104,7 +115,7 @@ const ExpenseLedgerRow: React.FC<{
   return (
     <div className="relative overflow-hidden bg-surface">
       {canSwipe && (
-        <div className="absolute inset-y-0 right-0 flex" style={{ width: SWIPE_REVEAL_WIDTH }}>
+        <div className="absolute inset-y-0 right-0 flex sm:hidden" style={{ width: SWIPE_REVEAL_WIDTH }}>
           <button
             onClick={() => { onOpenChange(false); onEdit(); }}
             className="flex-1 flex items-center justify-center bg-primary text-white"
@@ -122,7 +133,7 @@ const ExpenseLedgerRow: React.FC<{
         </div>
       )}
       <div
-        className="relative bg-surface px-4 py-3 touch-pan-y select-none"
+        className="expense-ledger-swipe-surface relative bg-surface px-4 py-3 touch-pan-y select-none"
         style={{ transform: `translateX(${translateX}px)`, transition: dragState.current.dragging ? 'none' : 'transform 200ms ease' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -143,13 +154,41 @@ const ExpenseLedgerRow: React.FC<{
                 )}
               </div>
               <p className="mt-0.5 truncate text-[10px] text-secondary">
-                {entry.category}
+                {showDate ? `${formatResultDate(entry.nextDate)} · ` : ''}{entry.category}
                 {entry.originalCurrency !== baseCurrency ? ` · ${entry.originalAmount.toFixed(2)} ${entry.originalCurrency}` : ''}
                 {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
               </p>
             </div>
           </div>
-          <div className="text-sm font-bold text-textMain whitespace-nowrap">{entry.amount.toFixed(2)}</div>
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="whitespace-nowrap text-sm font-bold text-textMain">{entry.amount.toFixed(2)}</div>
+            {canSwipe && (
+              <div
+                className="hidden items-center gap-1 sm:flex"
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-secondary transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  aria-label={`Edit ${entry.name}`}
+                  title="Edit transaction"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-secondary transition-colors hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  aria-label={`Delete ${entry.name}`}
+                  title="Delete transaction"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -222,6 +261,8 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchVisibleCount, setSearchVisibleCount] = useState(SEARCH_PAGE_SIZE);
   const today = new Date();
 
   useEffect(() => {
@@ -490,6 +531,35 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
     return cells;
   }, [calendarDays, firstDay]);
 
+  const searchTerms = useMemo(() => splitSearchTerms(searchQuery), [searchQuery]);
+  const isSearching = searchTerms.length > 0;
+
+  useEffect(() => {
+    setSearchVisibleCount(SEARCH_PAGE_SIZE);
+  }, [searchQuery]);
+
+  // Searches every logged expense (not just the month on screen); see expenseMatchesSearch.
+  const searchResults = useMemo<LedgerEntryRow[]>(() => {
+    if (searchTerms.length === 0) return [];
+    return expenses
+      .filter(expense => expenseMatchesSearch(expense, searchTerms))
+      .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
+      .map((expense): LedgerEntryRow => ({
+        id: expense.id,
+        name: expense.name,
+        category: expense.category,
+        amount: convertCurrency(expense.amount, expense.currency, baseCurrency),
+        source: 'Expense',
+        nextDate: expense.expenseDate,
+        color: expense.color,
+        originalAmount: expense.amount,
+        originalCurrency: expense.currency,
+        linkedCardName: expense.linkedCardName,
+      }));
+  }, [expenses, searchTerms, baseCurrency]);
+
+  const searchTotal = useMemo(() => searchResults.reduce((sum, entry) => sum + entry.amount, 0), [searchResults]);
+
   return (
     <div className="flex flex-col gap-6 pb-24 animate-fade-in">
       <div className="bg-gradient-to-r from-rose-500 to-orange-500 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
@@ -512,6 +582,94 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         Top spend: {stats.topExpense ? `${stats.topExpense.name} - ${stats.topExpense.value.toFixed(2)} ${baseCurrency}/mo` : 'No expenses yet'}
       </p>
 
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary" aria-hidden="true" />
+        <input
+          type="text"
+          role="searchbox"
+          aria-label="Search expenses"
+          value={searchQuery}
+          onChange={event => setSearchQuery(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Escape') setSearchQuery(''); }}
+          placeholder="Search expenses - name, category, notes, card, amount, date"
+          className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-10 text-sm text-textMain outline-none transition-colors placeholder:text-secondary/70 focus:border-primary"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+            className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-secondary hover:bg-background hover:text-textMain"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {isSearching ? (
+        <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-4">
+            <div className="flex items-center space-x-2">
+              <Search className="text-primary" size={18} />
+              <div>
+                <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Search results</h3>
+                <p className="mt-0.5 text-[10px] text-secondary">
+                  {searchResults.length} match{searchResults.length === 1 ? '' : 'es'} across all months
+                  {searchResults.length > 0 ? ` · ${searchTotal.toFixed(2)} ${baseCurrency} total` : ''}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20"
+            >
+              Back to overview
+            </button>
+          </div>
+
+          {searchResults.length === 0 ? (
+            <div className="text-center py-8 text-secondary">
+              <p className="text-xs">
+                {expenses.length === 0 ? 'No expenses logged yet.' : `No expenses match "${searchQuery.trim()}".`}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border shadow-sm">
+                {searchResults.slice(0, searchVisibleCount).map(entry => {
+                  const entryKey = `search-${entry.id}`;
+                  return (
+                    <ExpenseLedgerRow
+                      key={entryKey}
+                      entry={entry}
+                      baseCurrency={baseCurrency}
+                      showDate
+                      isOpen={openEntryId === entryKey}
+                      onOpenChange={open => setOpenEntryId(open ? entryKey : null)}
+                      onEdit={() => {
+                        const expense = expenses.find(item => item.id === entry.id);
+                        if (expense) onEditExpense(expense);
+                      }}
+                      onDelete={() => onDeleteExpense(entry.id)}
+                    />
+                  );
+                })}
+              </div>
+              {searchResults.length > searchVisibleCount && (
+                <button
+                  type="button"
+                  onClick={() => setSearchVisibleCount(count => count + SEARCH_PAGE_SIZE)}
+                  className="mt-3 w-full rounded-xl border border-border bg-background py-2.5 text-xs font-bold text-secondary hover:text-textMain"
+                >
+                  Show more ({searchResults.length - searchVisibleCount} left)
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+      <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="bg-surface p-1 rounded-lg border border-border flex flex-wrap gap-1">
           {(['Daily', 'Monthly', 'Yearly'] as ViewMode[]).map(mode => (
@@ -676,8 +834,8 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                   stroke="var(--color-surface)"
                   strokeWidth={2}
                 >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`expense-cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {categoryData.map(entry => (
+                    <Cell key={`expense-cell-${entry.name}`} fill={getExpenseCategoryColor(entry.name)} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -694,13 +852,13 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
           )}
         </div>
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {categoryData.map((entry, index) => {
+          {categoryData.map(entry => {
             const total = categoryData.reduce((sum, item) => sum + item.value, 0) || 1;
             const percent = ((entry.value / total) * 100).toFixed(0);
             return (
               <div key={entry.name} className="flex items-center justify-between gap-3 bg-background px-3 py-2 rounded-xl border border-border">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getExpenseCategoryColor(entry.name) }} />
                   <span className="text-xs font-medium text-secondary truncate">{entry.name}</span>
                 </div>
                 <span className="text-[10px] font-bold text-textMain whitespace-nowrap">{percent}%</span>
@@ -803,6 +961,8 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
           </ResponsiveContainer>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

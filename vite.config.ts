@@ -50,6 +50,134 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
+        {
+          // Mirrors server/index.ts's /api/stock-quote route for local `vite dev` - Yahoo
+          // Finance's endpoint sends no CORS headers, so it has to be proxied server-side here
+          // too, the same reasoning as the HF proxy above.
+          name: 'stock-quote-proxy',
+          configureServer(server) {
+            server.middlewares.use('/api/stock-quote', async (req, res) => {
+              if (req.method !== 'GET') {
+                res.statusCode = 405;
+                res.end();
+                return;
+              }
+
+              const symbol = (new URL(req.url || '', 'http://localhost').searchParams.get('symbol') || '').trim().toUpperCase();
+              if (!/^[A-Z0-9.\-^=]{1,20}$/.test(symbol)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: { message: 'Invalid or missing symbol.' } }));
+                return;
+              }
+
+              try {
+                const upstream = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Safari/537.36' },
+                });
+                const data = await upstream.json();
+                const meta = data?.chart?.result?.[0]?.meta;
+                res.setHeader('Content-Type', 'application/json');
+                if (!upstream.ok || !meta || typeof meta.regularMarketPrice !== 'number') {
+                  res.statusCode = upstream.ok ? 404 : upstream.status;
+                  res.end(JSON.stringify({ error: { message: `No quote found for "${symbol}".` } }));
+                  return;
+                }
+                res.statusCode = 200;
+                res.end(JSON.stringify({
+                  symbol: meta.symbol || symbol,
+                  price: meta.regularMarketPrice,
+                  currency: meta.currency || null,
+                  name: meta.longName || meta.shortName || null,
+                }));
+              } catch (error) {
+                res.statusCode = 502;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : 'Proxy request failed' } }));
+              }
+            });
+          },
+        },
+        {
+          // Hourly OHLC proxy used by the portfolio's 1D candlestick chart. Five days are
+          // requested upstream so the UI can carry the last close through weekends and
+          // closed-market hours while still rendering a complete 24-hour axis.
+          name: 'stock-history-proxy',
+          configureServer(server) {
+            server.middlewares.use('/api/stock-history', async (req, res) => {
+              if (req.method !== 'GET') {
+                res.statusCode = 405;
+                res.end();
+                return;
+              }
+
+              const requestUrl = new URL(req.url || '', 'http://localhost');
+              const symbol = (requestUrl.searchParams.get('symbol') || '').trim().toUpperCase();
+              const supportedIntervals = new Set(['1m', '5m', '15m', '60m', '1d']);
+              const supportedRanges = new Set(['1d', '5d', '1mo', '3mo', '1y', 'max']);
+              let interval = supportedIntervals.has(requestUrl.searchParams.get('interval') || '') ? requestUrl.searchParams.get('interval')! : '60m';
+              let range = supportedRanges.has(requestUrl.searchParams.get('range') || '') ? requestUrl.searchParams.get('range')! : '5d';
+              if (interval === '1m' && range !== '1d' && range !== '5d') range = '5d';
+              if ((interval === '5m' || interval === '15m') && !['1d', '5d', '1mo'].includes(range)) range = '1mo';
+              if (interval === '60m' && range === 'max') range = '1y';
+              if (!/^[A-Z0-9.\-^=]{1,20}$/.test(symbol)) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: { message: 'Invalid or missing symbol.' } }));
+                return;
+              }
+
+              try {
+                const upstream = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=true&events=div%2Csplits`, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Safari/537.36' },
+                });
+                const data = await upstream.json();
+                const result = data?.chart?.result?.[0];
+                const quote = result?.indicators?.quote?.[0];
+                res.setHeader('Content-Type', 'application/json');
+                if (!upstream.ok || !result?.timestamp || !quote) {
+                  res.statusCode = upstream.ok ? 404 : upstream.status;
+                  res.end(JSON.stringify({ error: { message: `No intraday history found for "${symbol}".` } }));
+                  return;
+                }
+
+                const candles = result.timestamp.flatMap((timestamp: number, index: number) => {
+                  const open = quote.open?.[index];
+                  const high = quote.high?.[index];
+                  const low = quote.low?.[index];
+                  const close = quote.close?.[index];
+                  const volume = quote.volume?.[index];
+                  if (![open, high, low, close].every(value => typeof value === 'number' && Number.isFinite(value))) return [];
+                  return [{
+                    timestamp: timestamp * 1000,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume: typeof volume === 'number' && Number.isFinite(volume) ? volume : undefined,
+                  }];
+                });
+
+                res.statusCode = 200;
+                res.end(JSON.stringify({
+                  symbol: result.meta?.symbol || symbol,
+                  currency: result.meta?.currency || null,
+                  name: result.meta?.longName || result.meta?.shortName || null,
+                  currentPrice: result.meta?.regularMarketPrice ?? null,
+                  previousClose: result.meta?.regularMarketPreviousClose ?? null,
+                  marketState: result.meta?.marketState || null,
+                  exchange: result.meta?.fullExchangeName || result.meta?.exchangeName || null,
+                  exchangeTimezone: result.meta?.exchangeTimezoneName || null,
+                  candles,
+                }));
+              } catch (error) {
+                res.statusCode = 502;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: { message: error instanceof Error ? error.message : 'Proxy request failed' } }));
+              }
+            });
+          },
+        },
         VitePWA({
           strategies: 'injectManifest',
           srcDir: '.',
