@@ -7,6 +7,66 @@ const STORAGE_KEY_FRIENDS = 'subtrack_friends_v1';
 
 export const DEFAULT_EXPENSE_CATEGORIES = ['Food', 'Bills', 'Groceries', 'Rent', 'Transport', 'Dining', 'Shopping', 'Health', 'Insurance', 'Education', 'Subscriptions'];
 const EXPENSE_CATEGORIES_STORAGE_KEY = 'subtrack_expense_categories_v1';
+const EXPENSE_CATEGORY_COLORS_STORAGE_KEY = 'subtrack_expense_category_colors_v1';
+
+export const EXPENSE_COLOR_PALETTE = ['#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
+
+const DEFAULT_EXPENSE_CATEGORY_COLORS: Record<string, string> = {
+  food: '#f97316',
+  bills: '#ef4444',
+  groceries: '#16a34a',
+  rent: '#8b5cf6',
+  transport: '#0ea5e9',
+  dining: '#eab308',
+  shopping: '#ec4899',
+  health: '#16a34a',
+  insurance: '#64748b',
+  education: '#8b5cf6',
+  subscriptions: '#0ea5e9',
+};
+
+const normalizeExpenseCategory = (category: string) => category.trim().toLowerCase();
+
+const getSavedExpenseCategoryColors = (): Record<string, string> => {
+  try {
+    const raw = localStorage.getItem(EXPENSE_CATEGORY_COLORS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    );
+  } catch {
+    return {};
+  }
+};
+
+export const getExpenseCategoryColor = (category: string): string => {
+  const normalized = normalizeExpenseCategory(category);
+  const configured = getSavedExpenseCategoryColors()[normalized] || DEFAULT_EXPENSE_CATEGORY_COLORS[normalized];
+  if (configured) return configured;
+
+  // Give new custom categories a stable color before the user chooses one.
+  let hash = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(index)) >>> 0;
+  }
+  return EXPENSE_COLOR_PALETTE[hash % EXPENSE_COLOR_PALETTE.length];
+};
+
+export const saveExpenseCategoryColor = (category: string, color: string): string => {
+  const normalized = normalizeExpenseCategory(category);
+  if (!normalized) return color;
+  const next = { ...getSavedExpenseCategoryColors(), [normalized]: color };
+  localStorage.setItem(EXPENSE_CATEGORY_COLORS_STORAGE_KEY, JSON.stringify(next));
+  return color;
+};
+
+export const deleteExpenseCategoryColor = (category: string) => {
+  const normalized = normalizeExpenseCategory(category);
+  const next = getSavedExpenseCategoryColors();
+  delete next[normalized];
+  localStorage.setItem(EXPENSE_CATEGORY_COLORS_STORAGE_KEY, JSON.stringify(next));
+};
 
 export const getExpenseCategories = (): string[] => {
   try {
@@ -612,7 +672,7 @@ export const getExpenseCalendarDays = (
       currency: expense.currency,
       category: expense.category,
       source: 'Expense',
-      color: expense.color,
+      color: getExpenseCategoryColor(expense.category),
       date: date.toISOString(),
     });
   });
@@ -629,7 +689,7 @@ export const getExpenseCalendarDays = (
         currency: subscription.currency,
         category: subscription.category,
         source: 'Subscription',
-        color: subscription.color,
+        color: getExpenseCategoryColor(subscription.category),
         date: occurrence.toISOString(),
       });
     });

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Landmark, Plus, Pencil } from 'lucide-react';
+import { Landmark, Plus, Pencil, Trash2 } from 'lucide-react';
 import { CardBenefit, CardPointTransaction, Expense, PaymentCard, Subscription } from '../types';
 import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
@@ -15,9 +15,10 @@ interface CardsTabProps {
   onAddCard: () => void;
   onViewCard: (card: PaymentCard) => void;
   onEditCard: (card: PaymentCard) => void;
+  onDeleteCard: (card: PaymentCard) => void | Promise<void>;
 }
 
-const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, cardBenefits = [], cardPointTransactions, baseCurrency, onAddCard, onViewCard, onEditCard }) => {
+const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, cardBenefits = [], cardPointTransactions, baseCurrency, onAddCard, onViewCard, onEditCard, onDeleteCard }) => {
   const [filter, setFilter] = useState<'All' | 'Debit' | 'Credit' | 'MultiCurrency'>('All');
 
   const cardRows = useMemo(() => {
@@ -165,16 +166,30 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
                   </div>
                 </div>
 
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    onEditCard(card);
-                  }}
-                  className="text-primary text-xs font-bold flex items-center shrink-0"
-                >
-                  <Pencil size={14} className="mr-1" />
-                  Edit
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      onEditCard(card);
+                    }}
+                    className="text-primary text-xs font-bold flex items-center"
+                    aria-label={`Edit ${card.name}`}
+                  >
+                    <Pencil size={14} className="mr-1" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      void onDeleteCard(card);
+                    }}
+                    className="text-red-500 text-xs font-bold flex items-center hover:text-red-600"
+                    aria-label={`Delete ${card.name}`}
+                  >
+                    <Trash2 size={14} className="mr-1" />
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mt-4">
@@ -209,7 +224,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
                 </span>
               </div>
 
-              {milesSummary.benefits.length > 0 && (
+              {card.rewardType !== 'Cashback' && milesSummary.benefits.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-border/60">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] uppercase tracking-wide text-secondary font-bold">Miles Benefits</p>

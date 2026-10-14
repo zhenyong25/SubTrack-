@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Subscription, BillingCycle, CURRENCIES, PaymentCard } from '../types';
-import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol } from '../services/storageService';
+import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol, getExpenseCategoryColor } from '../services/storageService';
 import { CreditCard, Calendar, TrendingUp, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Clock, PlusCircle } from 'lucide-react';
 import CardLogo from './CardLogo';
 import SubscriptionList from './SubscriptionList';
@@ -17,8 +17,6 @@ interface DashboardProps {
   onDeleteSubscription: (id: string) => void;
   onSelectSubscription: (subId: string) => void;
 }
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'];
 
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
 
@@ -481,8 +479,8 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                   stroke="var(--color-surface)"
                   strokeWidth={2}
                 >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {categoryData.map(entry => (
+                    <Cell key={`cell-${entry.name}`} fill={getExpenseCategoryColor(entry.name)} />
                   ))}
                 </Pie>
                 <Tooltip 
@@ -499,9 +497,9 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
           )}
         </div>
         <div className="mt-6 flex flex-wrap gap-3 justify-center">
-          {categoryData.map((entry, index) => (
+          {categoryData.map(entry => (
             <div key={entry.name} className="flex items-center space-x-1.5 bg-background px-2 py-1 rounded-md border border-border">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getExpenseCategoryColor(entry.name) }}></div>
               <span className="text-xs font-medium text-secondary">{entry.name}</span>
             </div>
           ))}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CardType, Expense, PaymentCard, PaymentCardKind, Subscription } from '../types';
+import { CardRewardType, CardType, Expense, PaymentCard, PaymentCardKind, Subscription } from '../types';
 import { getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
 import { AlertTriangle, ArrowLeft, Save } from 'lucide-react';
@@ -26,12 +26,20 @@ const CardEditModal: React.FC<CardEditModalProps> = ({ card, baseCurrency, expen
   const [color, setColor] = useState(card.color || '#1e293b');
   const [expiryMonth, setExpiryMonth] = useState(card.expiryMonth?.toString() || '');
   const [expiryYear, setExpiryYear] = useState(card.expiryYear?.toString() || '');
+  const [rewardType, setRewardType] = useState<CardRewardType>(card.rewardType ?? 'Miles');
+  const [statementDay, setStatementDay] = useState(card.statementDay?.toString() || '');
 
   const computedCreditDebt = kind === 'Credit' ? getCardMonthlySpend(card, expenses, subscriptions, baseCurrency) : 0;
 
   const handleSave = () => {
     if (!name.trim()) {
       alert('Card name is required');
+      return;
+    }
+
+    const parsedStatementDay = parseInt(statementDay, 10);
+    if (kind === 'Credit' && statementDay && !(parsedStatementDay >= 1 && parsedStatementDay <= 31)) {
+      alert('Statement day must be between 1 and 31');
       return;
     }
 
@@ -47,6 +55,8 @@ const CardEditModal: React.FC<CardEditModalProps> = ({ card, baseCurrency, expen
       color,
       expiryMonth: expiryMonth ? parseInt(expiryMonth, 10) : undefined,
       expiryYear: expiryYear ? parseInt(expiryYear, 10) : undefined,
+      rewardType: kind === 'Credit' ? rewardType : undefined,
+      statementDay: kind === 'Credit' && statementDay ? parsedStatementDay : undefined,
     });
   };
 
@@ -229,6 +239,39 @@ const CardEditModal: React.FC<CardEditModalProps> = ({ card, baseCurrency, expen
               </div>
             </div>
           </div>
+
+          {kind === 'Credit' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-secondary uppercase mb-1">Rewards</label>
+                <select
+                  value={rewardType}
+                  onChange={e => setRewardType(e.target.value as CardRewardType)}
+                  className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
+                >
+                  <option value="Miles">Miles / points</option>
+                  <option value="Cashback">Cashback</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary uppercase mb-1">Statement Day</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={statementDay}
+                  onChange={e => setStatementDay(e.target.value)}
+                  placeholder="e.g. 22"
+                  className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none no-spinner"
+                />
+              </div>
+              <p className="col-span-2 text-[10px] text-secondary -mt-2">
+                {rewardType === 'Cashback'
+                  ? 'Cashback is tracked per statement cycle. A statement on the 22nd means each cycle runs 23rd to 22nd. Leave the day blank to use calendar months.'
+                  : 'Statement day is only used for cashback cards.'}
+              </p>
+            </div>
+          )}
 
           {kind === 'Credit' && creditLimit && parseFloat(creditLimit) > 0 && (
             <div className="flex items-start bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">

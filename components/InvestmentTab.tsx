@@ -9,12 +9,21 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Shield,
+  Settings2,
   Trash2,
+  TrendingDown,
   TrendingUp,
   X,
 } from 'lucide-react';
-import type { InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentTransactionType, InvestmentValuation, PokerMttBankrollTransaction, PokerMttTournament, PokerMttBankrollEventType } from '../types';
+import { CURRENCIES } from '../types';
+import type { InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentPositionSide, InvestmentTransaction, InvestmentTransactionType, InvestmentValuation } from '../types';
+import { fetchStockIntradayHistory, fetchStockQuote, isHongKongSymbol, normalizeTickerSymbol, type StockIntradayHistory } from '../services/stockQuoteService';
+import { convertCurrency, getCurrencySymbol } from '../services/storageService';
+import { applyInvestmentTransaction, colorForInvestmentKind, compareValuations, getPositionMetrics, transactionTypeLabel, type PositionMetrics } from '../services/investmentService';
+import InvestmentLogo from './InvestmentLogo';
+import TickerDetail from './TickerDetail';
 
 type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | 'MAX';
 type InvestmentCategory = 'All' | InvestmentKind;
@@ -22,26 +31,38 @@ type InvestmentCategory = 'All' | InvestmentKind;
 interface InvestmentTabProps {
   baseCurrency: string;
   investments: InvestmentHolding[];
+  accounts: InvestmentAccount[];
+  onSaveAccount: (account: InvestmentAccount) => void;
+  onDeleteAccount: (accountId: string) => void;
   valuations: InvestmentValuation[];
   transactions: InvestmentTransaction[];
-  pokerMttTournaments: PokerMttTournament[];
-  pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
   onAddTransaction: (transaction: Omit<InvestmentTransaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onDeleteTransaction: (transactionId: string) => Promise<void>;
   onCreateHolding: (holding: InvestmentHolding) => void;
-  onAddPokerMttTournament: (tournament: PokerMttTournament) => void;
-  onDeletePokerMttTournament: (tournamentId: string) => void;
-  onAddPokerMttBankrollTransaction: (event: PokerMttBankrollTransaction) => void;
-  onDeletePokerMttBankrollTransaction: (eventId: string) => Promise<void>;
+  onUpdateHolding: (holding: InvestmentHolding, silent?: boolean) => void;
+  onDeleteHolding: (holdingId: string) => void;
+  onSaveValuation: (valuation: InvestmentValuation) => void;
+  onDeleteValuation: (valuationId: string) => void;
 }
 
-const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards', 'Poker (MTT)', 'Cash', 'Other'];
+// Cash and Other are hidden for now (not removed from the underlying InvestmentKind type,
+// so any existing holding of that kind still displays fine under "All" - just not selectable
+// as a filter tab or an option when adding a new holding).
+const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards'];
+// Kinds a Yahoo Finance ticker lookup makes sense for, and where going Long vs Short is a
+// meaningful distinction (Pokemon Cards aren't traded either way).
+const QUOTABLE_KINDS: InvestmentKind[] = ['Stocks', 'Crypto'];
 const RANGES: RangeMode[] = ['1D', '7D', '1M', '3M', '6M', 'MAX'];
 const TRANSACTION_TYPES: InvestmentTransactionType[] = ['Buy', 'Sell', 'Dividend', 'Fee', 'Transfer In', 'Transfer Out', 'Split'];
 type EntryMode = 'holding' | 'transaction';
+// Which account's holdings are shown: every holding, the ones not tagged to any account, or one account's id.
+type AccountFilter = 'all' | 'unassigned' | string;
+const ACCOUNT_TYPES: InvestmentAccountType[] = ['Margin', 'Cash'];
+const ACCOUNT_COLORS = ['#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#ef4444', '#3b82f6', '#64748b'];
+type IntradayInterval = '20s' | '5m' | '1h';
 
 const rangeConfig: Record<RangeMode, { points: number; label: string }> = {
-  '1D': { points: 1, label: 'Today' },
+  '1D': { points: 1, label: 'Last 24 hours' },
   '7D': { points: 7, label: 'Last 7 days' },
   '1M': { points: 30, label: 'Last 1 month' },
   '3M': { points: 90, label: 'Last 3 months' },
@@ -51,6 +72,13 @@ const rangeConfig: Record<RangeMode, { points: number; label: string }> = {
 
 const formatMoney = (value: number, currency: string) =>
   `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+
+const formatRelativeSeconds = (timestampMs: number): string => {
+  const seconds = Math.max(0, Math.round((Date.now() - timestampMs) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes}m ago`;
+};
 
 const startOfWeek = (date: Date) => {
   const result = new Date(date);
@@ -98,36 +126,81 @@ const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
 const InvestmentTab: React.FC<InvestmentTabProps> = ({
   baseCurrency,
   investments,
+  accounts,
+  onSaveAccount,
+  onDeleteAccount,
   valuations,
   transactions,
-  pokerMttTournaments,
-  pokerMttBankrollTransactions,
   onAddTransaction,
   onDeleteTransaction,
   onCreateHolding,
-  onAddPokerMttTournament,
-  onDeletePokerMttTournament,
-  onAddPokerMttBankrollTransaction,
-  onDeletePokerMttBankrollTransaction,
+  onUpdateHolding,
+  onDeleteHolding,
+  onSaveValuation,
+  onDeleteValuation,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<InvestmentCategory>('All');
+
+  const valuationsByHolding = useMemo(() => {
+    const map = new Map<string, InvestmentValuation[]>();
+    valuations.forEach(valuation => {
+      const list = map.get(valuation.investmentId) || [];
+      list.push(valuation);
+      map.set(valuation.investmentId, list);
+    });
+    map.forEach(list => list.sort(compareValuations));
+    return map;
+  }, [valuations]);
+
+  // Value, cost and gain of a holding in the base currency (the % gain is currency-independent).
+  const getBaseMetrics = (investment: InvestmentHolding): PositionMetrics => {
+    const valuationHistory = valuationsByHolding.get(investment.id) || [];
+    if (investment.kind === 'Pokemon Cards' && valuationHistory.length > 0) {
+      const first = valuationHistory[0];
+      const latest = valuationHistory[valuationHistory.length - 1];
+      const basis = convertCurrency(
+        Number(first.marketValue),
+        first.currency || investment.currency || baseCurrency,
+        baseCurrency,
+      );
+      const currentValue = convertCurrency(
+        Number(latest.marketValue),
+        latest.currency || investment.currency || baseCurrency,
+        baseCurrency,
+      );
+      const gain = currentValue - basis;
+
+      return {
+        basis,
+        currentValue,
+        gain,
+        gainPct: basis > 0 ? (gain / basis) * 100 : 0,
+      };
+    }
+
+    const metrics = getPositionMetrics(investment);
+    const fromCurrency = investment.currency || baseCurrency;
+    return {
+      basis: convertCurrency(metrics.basis, fromCurrency, baseCurrency),
+      currentValue: convertCurrency(metrics.currentValue, fromCurrency, baseCurrency),
+      gain: convertCurrency(metrics.gain, fromCurrency, baseCurrency),
+      gainPct: metrics.gainPct,
+    };
+  };
   const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  const [pokerEntryMode, setPokerEntryMode] = useState<'tournament' | 'bankroll' | null>(null);
-  const [deletingBankrollId, setDeletingBankrollId] = useState<string | null>(null);
-  const [bankrollDeleteError, setBankrollDeleteError] = useState('');
-  const pokerLedgerRef = React.useRef<HTMLDivElement>(null);
-  const tournamentFormRef = React.useRef<HTMLFormElement>(null);
-  const bankrollFormRef = React.useRef<HTMLFormElement>(null);
-  React.useEffect(() => {
-    setPokerEntryMode(null);
-    if (selectedCategory === 'Poker (MTT)') pokerLedgerRef.current?.scrollIntoView({ block: 'start' });
-  }, [selectedCategory]);
-  React.useEffect(() => {
-    const form = pokerEntryMode === 'tournament' ? tournamentFormRef.current : pokerEntryMode === 'bankroll' ? bankrollFormRef.current : null;
-    form?.querySelector('input')?.focus({ preventScroll: true });
-  }, [pokerEntryMode]);
   const [rangeMode, setRangeMode] = useState<RangeMode>('1M');
+  const [chartZoom, setChartZoom] = useState(1);
+  const [intradayInterval, setIntradayInterval] = useState<IntradayInterval>('1h');
+  const [intradayByHolding, setIntradayByHolding] = useState<Record<string, StockIntradayHistory>>({});
+  const [isIntradayLoading, setIsIntradayLoading] = useState(false);
+  const [intradayError, setIntradayError] = useState('');
+  const [livePortfolioTicks, setLivePortfolioTicks] = useState<Array<{ timestamp: number; value: number }>>([]);
+  const [valuationTarget, setValuationTarget] = useState<InvestmentHolding | null>(null);
+  const [valuationDate, setValuationDate] = useState(new Date().toISOString().split('T')[0]);
+  const [valuationPrice, setValuationPrice] = useState('');
+  const [valuationNotes, setValuationNotes] = useState('');
+  const [expandedValuationHoldingId, setExpandedValuationHoldingId] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<EntryMode>(investments.length === 0 ? 'holding' : 'transaction');
   const [entryInvestmentId, setEntryInvestmentId] = useState('');
   const [entryType, setEntryType] = useState<InvestmentTransactionType>('Buy');
@@ -139,27 +212,40 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [newHoldingName, setNewHoldingName] = useState('');
   const [newHoldingKind, setNewHoldingKind] = useState<InvestmentKind>('Stocks');
+  const [newHoldingCurrency, setNewHoldingCurrency] = useState(baseCurrency);
   const [newHoldingSymbol, setNewHoldingSymbol] = useState('');
   const [newHoldingUnits, setNewHoldingUnits] = useState('');
   const [newHoldingAverageCost, setNewHoldingAverageCost] = useState('');
   const [newHoldingCurrentPrice, setNewHoldingCurrentPrice] = useState('');
   const [newHoldingNotes, setNewHoldingNotes] = useState('');
   const [newHoldingSource, setNewHoldingSource] = useState('');
-  const [pokerTournamentInvestmentId, setPokerTournamentInvestmentId] = useState('');
-  const [pokerTournamentDate, setPokerTournamentDate] = useState(new Date().toISOString().split('T')[0]);
-  const [pokerTournamentName, setPokerTournamentName] = useState('');
-  const [pokerTournamentPlacement, setPokerTournamentPlacement] = useState('');
-  const [pokerTournamentEntries, setPokerTournamentEntries] = useState('1');
-  const [pokerTournamentBuyInUsd, setPokerTournamentBuyInUsd] = useState('');
-  const [pokerTournamentCashoutUsd, setPokerTournamentCashoutUsd] = useState('0');
-  const [pokerTournamentBountyUsd, setPokerTournamentBountyUsd] = useState('0');
-  const [pokerTournamentNotes, setPokerTournamentNotes] = useState('');
-  const [editingPokerTournamentId, setEditingPokerTournamentId] = useState<string | null>(null);
-  const [pokerBankrollInvestmentId, setPokerBankrollInvestmentId] = useState('');
-  const [pokerBankrollDate, setPokerBankrollDate] = useState(new Date().toISOString().split('T')[0]);
-  const [pokerBankrollType, setPokerBankrollType] = useState<PokerMttBankrollEventType>('Deposit');
-  const [pokerBankrollAmount, setPokerBankrollAmount] = useState('');
-  const [pokerBankrollNotes, setPokerBankrollNotes] = useState('');
+  const [newHoldingPositionSide, setNewHoldingPositionSide] = useState<InvestmentPositionSide>('Long');
+  const [newHoldingAccountId, setNewHoldingAccountId] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState<AccountFilter>('all');
+  const [isAccountManagerOpen, setIsAccountManagerOpen] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState('');
+  const [accountBroker, setAccountBroker] = useState('');
+  const [accountType, setAccountType] = useState<InvestmentAccountType>('Margin');
+  const [accountCurrency, setAccountCurrency] = useState('USD');
+  const [accountColor, setAccountColor] = useState(ACCOUNT_COLORS[0]);
+  const [accountNotes, setAccountNotes] = useState('');
+  const [isFetchingQuote, setIsFetchingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+  const [quoteNote, setQuoteNote] = useState('');
+  const [refreshingHoldingId, setRefreshingHoldingId] = useState<string | null>(null);
+  const [priceRefreshedAt, setPriceRefreshedAt] = useState<number | null>(null);
+  const [, forceRelativeTimeTick] = useState(0);
+  const [tickerDetailHoldingId, setTickerDetailHoldingId] = useState<string | null>(null);
+
+  // Purely cosmetic: forces a re-render every second so the "Xs ago" badge counts up smoothly
+  // between polling cycles instead of appearing frozen at "0s ago" until the next refresh.
+  React.useEffect(() => {
+    if (priceRefreshedAt === null) return;
+    const intervalId = setInterval(() => forceRelativeTimeTick(tick => tick + 1), 1000);
+    return () => clearInterval(intervalId);
+  }, [priceRefreshedAt]);
+  const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (!investments.length) {
@@ -178,49 +264,196 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     }
   }, [entryInvestmentId, investments]);
 
-  const pokerHoldings = useMemo(() => investments.filter(investment => investment.kind === 'Poker (MTT)'), [investments]);
-  const pokerHoldingIds = useMemo(() => new Set(pokerHoldings.map(investment => investment.id)), [pokerHoldings]);
+  // Always reads the latest holdings inside the poll loop below without needing to restart
+  // the interval every time a price updates `investments` (which would happen on every
+  // single tick otherwise, since the effect would see a "changed" dependency each time).
+  const investmentsRef = React.useRef(investments);
+  React.useEffect(() => {
+    investmentsRef.current = investments;
+  }, [investments]);
+
+  // Polls Stocks/Crypto prices every POLL_INTERVAL_MS while this tab is open and the browser
+  // tab is actually visible (paused via the Page Visibility API otherwise, and resumed with an
+  // immediate refresh on refocus, rather than left running in a background tab indefinitely).
+  // There's no free push/streaming feed for this, so "live" here means frequent polling of the
+  // same REST endpoint the manual refresh uses - refreshed one holding at a time rather than in
+  // parallel, since concurrent calls to onUpdateHolding could otherwise race (see its own
+  // comment in App.tsx for why that matters).
+  React.useEffect(() => {
+    const POLL_INTERVAL_MS = 20 * 1000;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let isRefreshing = false;
+
+    const runRefreshCycle = async () => {
+      if (isRefreshing || document.visibilityState !== 'visible') return;
+      const quotable = investmentsRef.current.filter(
+        (investment): investment is InvestmentHolding & { symbol: string } =>
+          QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol),
+      );
+      if (quotable.length === 0) return;
+
+      isRefreshing = true;
+      for (const holding of quotable) {
+        if (cancelled) break;
+        try {
+          const quote = await fetchStockQuote(holding.symbol);
+          if (!cancelled) {
+            const quoteCurrency = quote.currency && CURRENCIES.includes(quote.currency) ? quote.currency : holding.currency;
+            onUpdateHolding({ ...holding, currentPrice: quote.price, currency: quoteCurrency }, true);
+          }
+        } catch {
+          // Best-effort background refresh - one bad symbol shouldn't stop the rest.
+        }
+      }
+      isRefreshing = false;
+      if (!cancelled) setPriceRefreshedAt(Date.now());
+    };
+
+    const scheduleNext = () => {
+      timeoutId = setTimeout(() => {
+        runRefreshCycle().finally(() => {
+          if (!cancelled) scheduleNext();
+        });
+      }, POLL_INTERVAL_MS);
+    };
+
+    runRefreshCycle().finally(() => {
+      if (!cancelled) scheduleNext();
+    });
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') runRefreshCycle();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // Deliberately runs once per mount and reads holdings via investmentsRef instead of
+    // reacting to `investments` directly - see the ref effect just above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hasQuotableHoldings = useMemo(
+    () => investments.some(investment => QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol)),
+    [investments],
+  );
+
+  const accountsById = useMemo(() => new Map(accounts.map(account => [account.id, account])), [accounts]);
+
+  // A holding tagged to an account that no longer exists counts as unassigned.
+  const holdingAccount = (investment: InvestmentHolding) =>
+    investment.accountId ? accountsById.get(investment.accountId) : undefined;
+
+  // Falls back to "all" if the selected account was just deleted.
+  React.useEffect(() => {
+    if (selectedAccount !== 'all' && selectedAccount !== 'unassigned' && !accountsById.has(selectedAccount)) {
+      setSelectedAccount('all');
+    }
+  }, [selectedAccount, accountsById]);
+
+  const accountInvestments = useMemo(() => {
+    if (selectedAccount === 'all') return investments;
+    if (selectedAccount === 'unassigned') return investments.filter(investment => !holdingAccount(investment));
+    return investments.filter(investment => investment.accountId === selectedAccount);
+  }, [investments, selectedAccount, accountsById]);
+
+  const hasUnassignedHoldings = accounts.length > 0 && investments.some(investment => !holdingAccount(investment));
+  const selectedAccountLabel = selectedAccount === 'all'
+    ? (accounts.length > 0 ? 'All accounts' : 'Main')
+    : selectedAccount === 'unassigned'
+      ? 'Unassigned'
+      : accountsById.get(selectedAccount)?.name || 'Main';
+
+  const selectedInvestments = useMemo(() => {
+    if (selectedCategory === 'All') return accountInvestments;
+    return accountInvestments.filter(investment => investment.kind === selectedCategory);
+  }, [accountInvestments, selectedCategory]);
+
+  const selectedIntradayKey = selectedInvestments
+    .filter(investment => QUOTABLE_KINDS.includes(investment.kind) && investment.symbol)
+    .map(investment => [investment.id, investment.symbol, investment.units, investment.averageCost, investment.currency, investment.positionSide || 'Long'].join(':'))
+    .sort()
+    .join('|');
 
   React.useEffect(() => {
-    if (pokerHoldings.length === 0) {
-      setPokerTournamentInvestmentId('');
-      setPokerBankrollInvestmentId('');
+    if (rangeMode !== '1D') return;
+
+    if (intradayInterval === '20s') {
+      setIntradayByHolding({});
+      setLivePortfolioTicks([]);
+      setIsIntradayLoading(false);
+      setIntradayError('');
       return;
     }
 
-    if (!pokerTournamentInvestmentId || !pokerHoldingIds.has(pokerTournamentInvestmentId)) {
-      setPokerTournamentInvestmentId(pokerHoldings[0].id);
+    const controller = new AbortController();
+    const quotable = selectedInvestments.filter(
+      (investment): investment is InvestmentHolding & { symbol: string } =>
+        QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol),
+    );
+
+    if (quotable.length === 0) {
+      setIntradayByHolding({});
+      setIsIntradayLoading(false);
+      setIntradayError('No stock or crypto symbols are available for intraday pricing.');
+      return () => controller.abort();
     }
 
-    if (!pokerBankrollInvestmentId || !pokerHoldingIds.has(pokerBankrollInvestmentId)) {
-      setPokerBankrollInvestmentId(pokerHoldings[0].id);
-    }
-  }, [pokerHoldings, pokerHoldingIds, pokerTournamentInvestmentId, pokerBankrollInvestmentId]);
+    setIntradayByHolding({});
+    setIsIntradayLoading(true);
+    setIntradayError('');
+    Promise.allSettled(
+      quotable.map(async investment => ({
+        investmentId: investment.id,
+        history: await fetchStockIntradayHistory(investment.symbol, intradayInterval === '5m' ? '5m' : '60m', controller.signal),
+      })),
+    ).then(results => {
+      if (controller.signal.aborted) return;
+      const next: Record<string, StockIntradayHistory> = {};
+      let failures = 0;
+      results.forEach(result => {
+        if (result.status === 'fulfilled') next[result.value.investmentId] = result.value.history;
+        else failures += 1;
+      });
+      setIntradayByHolding(next);
+      setIntradayError(failures > 0 ? `${failures} holding${failures === 1 ? '' : 's'} could not load ${intradayInterval === '5m' ? '5-minute' : 'hourly'} prices.` : '');
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsIntradayLoading(false);
+    });
 
-  const resetPokerTournamentForm = () => {
-    setEditingPokerTournamentId(null);
-    setPokerTournamentDate(new Date().toISOString().split('T')[0]);
-    setPokerTournamentName('');
-    setPokerTournamentPlacement('');
-    setPokerTournamentEntries('1');
-    setPokerTournamentBuyInUsd('');
-    setPokerTournamentCashoutUsd('0');
-    setPokerTournamentBountyUsd('0');
-    setPokerTournamentNotes('');
-  };
+    return () => controller.abort();
+  }, [rangeMode, intradayInterval, selectedIntradayKey]);
 
-  const selectedInvestments = useMemo(() => {
-    if (selectedCategory === 'All') return investments;
-    return investments.filter(investment => investment.kind === selectedCategory);
-  }, [investments, selectedCategory]);
+  // The visible kinds (Cash/Other are hidden for now), plus whichever kind the holding
+  // currently being edited already has - so editing an older Cash/Other holding doesn't
+  // silently force it into one of the four visible kinds just to save any other change.
+  const holdingKindOptions = useMemo(() => {
+    const visibleKinds = CATEGORIES.filter((category): category is InvestmentKind => category !== 'All');
+    const editingKind = editingHoldingId ? investments.find(holding => holding.id === editingHoldingId)?.kind : undefined;
+    return editingKind && !visibleKinds.includes(editingKind) ? [...visibleKinds, editingKind] : visibleKinds;
+  }, [editingHoldingId, investments]);
 
   const portfolioValue = useMemo(() => {
-    return selectedInvestments.reduce((sum, investment) => sum + (investment.units * investment.currentPrice), 0);
-  }, [selectedInvestments]);
+    return selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
+  }, [selectedInvestments, baseCurrency, valuationsByHolding]);
+
+  React.useEffect(() => {
+    if (rangeMode !== '1D' || intradayInterval !== '20s') return;
+    setLivePortfolioTicks(previous => {
+      if (priceRefreshedAt === null && previous.length > 0) return previous;
+      const timestamp = priceRefreshedAt || Date.now();
+      if (previous.at(-1)?.timestamp === timestamp) return previous;
+      return [...previous, { timestamp, value: portfolioValue }].slice(-90);
+    });
+  }, [rangeMode, intradayInterval, priceRefreshedAt, portfolioValue]);
 
   const costBasis = useMemo(() => {
-    return selectedInvestments.reduce((sum, investment) => sum + (investment.units * investment.averageCost), 0);
-  }, [selectedInvestments]);
+    return selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).basis, 0);
+  }, [selectedInvestments, baseCurrency, valuationsByHolding]);
 
   const gainValue = portfolioValue - costBasis;
   const gainPct = costBasis > 0 ? (gainValue / costBasis) * 100 : 0;
@@ -228,23 +461,20 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const bestPerformer = useMemo(() => {
     return selectedInvestments
       .map(investment => {
-        const currentValue = investment.units * investment.currentPrice;
-        const basis = investment.units * investment.averageCost;
-        const gain = currentValue - basis;
-        const gainPctAsset = basis > 0 ? (gain / basis) * 100 : 0;
+        const { currentValue, basis, gain, gainPct: gainPctAsset } = getBaseMetrics(investment);
         return { ...investment, currentValue, basis, gain, gainPctAsset };
       })
       .sort((a, b) => b.gainPctAsset - a.gainPctAsset)[0] ?? null;
-  }, [selectedInvestments]);
+  }, [selectedInvestments, baseCurrency, valuationsByHolding]);
 
   const topHolding = useMemo(() => {
     return selectedInvestments
       .map(investment => ({
         ...investment,
-        currentValue: investment.units * investment.currentPrice,
+        currentValue: getBaseMetrics(investment).currentValue,
       }))
       .sort((a, b) => b.currentValue - a.currentValue)[0] ?? null;
-  }, [selectedInvestments]);
+  }, [selectedInvestments, baseCurrency, valuationsByHolding]);
 
   const selectedInvestmentIds = useMemo(() => new Set(selectedInvestments.map(investment => investment.id)), [selectedInvestments]);
 
@@ -255,6 +485,37 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       .sort((a, b) => new Date(b.tradeDate).getTime() - new Date(a.tradeDate).getTime()),
     [transactions, selectedInvestmentIds]
   );
+
+  const investmentsById = useMemo(() => new Map(investments.map(investment => [investment.id, investment])), [investments]);
+  const tickerDetailInvestment = tickerDetailHoldingId ? investmentsById.get(tickerDetailHoldingId) || null : null;
+
+  // Realized profit/loss (in the base currency) per holding, from the trades stored with each transaction.
+  const realizedByHolding = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach(transaction => {
+      if (transaction.realizedPnl == null) return;
+      const value = convertCurrency(transaction.realizedPnl, transaction.currency || baseCurrency, baseCurrency);
+      map.set(transaction.investmentId, (map.get(transaction.investmentId) || 0) + value);
+    });
+    return map;
+  }, [transactions, baseCurrency]);
+
+  const realizedStats = useMemo(() => {
+    let realized = 0;
+    let closedTrades = 0;
+    let wins = 0;
+    selectedTransactions.forEach(transaction => {
+      if (transaction.realizedPnl == null) return;
+      const value = convertCurrency(transaction.realizedPnl, transaction.currency || baseCurrency, baseCurrency);
+      realized += value;
+      // Sells (longs) and buy-backs (shorts) are the trades that close a position; dividends and fees aren't.
+      if (transaction.transactionType === 'Sell' || transaction.transactionType === 'Buy') {
+        closedTrades += 1;
+        if (value > 0) wins += 1;
+      }
+    });
+    return { realized, closedTrades, wins };
+  }, [selectedTransactions, baseCurrency]);
 
   const transactionChartData = useMemo(() => {
     const relevant = transactions
@@ -285,7 +546,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
               : transaction.transactionType === 'Fee'
                 ? -transaction.fees
                 : 0;
-      dailyTotals.set(dateKey, (dailyTotals.get(dateKey) || 0) + flow);
+      dailyTotals.set(dateKey, (dailyTotals.get(dateKey) || 0) + convertCurrency(flow, transaction.currency || baseCurrency, baseCurrency));
     });
 
     let running = 0;
@@ -308,7 +569,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       minValue,
       maxValue,
     };
-  }, [transactions, selectedInvestmentIds]);
+  }, [transactions, selectedInvestmentIds, baseCurrency]);
 
   const handleAddEntry = (event: React.FormEvent) => {
     event.preventDefault();
@@ -320,6 +581,10 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     if (!target || !Number.isFinite(units) || units <= 0 || !Number.isFinite(price) || price < 0) {
       return;
     }
+
+    // Can't close (sell, or buy back a short) more than the position holds.
+    const closing = target.positionSide === 'Short' ? entryType === 'Buy' : entryType === 'Sell' || entryType === 'Transfer Out';
+    if (closing && units > target.units) return;
 
     onAddTransaction({
       investmentId: target.id,
@@ -343,11 +608,133 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     setIsEntryModalOpen(false);
   };
 
-  const handleCreateHolding = (event: React.FormEvent) => {
+  const resetHoldingForm = () => {
+    setEditingHoldingId(null);
+    setNewHoldingName('');
+    setNewHoldingKind('Stocks');
+    setNewHoldingCurrency(baseCurrency);
+    setNewHoldingSymbol('');
+    setNewHoldingUnits('');
+    setNewHoldingAverageCost('');
+    setNewHoldingCurrentPrice('');
+    setNewHoldingNotes('');
+    setNewHoldingSource('');
+    setNewHoldingPositionSide('Long');
+    // New holdings default to the account being viewed.
+    setNewHoldingAccountId(selectedAccount !== 'all' && selectedAccount !== 'unassigned' ? selectedAccount : '');
+    setQuoteError('');
+    setQuoteNote('');
+  };
+
+  const startEditHolding = (holding: InvestmentHolding) => {
+    setEditingHoldingId(holding.id);
+    setNewHoldingName(holding.name);
+    setNewHoldingKind(holding.kind);
+    setNewHoldingCurrency(holding.currency || baseCurrency);
+    setNewHoldingSymbol(holding.symbol || '');
+    setNewHoldingUnits(String(holding.units));
+    setNewHoldingAverageCost(String(holding.averageCost));
+    setNewHoldingCurrentPrice(String(holding.currentPrice));
+    setNewHoldingNotes(holding.notes || '');
+    setNewHoldingSource(holding.source || '');
+    setNewHoldingPositionSide(holding.positionSide === 'Short' ? 'Short' : 'Long');
+    setNewHoldingAccountId(holding.accountId && accountsById.has(holding.accountId) ? holding.accountId : '');
+    setEntryMode('holding');
+    setIsEntryModalOpen(true);
+  };
+
+  const handleFetchQuote = async () => {
+    if (!newHoldingSymbol.trim()) {
+      setQuoteError('Enter a symbol first.');
+      return;
+    }
+    // Show the symbol the way it's looked up and stored (e.g. "700" becomes "0700.HK").
+    const symbol = normalizeTickerSymbol(newHoldingSymbol);
+    setNewHoldingSymbol(symbol);
+
+    setIsFetchingQuote(true);
+    setQuoteError('');
+    setQuoteNote('');
+    try {
+      const quote = await fetchStockQuote(symbol);
+      setNewHoldingCurrentPrice(String(quote.price));
+      if (quote.name && !newHoldingName.trim()) setNewHoldingName(quote.name);
+      if (quote.currency && CURRENCIES.includes(quote.currency)) {
+        setNewHoldingCurrency(quote.currency);
+        setQuoteNote(`${quote.name ? `${quote.name} - ` : ''}priced in ${quote.currency}. Enter your average cost in ${quote.currency} too.`);
+      } else if (quote.currency) {
+        setQuoteNote(`Quoted in ${quote.currency}${quote.name ? ` (${quote.name})` : ''} - pick the matching currency yourself.`);
+      } else if (quote.name) {
+        setQuoteNote(quote.name);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Price lookup failed.';
+      setQuoteError(isHongKongSymbol(symbol) ? `${message} Check the HKEX stock code.` : message);
+    } finally {
+      setIsFetchingQuote(false);
+    }
+  };
+
+  // Currency to store after a refresh: the quote's, when it's one we support (the price is in that
+  // currency, so the label has to match); otherwise whatever the holding already had.
+  const currencyAfterQuote = (holding: InvestmentHolding, quoteCurrency: string | null) =>
+    quoteCurrency && CURRENCIES.includes(quoteCurrency) ? quoteCurrency : holding.currency;
+
+  const openLogValue = (holding: InvestmentHolding) => {
+    setValuationTarget(holding);
+    setValuationDate(new Date().toISOString().split('T')[0]);
+    setValuationPrice(String(holding.currentPrice));
+    setValuationNotes('');
+  };
+
+  const handleSubmitValuation = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!valuationTarget) return;
+    const price = Number(valuationPrice);
+    if (!valuationDate || valuationPrice.trim() === '' || !Number.isFinite(price) || price < 0) return;
+
+    const existing = valuationsByHolding.get(valuationTarget.id) || [];
+    onSaveValuation({
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      investmentId: valuationTarget.id,
+      valuationDate,
+      price,
+      marketValue: valuationTarget.units * price,
+      currency: valuationTarget.currency || baseCurrency,
+      notes: valuationNotes.trim() || undefined,
+    });
+
+    // The card should show the latest logged value, so only move the current price when this
+    // entry is the newest one (back-filling an older date shouldn't overwrite today's price).
+    const isNewest = existing.every(item => item.valuationDate.split('T')[0] <= valuationDate);
+    if (isNewest) onUpdateHolding({ ...valuationTarget, currentPrice: price }, true);
+
+    setValuationTarget(null);
+  };
+
+  const handleRefreshHoldingPrice = async (holding: InvestmentHolding) => {
+    if (!holding.symbol) return;
+    setRefreshingHoldingId(holding.id);
+    try {
+      const quote = await fetchStockQuote(holding.symbol);
+      onUpdateHolding({ ...holding, currentPrice: quote.price, currency: currencyAfterQuote(holding, quote.currency) });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Price lookup failed.');
+    } finally {
+      setRefreshingHoldingId(null);
+    }
+  };
+
+  const handleSubmitHolding = (event: React.FormEvent) => {
     event.preventDefault();
 
     const name = newHoldingName.trim();
-    const symbol = newHoldingSymbol.trim();
+    // Only stock symbols get the HK rewrite - crypto pairs like BTC-USD pass through unchanged anyway.
+    const symbol = newHoldingKind === 'Stocks' && newHoldingSymbol.trim()
+      ? normalizeTickerSymbol(newHoldingSymbol)
+      : newHoldingSymbol.trim();
+    const accountId = newHoldingAccountId || undefined;
     const notes = newHoldingNotes.trim();
     const source = newHoldingSource.trim();
     const units = Number(newHoldingUnits);
@@ -358,127 +745,98 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       return;
     }
 
-    onCreateHolding({
-      id: crypto.randomUUID(),
-      name,
-      kind: newHoldingKind,
-      symbol: symbol || undefined,
-      units,
-      averageCost,
-      currentPrice,
-      currency: baseCurrency,
-      color:
-        newHoldingKind === 'Crypto'
-          ? '#8b5cf6'
-          : newHoldingKind === 'Stocks'
-            ? '#0ea5e9'
-            : newHoldingKind === 'Pokemon Cards'
-              ? '#f59e0b'
-              : newHoldingKind === 'Poker (MTT)'
-                ? '#ec4899'
-                : newHoldingKind === 'Cash'
-                  ? '#10b981'
-                  : '#64748b',
-      notes: notes || undefined,
-      acquiredDate: new Date().toISOString().split('T')[0],
-      source: source || undefined,
-      isActive: true,
-    });
+    const editingHolding = editingHoldingId ? investments.find(holding => holding.id === editingHoldingId) : undefined;
 
-    setNewHoldingName('');
-    setNewHoldingKind('Stocks');
-    setNewHoldingSymbol('');
-    setNewHoldingUnits('');
-    setNewHoldingAverageCost('');
-    setNewHoldingCurrentPrice('');
-    setNewHoldingNotes('');
-    setNewHoldingSource('');
+    if (editingHolding) {
+      onUpdateHolding({
+        ...editingHolding,
+        name,
+        kind: newHoldingKind,
+        symbol: symbol || undefined,
+        units,
+        averageCost,
+        currentPrice,
+        color: colorForInvestmentKind(newHoldingKind),
+        notes: notes || undefined,
+        source: source || undefined,
+        positionSide: newHoldingPositionSide,
+        accountId,
+        currency: newHoldingCurrency,
+      });
+    } else {
+      onCreateHolding({
+        id: crypto.randomUUID(),
+        name,
+        kind: newHoldingKind,
+        symbol: symbol || undefined,
+        units,
+        averageCost,
+        currentPrice,
+        currency: newHoldingCurrency,
+        color: colorForInvestmentKind(newHoldingKind),
+        notes: notes || undefined,
+        acquiredDate: new Date().toISOString().split('T')[0],
+        source: source || undefined,
+        positionSide: newHoldingPositionSide,
+        accountId,
+        isActive: true,
+      });
+    }
+
+    resetHoldingForm();
     setIsEntryModalOpen(false);
   };
 
-  const handleAddPokerTournament = (event: React.FormEvent) => {
+  const resetAccountForm = () => {
+    setEditingAccountId(null);
+    setAccountName('');
+    setAccountBroker('');
+    setAccountType('Margin');
+    setAccountCurrency('USD');
+    setAccountColor(ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length]);
+    setAccountNotes('');
+  };
+
+  const openAccountManager = () => {
+    resetAccountForm();
+    setIsAccountManagerOpen(true);
+  };
+
+  const startEditAccount = (account: InvestmentAccount) => {
+    setEditingAccountId(account.id);
+    setAccountName(account.name);
+    setAccountBroker(account.broker || '');
+    setAccountType(account.accountType);
+    setAccountCurrency(account.currency);
+    setAccountColor(account.color);
+    setAccountNotes(account.notes || '');
+  };
+
+  const handleSubmitAccount = (event: React.FormEvent) => {
     event.preventDefault();
-
-    const targetInvestmentId = pokerTournamentInvestmentId || pokerHoldings[0]?.id;
-    const tournamentName = pokerTournamentName.trim();
-    const entries = Number(pokerTournamentEntries);
-    const buyInUsd = Number(pokerTournamentBuyInUsd);
-    const cashoutUsd = Number(pokerTournamentCashoutUsd) || 0;
-    const bountyUsd = Number(pokerTournamentBountyUsd) || 0;
-    const placement = pokerTournamentPlacement.trim() === '' ? undefined : Number(pokerTournamentPlacement);
-
-    if (!targetInvestmentId || !tournamentName || !Number.isFinite(entries) || entries <= 0 || !Number.isFinite(buyInUsd) || buyInUsd < 0) {
-      return;
-    }
-
-    onAddPokerMttTournament({
-      id: editingPokerTournamentId || crypto.randomUUID(),
-      investmentId: targetInvestmentId,
-      tournamentDate: pokerTournamentDate,
-      tournamentName,
-      placement: placement && Number.isFinite(placement) ? placement : undefined,
-      entries,
-      buyInUsd,
-      cashoutUsd,
-      bountyUsd,
-      notes: pokerTournamentNotes.trim() || undefined,
+    const name = accountName.trim();
+    if (!name) return;
+    const existing = editingAccountId ? accountsById.get(editingAccountId) : undefined;
+    onSaveAccount({
+      ...existing,
+      id: existing?.id || crypto.randomUUID(),
+      name,
+      broker: accountBroker.trim() || undefined,
+      accountType,
+      currency: accountCurrency,
+      color: accountColor,
+      notes: accountNotes.trim() || undefined,
     });
-
-    resetPokerTournamentForm();
-    setPokerEntryMode(null);
-  };
-
-  const startEditPokerTournament = (tournament: PokerMttTournament) => {
-    setPokerEntryMode('tournament');
-    pokerLedgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setEditingPokerTournamentId(tournament.id);
-    setPokerTournamentInvestmentId(tournament.investmentId);
-    setPokerTournamentDate(tournament.tournamentDate);
-    setPokerTournamentName(tournament.tournamentName);
-    setPokerTournamentPlacement(tournament.placement?.toString() || '');
-    setPokerTournamentEntries(String(tournament.entries));
-    setPokerTournamentBuyInUsd(String(tournament.buyInUsd));
-    setPokerTournamentCashoutUsd(String(tournament.cashoutUsd));
-    setPokerTournamentBountyUsd(String(tournament.bountyUsd));
-    setPokerTournamentNotes(tournament.notes || '');
-  };
-
-  const deleteTournament = (tournamentId: string) => {
-    if (!confirm('Delete this tournament entry?')) return;
-    onDeletePokerMttTournament(tournamentId);
-    if (editingPokerTournamentId === tournamentId) {
-      resetPokerTournamentForm();
-    }
-  };
-
-  const handleAddPokerBankroll = (event: React.FormEvent) => {
-    event.preventDefault();
-
-    const targetInvestmentId = pokerBankrollInvestmentId || pokerHoldings[0]?.id;
-    const amountUsd = Number(pokerBankrollAmount);
-    if (!targetInvestmentId || !Number.isFinite(amountUsd) || amountUsd <= 0) {
-      return;
-    }
-
-    onAddPokerMttBankrollTransaction({
-      id: crypto.randomUUID(),
-      investmentId: targetInvestmentId,
-      eventDate: pokerBankrollDate,
-      eventType: pokerBankrollType,
-      amountUsd,
-      notes: pokerBankrollNotes.trim() || undefined,
-    });
-
-    setPokerBankrollAmount('');
-    setPokerBankrollNotes('');
-    setPokerEntryMode(null);
+    resetAccountForm();
+    // `accounts` doesn't include the one just added until the next render, so step the color here.
+    if (!existing) setAccountColor(ACCOUNT_COLORS[(accounts.length + 1) % ACCOUNT_COLORS.length]);
   };
 
   const categorySummary = useMemo(() => {
     return CATEGORIES.filter(category => category !== 'All').map(category => {
-      const items = investments.filter(investment => investment.kind === category);
-      const value = items.reduce((sum, investment) => sum + (investment.units * investment.currentPrice), 0);
-      const basis = items.reduce((sum, investment) => sum + (investment.units * investment.averageCost), 0);
+      const items = accountInvestments.filter(investment => investment.kind === category);
+      const basis = items.reduce((sum, investment) => sum + getBaseMetrics(investment).basis, 0);
+      const value = items.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
       const gain = value - basis;
       return {
         category,
@@ -488,11 +846,87 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         gainPct: basis > 0 ? (gain / basis) * 100 : 0,
       };
     });
-  }, [investments]);
+  }, [accountInvestments, baseCurrency, valuationsByHolding]);
+
+  const intradayPortfolio = useMemo(() => {
+    if (intradayInterval === '20s') {
+      const ticks = livePortfolioTicks.length > 0
+        ? livePortfolioTicks
+        : [{ timestamp: Date.now(), value: portfolioValue }];
+      return {
+        candles: ticks.map((tick, index) => {
+          const previousValue = ticks[index - 1]?.value ?? tick.value;
+          return {
+            timestamp: tick.timestamp,
+            open: previousValue,
+            high: Math.max(previousValue, tick.value),
+            low: Math.min(previousValue, tick.value),
+            close: tick.value,
+          };
+        }),
+        hasMarketData: ticks.length > 1,
+      };
+    }
+
+    const intervalMs = intradayInterval === '5m' ? 5 * 60 * 1000 : 60 * 60 * 1000;
+    const bucketCount = intradayInterval === '5m' ? 288 : 24;
+    const finalBucket = Math.floor(Date.now() / intervalMs) * intervalMs;
+    const buckets = Array.from({ length: bucketCount }, (_, index) => finalBucket - ((bucketCount - 1 - index) * intervalMs));
+    let hasMarketData = false;
+
+    const candles = buckets.map(timestamp => {
+      let open = 0;
+      let high = 0;
+      let low = 0;
+      let close = 0;
+
+      selectedInvestments.forEach(investment => {
+        const history = intradayByHolding[investment.id];
+        const activeCandle = history?.candles.find(candle => Math.floor(candle.timestamp / intervalMs) * intervalMs === timestamp);
+        const previous = history?.candles
+          .filter(candle => candle.timestamp < timestamp + intervalMs)
+          .at(-1);
+        const source = activeCandle || previous;
+
+        if (!source) {
+          const staticValue = getBaseMetrics(investment).currentValue;
+          open += staticValue;
+          high += staticValue;
+          low += staticValue;
+          close += staticValue;
+          return;
+        }
+
+        if (activeCandle) hasMarketData = true;
+        const fromCurrency = history.currency || investment.currency || baseCurrency;
+        const basis = investment.units * investment.averageCost;
+        const valueAtPrice = (price: number) => convertCurrency(
+          investment.positionSide === 'Short'
+            ? (2 * basis) - (price * investment.units)
+            : price * investment.units,
+          fromCurrency,
+          baseCurrency,
+        );
+
+        const holdingOpen = valueAtPrice(source.open);
+        const holdingClose = valueAtPrice(source.close);
+        const edgeOne = valueAtPrice(source.high);
+        const edgeTwo = valueAtPrice(source.low);
+        open += holdingOpen;
+        close += holdingClose;
+        high += Math.max(edgeOne, edgeTwo, holdingOpen, holdingClose);
+        low += Math.min(edgeOne, edgeTwo, holdingOpen, holdingClose);
+      });
+
+      return { timestamp, open, high, low, close };
+    });
+
+    return { candles, hasMarketData };
+  }, [intradayInterval, livePortfolioTicks, portfolioValue, selectedInvestments, intradayByHolding, baseCurrency, valuationsByHolding]);
 
   const chartData = useMemo(() => {
     const { points, label } = rangeConfig[rangeMode];
-    const fallbackFlatValue = selectedInvestments.reduce((sum, investment) => sum + (investment.units * investment.currentPrice), 0);
+    const fallbackFlatValue = selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
     if (selectedInvestments.length === 0) {
       const history = Array.from({ length: points }, (_, index) => {
         const name =
@@ -513,7 +947,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     const relevantValuations = valuations
       .filter(valuation => selectedIds.has(valuation.investmentId))
       .slice()
-      .sort((a, b) => new Date(a.valuationDate).getTime() - new Date(b.valuationDate).getTime());
+      .sort(compareValuations);
 
     const anchorDate = relevantValuations.length > 0
       ? new Date(relevantValuations[relevantValuations.length - 1].valuationDate)
@@ -569,13 +1003,15 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       let total = 0;
 
       for (const investment of selectedInvestments) {
-        const fallbackValue = investment.units * investment.currentPrice;
+        const fallbackValue = getBaseMetrics(investment).currentValue;
         const series = valuationMap.get(investment.id) ?? [];
         const valueAtBucket = series
           .filter(item => new Date(item.valuationDate).getTime() < bucket.end.getTime())
-          .sort((a, b) => new Date(b.valuationDate).getTime() - new Date(a.valuationDate).getTime())[0];
+          .sort((a, b) => compareValuations(b, a))[0];
 
-        total += valueAtBucket ? Number(valueAtBucket.marketValue) : (series.length === 0 ? fallbackValue : 0);
+        total += valueAtBucket
+          ? convertCurrency(Number(valueAtBucket.marketValue), valueAtBucket.currency || investment.currency || baseCurrency, baseCurrency)
+          : (series.length === 0 ? fallbackValue : 0);
       }
 
       return {
@@ -597,7 +1033,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     const pad = Math.max(1, (maxValue - minValue) * 0.12 || maxValue * 0.12 || 1);
 
     return { label, history: flatHistory, domain: [Math.max(0, minValue - pad), maxValue + pad] as [number, number] };
-  }, [rangeMode, selectedInvestments, valuations]);
+  }, [rangeMode, selectedInvestments, valuations, baseCurrency, valuationsByHolding]);
 
   const svgChart = useMemo(() => {
     const width = 760;
@@ -631,6 +1067,39 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       maxValue,
     };
   }, [chartData.history]);
+
+  const intradaySvgChart = useMemo(() => {
+    const width = 760;
+    const height = 280;
+    const padding = { top: 18, right: 18, bottom: 28, left: 48 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    const rawMin = Math.min(...intradayPortfolio.candles.map(candle => candle.low));
+    const rawMax = Math.max(...intradayPortfolio.candles.map(candle => candle.high));
+    const pad = Math.max(1, (rawMax - rawMin) * 0.08 || Math.abs(rawMax) * 0.005);
+    const minValue = rawMin - pad;
+    const maxValue = rawMax + pad;
+    const valueRange = Math.max(1, maxValue - minValue);
+    const yFor = (value: number) => padding.top + (1 - ((value - minValue) / valueRange)) * plotHeight;
+    const slotWidth = plotWidth / intradayPortfolio.candles.length;
+    const bodyWidth = Math.max(1, Math.min(17, slotWidth * 0.68));
+
+    return {
+      width,
+      height,
+      minValue,
+      maxValue,
+      candles: intradayPortfolio.candles.map((candle, index) => ({
+        ...candle,
+        x: padding.left + (index + 0.5) * slotWidth,
+        openY: yFor(candle.open),
+        highY: yFor(candle.high),
+        lowY: yFor(candle.low),
+        closeY: yFor(candle.close),
+        bodyWidth,
+      })),
+    };
+  }, [intradayPortfolio.candles]);
 
   const transactionSvgChart = useMemo(() => {
     const width = 760;
@@ -676,126 +1145,194 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
   const totalValuations = valuations.filter(valuation => selectedCategory === 'All' || investments.find(item => item.id === valuation.investmentId)?.kind === selectedCategory).length;
 
-  const selectedPokerHoldings = useMemo(() => {
-    if (selectedCategory !== 'Poker (MTT)') return [];
-    return selectedInvestments.filter(investment => investment.kind === 'Poker (MTT)');
-  }, [selectedCategory, selectedInvestments]);
-
-  const selectedPokerHoldingIds = useMemo(() => new Set(selectedPokerHoldings.map(investment => investment.id)), [selectedPokerHoldings]);
-
-  const selectedPokerTournaments = useMemo(() => {
-    if (selectedPokerHoldingIds.size === 0) return [];
-    return pokerMttTournaments
-      .filter(tournament => selectedPokerHoldingIds.has(tournament.investmentId))
-      .slice()
-      .sort((a, b) => new Date(a.tournamentDate).getTime() - new Date(b.tournamentDate).getTime());
-  }, [pokerMttTournaments, selectedPokerHoldingIds]);
-
-  const selectedPokerBankrollEvents = useMemo(() => {
-    if (selectedPokerHoldingIds.size === 0) return [];
-    return pokerMttBankrollTransactions
-      .filter(event => selectedPokerHoldingIds.has(event.investmentId))
-      .slice()
-      .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
-  }, [pokerMttBankrollTransactions, selectedPokerHoldingIds]);
-
-  const pokerStats = useMemo(() => {
-    const tournamentCosts = selectedPokerTournaments.reduce((sum, tournament) => sum + Number(tournament.buyInUsd || 0), 0);
-    const tournamentCashouts = selectedPokerTournaments.reduce((sum, tournament) => sum + Number(tournament.cashoutUsd || 0), 0);
-    const tournamentBounties = selectedPokerTournaments.reduce((sum, tournament) => sum + Number(tournament.bountyUsd || 0), 0);
-    const tournamentProfit = selectedPokerTournaments.reduce(
-      (sum, tournament) => sum + (Number(tournament.cashoutUsd || 0) + Number(tournament.bountyUsd || 0) - Number(tournament.buyInUsd || 0)),
-      0
-    );
-
-    const bankrollAdjustments = selectedPokerBankrollEvents.reduce((sum, event) => {
-      const amount = Number(event.amountUsd || 0);
-      if (event.eventType === 'Withdrawal') return sum - amount;
-      return sum + amount;
-    }, 0);
-    const totalDeposited = selectedPokerBankrollEvents
-      .filter(event => event.eventType === 'Deposit')
-      .reduce((sum, event) => sum + Number(event.amountUsd || 0), 0);
-
-    const netPortfolio = bankrollAdjustments + tournamentProfit;
-    const totalEvents = selectedPokerTournaments.length + selectedPokerBankrollEvents.length;
-    const seriesEvents = [
-      ...selectedPokerBankrollEvents.map(event => ({
-        date: event.eventDate,
-        label: event.eventType === 'Deposit' ? 'Deposit' : event.eventType === 'Withdrawal' ? 'Withdraw' : 'Adjust',
-        delta: event.eventType === 'Withdrawal' ? -Number(event.amountUsd || 0) : Number(event.amountUsd || 0),
-        notes: event.notes || '',
-      })),
-      ...selectedPokerTournaments.map(tournament => ({
-        date: tournament.tournamentDate,
-        label: tournament.tournamentName,
-        delta: Number(tournament.cashoutUsd || 0) + Number(tournament.bountyUsd || 0) - Number(tournament.buyInUsd || 0),
-        notes: `${tournament.entries} entries${tournament.placement ? ` - place ${tournament.placement}` : ''}`,
-      })),
-    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    let running = 0;
-    const history = seriesEvents.map((event, index) => {
-      running += event.delta;
-      return {
-        name: `#${index + 1}`,
-        date: event.date,
-        label: event.label,
-        notes: event.notes,
-        total: running,
-      };
-    });
-
-    const values = history.map(point => point.total);
-    const minValue = values.length > 0 ? Math.min(...values) : 0;
-    const maxValue = values.length > 0 ? Math.max(...values) : 1;
-
-    return {
-      tournamentCount: selectedPokerTournaments.length,
-      totalEvents,
-      tournamentCosts,
-      tournamentCashouts,
-      tournamentBounties,
-      tournamentProfit,
-      bankrollAdjustments,
-      totalDeposited,
-      netPortfolio,
-      history,
-      minValue,
-      maxValue,
-    };
-  }, [selectedPokerBankrollEvents, selectedPokerTournaments]);
-
-  const pokerGrowthChart = useMemo(() => {
-    const width = 760;
-    const height = 280;
-    const padding = { top: 18, right: 18, bottom: 28, left: 48 };
-    const plotWidth = width - padding.left - padding.right;
-    const plotHeight = height - padding.top - padding.bottom;
-    const values = pokerStats.history.map(point => point.total);
-    const minValue = values.length > 0 ? Math.min(...values) : 0;
-    const maxValue = values.length > 0 ? Math.max(...values) : 1;
-    const range = Math.max(1, maxValue - minValue);
-
-    const points = pokerStats.history.map((point, index) => {
-      const x = padding.left + (pokerStats.history.length === 1 ? plotWidth / 2 : (index / (pokerStats.history.length - 1)) * plotWidth);
-      const normalized = (point.total - minValue) / range;
-      const y = padding.top + (1 - normalized) * plotHeight;
-      return { x, y, ...point };
-    });
-
-    const linePath = buildSmoothPath(points);
-    const areaPath = points.length > 0
-      ? `${linePath} L ${points.at(-1)?.x ?? padding.left} ${height - padding.bottom} L ${points[0]?.x ?? padding.left} ${height - padding.bottom} Z`
-      : '';
-
-    const isProfitable = points.length > 1 ? points.at(-1)!.total >= points[0]!.total : false;
-
-    return { width, height, points, linePath, areaPath, minValue, maxValue, isProfitable };
-  }, [pokerStats.history]);
+  const entryHolding = investments.find(investment => investment.id === entryInvestmentId);
+  const isShortEntry = entryHolding?.positionSide === 'Short';
+  const entryUnitsNumber = Number(entryUnits);
+  const entryPriceNumber = Number(entryPrice);
+  const entryFeesNumber = Number(entryFees) || 0;
+  const entryClosesPosition = Boolean(entryHolding) && (isShortEntry
+    ? entryType === 'Buy'
+    : entryType === 'Sell' || entryType === 'Transfer Out');
+  const entryExceedsPosition = Boolean(entryHolding) && entryClosesPosition
+    && Number.isFinite(entryUnitsNumber) && entryUnitsNumber > (entryHolding?.units ?? 0);
+  const entryPreview = entryHolding && Number.isFinite(entryUnitsNumber) && entryUnitsNumber > 0
+    && Number.isFinite(entryPriceNumber) && entryPriceNumber >= 0 && !entryExceedsPosition
+    ? applyInvestmentTransaction(entryHolding, {
+        transactionType: entryType,
+        units: entryUnitsNumber,
+        price: entryPriceNumber,
+        fees: entryFeesNumber,
+        tradeDate: entryDate,
+      })
+    : null;
 
   return (
     <div className="pb-24 animate-fade-in space-y-6">
+      {tickerDetailInvestment && (
+        <TickerDetail
+          investment={tickerDetailInvestment}
+          metrics={getBaseMetrics(tickerDetailInvestment)}
+          baseCurrency={baseCurrency}
+          priceRefreshedAt={priceRefreshedAt}
+          isRefreshing={refreshingHoldingId === tickerDetailInvestment.id}
+          onClose={() => setTickerDetailHoldingId(null)}
+          onRefresh={() => handleRefreshHoldingPrice(tickerDetailInvestment)}
+        />
+      )}
+      {isAccountManagerOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => setIsAccountManagerOpen(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface border border-border shadow-2xl overflow-hidden animate-fade-in sm:my-8 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-background shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-textMain">Investment Accounts</h3>
+                <p className="text-xs text-secondary mt-0.5">Broker, margin and cash accounts your holdings are held in.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountManagerOpen(false)}
+                className="rounded-full p-2 text-secondary hover:text-textMain hover:bg-border/30 shrink-0"
+                aria-label="Close accounts"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 flex-1 min-h-0 overflow-y-auto">
+              {accounts.length > 0 && (
+                <div className="space-y-2">
+                  {accounts.map(account => {
+                    const held = investments.filter(investment => investment.accountId === account.id);
+                    const value = held.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
+                    return (
+                      <div
+                        key={account.id}
+                        className={`flex items-center justify-between gap-3 rounded-2xl border bg-background p-3 ${editingAccountId === account.id ? 'border-primary' : 'border-border'}`}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: account.color }} />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-textMain">
+                              {account.name}
+                              <span className="ml-2 text-[10px] font-bold text-secondary">{account.accountType}</span>
+                            </p>
+                            <p className="truncate text-[11px] text-secondary">
+                              {[account.broker, account.currency, `${held.length} holding${held.length === 1 ? '' : 's'}`, formatMoney(value, baseCurrency)].filter(Boolean).join(' · ')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button type="button" onClick={() => startEditAccount(account)} className="text-primary text-xs font-bold flex items-center gap-1">
+                            <Pencil size={12} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { if (editingAccountId === account.id) resetAccountForm(); onDeleteAccount(account.id); }}
+                            className="text-rose-500 text-xs font-bold flex items-center gap-1"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmitAccount} className="space-y-3 rounded-2xl border border-border bg-background/60 p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-secondary">{editingAccountId ? 'Edit account' : 'New account'}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={accountName}
+                      onChange={e => setAccountName(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
+                      placeholder="e.g. IBKR Margin"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Broker</label>
+                    <input
+                      type="text"
+                      value={accountBroker}
+                      onChange={e => setAccountBroker(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
+                      placeholder="e.g. Interactive Brokers"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Type</label>
+                    <div className="flex rounded-xl border border-border bg-background p-1">
+                      {ACCOUNT_TYPES.map(type => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setAccountType(type)}
+                          className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${accountType === type ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Currency</label>
+                    <select
+                      value={accountCurrency}
+                      onChange={e => setAccountCurrency(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary [color-scheme:light] dark:[color-scheme:dark]"
+                    >
+                      {(CURRENCIES.includes(accountCurrency) ? CURRENCIES : [accountCurrency, ...CURRENCIES]).map(code => (
+                        <option key={code} value={code}>{getCurrencySymbol(code)} {code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Color</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ACCOUNT_COLORS.map(color => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setAccountColor(color)}
+                        className={`h-7 w-7 rounded-full border-2 ${accountColor === color ? 'border-textMain' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }}
+                        aria-label={`Use color ${color}`}
+                        aria-pressed={accountColor === color}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
+                  <input
+                    type="text"
+                    value={accountNotes}
+                    onChange={e => setAccountNotes(e.target.value)}
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
+                    placeholder="Optional, e.g. account number ending 1234"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  {editingAccountId && (
+                    <button type="button" onClick={resetAccountForm} className="flex-1 rounded-xl border border-border py-3 text-sm font-bold text-secondary hover:text-textMain">
+                      Cancel
+                    </button>
+                  )}
+                  <button type="submit" disabled={!accountName.trim()} className="flex-1 rounded-xl bg-primary text-white font-bold py-3 text-sm shadow-sm hover:opacity-90 disabled:opacity-40">
+                    {editingAccountId ? 'Save Account' : 'Add Account'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
@@ -811,8 +1348,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map(category => {
             const count = category === 'All'
-              ? investments.length
-              : investments.filter(investment => investment.kind === category).length;
+              ? accountInvestments.length
+              : accountInvestments.filter(investment => investment.kind === category).length;
 
             return (
               <button
@@ -827,20 +1364,79 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             );
           })}
         </div>
+
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-secondary">Account</p>
+            <button
+              type="button"
+              onClick={openAccountManager}
+              className="flex items-center gap-1 text-xs font-bold text-primary hover:opacity-80"
+            >
+              {accounts.length > 0 ? <Settings2 size={12} /> : <Plus size={12} />}
+              {accounts.length > 0 ? 'Manage accounts' : 'Add a broker / margin account'}
+            </button>
+          </div>
+          {accounts.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'all', label: 'All', color: undefined as string | undefined, count: investments.length },
+                ...accounts.map(account => ({
+                  id: account.id,
+                  label: account.name,
+                  color: account.color,
+                  count: investments.filter(investment => investment.accountId === account.id).length,
+                })),
+                ...(hasUnassignedHoldings
+                  ? [{ id: 'unassigned', label: 'Unassigned', color: undefined, count: investments.filter(investment => !holdingAccount(investment)).length }]
+                  : []),
+              ].map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setSelectedAccount(option.id)}
+                  aria-pressed={selectedAccount === option.id}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-bold transition-colors ${selectedAccount === option.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'}`}
+                >
+                  {option.color && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />}
+                  {option.label}
+                  <span className="opacity-70">({option.count})</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-secondary">Create accounts (e.g. "IBKR Margin", "Futu Cash") to tag holdings and see each account's value separately.</p>
+          )}
+        </div>
       </div>
 
 
-      {selectedCategory !== 'Poker (MTT)' && (
       <div className="rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
         <div className="absolute inset-0 opacity-60 pointer-events-none bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.06),_transparent_30%)] dark:bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.12),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.08),_transparent_30%)]" />
         <div className="absolute -right-6 -top-8 w-32 h-32 rounded-full bg-cyan-400/10 blur-2xl" />
         <div className="relative z-10 flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-slate-600 text-sm font-bold dark:text-white/65">
+              <div className="flex flex-wrap items-center gap-2 text-slate-600 text-sm font-bold dark:text-white/65">
                 <span className="text-slate-700 dark:text-white/70">Portfolio</span>
-                <span className="text-cyan-600 dark:text-cyan-400">Main</span>
-                <ChevronDown size={14} className="text-cyan-600 dark:text-cyan-400" />
+                <span className="text-cyan-600 dark:text-cyan-400">{selectedAccountLabel}</span>
+                {selectedAccount !== 'all' && selectedAccount !== 'unassigned' && accountsById.get(selectedAccount) && (
+                  <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-600 dark:text-cyan-300">
+                    {accountsById.get(selectedAccount)!.accountType}
+                  </span>
+                )}
+                {hasQuotableHoldings && (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                    title="Stock/crypto prices refresh automatically every 20s while this tab is open and visible"
+                  >
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    </span>
+                    Live{priceRefreshedAt ? ` · ${formatRelativeSeconds(priceRefreshedAt)}` : ''}
+                  </span>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
                 <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-none">{formatMoney(portfolioValue, baseCurrency)}</h2>
@@ -848,7 +1444,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
               </div>
               <div className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold border ${gainValue >= 0 ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-300'}`}>
                 <span>{gainValue >= 0 ? '+' : ''}{formatMoney(gainValue, baseCurrency)}</span>
-                <span className="opacity-90">{gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}% in the last month</span>
+                <span className="opacity-90">{gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}% vs. what you paid</span>
               </div>
             </div>
             <button className="shrink-0 mt-1 text-slate-500 hover:text-cyan-600 transition-colors dark:text-white/55 dark:hover:text-cyan-300" aria-label="Toggle portfolio visibility">
@@ -868,19 +1464,78 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </button>
               ))}
             </div>
+            {rangeMode === '1D' && (
+              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-white/[0.04]" aria-label="Candlestick interval">
+                {([
+                  ['20s', '20 sec'],
+                  ['5m', '5 min'],
+                  ['1h', '1 hour'],
+                ] as const).map(([interval, label]) => (
+                  <button
+                    key={interval}
+                    type="button"
+                    onClick={() => setIntradayInterval(interval)}
+                    aria-pressed={intradayInterval === interval}
+                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-colors ${intradayInterval === interval ? 'bg-white text-slate-950 shadow-sm dark:bg-white/15 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-white/45 dark:hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-[1.25rem] border border-slate-200 bg-white/90 p-4 shadow-inner shadow-black/5 dark:border-white/10 dark:bg-white/[0.025] dark:shadow-black/20">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold dark:text-white/45">Portfolio Growth</p>
-              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-white/60">
-                <LineChartIcon size={14} />
-                {chartData.label}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold dark:text-white/45">
+                {rangeMode === '1D' ? 'Hourly Price Action' : 'Portfolio Growth'}
+              </p>
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-600 dark:text-white/60">
+                {rangeMode === '1D' ? <BarChart3 size={14} /> : <LineChartIcon size={14} />}
+                {rangeMode === '1D'
+                  ? intradayInterval === '20s'
+                    ? 'Live · 20-second candles'
+                    : intradayInterval === '5m'
+                      ? 'Last 24 hours · 5-minute candles'
+                      : 'Last 24 hours · hourly candles'
+                  : chartData.label}
+                <div className="ml-1 flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-white/10 dark:bg-white/[0.05]" aria-label="Chart zoom controls">
+                  <button
+                    type="button"
+                    onClick={() => setChartZoom(current => Math.max(1, current - 0.5))}
+                    disabled={chartZoom <= 1}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-sm font-black text-slate-600 hover:bg-white disabled:opacity-30 dark:text-white/65 dark:hover:bg-white/10"
+                    aria-label="Zoom out chart"
+                  >
+                    &minus;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChartZoom(1)}
+                    className="min-w-10 px-1 text-[10px] font-black text-slate-600 dark:text-white/65"
+                    aria-label="Reset chart zoom"
+                  >
+                    {chartZoom.toFixed(chartZoom % 1 === 0 ? 0 : 1)}&times;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChartZoom(current => Math.min(4, current + 0.5))}
+                    disabled={chartZoom >= 4}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-sm font-black text-slate-600 hover:bg-white disabled:opacity-30 dark:text-white/65 dark:hover:bg-white/10"
+                    aria-label="Zoom in chart"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
             <p className="mb-3 text-xs text-slate-600 dark:text-white/55">{selectedSummary.description}</p>
-            <div className="h-[360px] w-full">
-              <svg viewBox={`0 0 ${svgChart.width} ${svgChart.height}`} className="w-full h-full overflow-visible">
+            <div className="h-[360px] w-full overflow-x-auto overscroll-x-contain rounded-xl" role="region" aria-label="Scrollable investment chart">
+              <svg
+                viewBox={`0 0 ${svgChart.width} ${svgChart.height}`}
+                className="h-full max-w-none overflow-visible transition-[width] duration-200"
+                style={{ width: `${chartZoom * 100}%`, minWidth: '100%' }}
+              >
                 <defs>
                   <linearGradient id="investmentSvgFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.28" />
@@ -897,389 +1552,94 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   return <line key={index} x1="48" x2="742" y1={y} y2={y} stroke="rgba(100,116,139,0.10)" strokeDasharray="4 6" className="dark:stroke-[rgba(255,255,255,0.06)]" />;
                 })}
 
-                {svgChart.points.map((point, index) => {
-                  const showLabel = index === 0 || index === svgChart.points.length - 1;
-                  return (
-                    <g key={`${point.name}-${index}`}>
-                      <circle cx={point.x} cy={point.y} r={index === svgChart.points.length - 1 ? 5 : 3} fill="#22d3ee" opacity={index === svgChart.points.length - 1 ? 1 : 0.75} />
-                      {showLabel && (
-                        <text x={point.x} y={svgChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.45)]">
-                          {point.name}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-
-                <path d={svgChart.areaPath} fill="url(#investmentSvgFill)" />
-                <path d={svgChart.linePath} fill="none" stroke="url(#investmentSvgLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="7" fill="#22d3ee" opacity="0.16" />
-                <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="4" fill="#22d3ee" />
-
-                <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                  {formatMoney(svgChart.maxValue, baseCurrency)}
-                </text>
-                <text x="8" y="266" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                  {formatMoney(svgChart.minValue, baseCurrency)}
-                </text>
-              </svg>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-white/50">
-              <p>Flat line appears when you have no history yet.</p>
-              <p>{selectedInvestments.length} holdings</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
-
-      {selectedCategory === 'Poker (MTT)' && (
-        <div ref={pokerLedgerRef} className="scroll-mt-24 bg-surface rounded-2xl border border-border p-4 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Poker MTT Ledger</h3>
-              <p className="text-xs text-secondary mt-1">
-                Track tournament buy-ins, cashouts, bounties, and bankroll deposits for your poker portfolio.
-              </p>
-            </div>
-            <div className="text-right text-xs text-secondary">
-              <p>{selectedPokerHoldings.length} poker holding{selectedPokerHoldings.length === 1 ? '' : 's'} linked</p>
-              <p>{pokerStats.tournamentCount} tournament{pokerStats.tournamentCount === 1 ? '' : 's'} logged</p>
-            </div>
-          </div>
-
-          {selectedPokerHoldings.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-              <button type="button" aria-expanded={pokerEntryMode === 'tournament'} aria-controls="poker-tournament-form" onClick={() => { resetPokerTournamentForm(); setPokerEntryMode(current => current === 'tournament' ? null : 'tournament'); }} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white"><Plus size={14} /> Add tournament</button>
-              <button type="button" aria-expanded={pokerEntryMode === 'bankroll'} aria-controls="poker-bankroll-form" onClick={() => setPokerEntryMode(current => current === 'bankroll' ? null : 'bankroll')} className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-xs font-bold text-primary"><CircleDollarSign size={14} /> Bankroll movement</button>
-          </div>
-          )}
-
-          {selectedPokerHoldings.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-background p-5 text-center text-secondary">
-              <Shield size={22} className="mx-auto mb-2 opacity-50" />
-              <p className="text-sm font-medium">Create a Poker (MTT) holding first.</p>
-              <p className="text-xs mt-1">Set up your poker holding to start logging tournaments and cash movements.</p>
-              <button type="button" onClick={() => { setEntryMode('holding'); setNewHoldingKind('Poker (MTT)'); setIsEntryModalOpen(true); }} className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white">Set up poker</button>
-            </div>
-          ) : (
-            <>
-              {pokerEntryMode === 'tournament' && (
-                <form id="poker-tournament-form" ref={tournamentFormRef} onSubmit={handleAddPokerTournament} className="scroll-mt-24 rounded-2xl border border-border bg-background p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-textMain">{editingPokerTournamentId ? 'Edit Tournament' : 'Add Tournament'}</h4>
-                      <p className="text-xs text-secondary mt-1">Log buy-in, cashout, bounty, and placement.</p>
-                    </div>
-                    <button type="button" onClick={() => setPokerEntryMode(null)} aria-label="Close tournament form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain"><X size={18} /></button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
-                      <input type="date" value={pokerTournamentDate} onChange={e => setPokerTournamentDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
-                      <select value={pokerTournamentInvestmentId} onChange={e => setPokerTournamentInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                        {pokerHoldings.map(holding => (
-                          <option key={holding.id} value={holding.id}>{holding.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Tournament</label>
-                    <input type="text" value={pokerTournamentName} onChange={e => setPokerTournamentName(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="e.g. Sunday Mini Main" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Placement</label>
-                      <input type="number" value={pokerTournamentPlacement} onChange={e => setPokerTournamentPlacement(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="42" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Entries</label>
-                      <input type="number" min="1" value={pokerTournamentEntries} onChange={e => setPokerTournamentEntries(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="1" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Buy-in USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentBuyInUsd} onChange={e => setPokerTournamentBuyInUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="11.00" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Cashout USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentCashoutUsd} onChange={e => setPokerTournamentCashoutUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Bounty USD</label>
-                      <input type="number" min="0" step="0.01" value={pokerTournamentBountyUsd} onChange={e => setPokerTournamentBountyUsd(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
-                    <input type="text" value={pokerTournamentNotes} onChange={e => setPokerTournamentNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional tournament notes" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="submit" className="flex-1 rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
-                      {editingPokerTournamentId ? 'Update Tournament' : 'Save Tournament'}
-                    </button>
-                      <button
-                        type="button"
-                        onClick={() => { resetPokerTournamentForm(); setPokerEntryMode(null); }}
-                        className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-bold text-secondary hover:text-textMain"
-                      >
-                        Cancel
-                      </button>
-                  </div>
-                </form>
-              )}
-              {pokerEntryMode === 'bankroll' && (
-                <form id="poker-bankroll-form" ref={bankrollFormRef} onSubmit={handleAddPokerBankroll} className="scroll-mt-24 rounded-2xl border border-border bg-background p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-textMain">Bankroll Movement</h4>
-                      <p className="text-xs text-secondary mt-1">Deposit, withdraw, or adjust your poker fund.</p>
-                    </div>
-                    <button type="button" onClick={() => setPokerEntryMode(null)} aria-label="Close bankroll form" className="rounded-lg p-2 text-secondary hover:bg-surface hover:text-textMain"><X size={18} /></button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
-                    <input type="date" value={pokerBankrollDate} onChange={e => setPokerBankrollDate(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Type</label>
-                      <select value={pokerBankrollType} onChange={e => setPokerBankrollType(e.target.value as PokerMttBankrollEventType)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                        <option value="Deposit">Deposit</option>
-                        <option value="Withdrawal">Withdrawal</option>
-                        <option value="Adjustment">Adjustment</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Holding</label>
-                    <select value={pokerBankrollInvestmentId} onChange={e => setPokerBankrollInvestmentId(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary">
-                      {pokerHoldings.map(holding => (
-                        <option key={holding.id} value={holding.id}>{holding.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Amount USD</label>
-                    <input type="number" min="0" step="0.01" value={pokerBankrollAmount} onChange={e => setPokerBankrollAmount(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary no-spinner" placeholder="500.00" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
-                    <input type="text" value={pokerBankrollNotes} onChange={e => setPokerBankrollNotes(e.target.value)} className="w-full bg-surface border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary" placeholder="Optional notes" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                  <button type="submit" className="flex-1 rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
-                    Save Bankroll Entry
-                  </button>
-                  <button type="button" onClick={() => setPokerEntryMode(null)} className="rounded-xl border border-border px-4 py-3 text-sm font-bold text-secondary hover:text-textMain">Cancel</button>
-                  </div>
-                </form>
-              )}
-
-              <section className="rounded-2xl border border-border bg-background p-4">
-                <div className="mb-4 grid gap-3 border-b border-border pb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-textMain">Recent Entries</h4>
-                    <p className="mt-1 text-xs text-secondary">Your bankroll cash movements.</p>
-                  </div>
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface px-3 py-2.5 sm:block sm:min-w-[168px] sm:text-right" title="All deposits, before withdrawals and tournament results">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-secondary">Total cash deposited</p>
-                    <p className="whitespace-nowrap text-xl font-extrabold tabular-nums text-textMain sm:mt-1">{formatMoney(pokerStats.totalDeposited, 'USD')}</p>
-                  </div>
-                </div>
-                {bankrollDeleteError && <p role="alert" className="mb-3 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500">{bankrollDeleteError}</p>}
-                {selectedPokerBankrollEvents.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-secondary">No cash entries yet. Add a deposit using Bankroll Movement above.</p>
+                {rangeMode === '1D' ? (
+                  intradaySvgChart.candles.map((candle, index) => {
+                    const rising = candle.close > candle.open;
+                    const falling = candle.close < candle.open;
+                    const color = rising ? '#22c55e' : falling ? '#ef4444' : '#94a3b8';
+                    const bodyTop = Math.min(candle.openY, candle.closeY);
+                    const bodyHeight = Math.max(2, Math.abs(candle.closeY - candle.openY));
+                    const labelEvery = intradayInterval === '5m'
+                      ? 72
+                      : intradayInterval === '1h'
+                        ? 6
+                        : Math.max(1, Math.ceil(intradaySvgChart.candles.length / 4));
+                    const showLabel = index % labelEvery === 0 || index === intradaySvgChart.candles.length - 1;
+                    return (
+                      <g key={candle.timestamp}>
+                        <line x1={candle.x} x2={candle.x} y1={candle.highY} y2={candle.lowY} stroke={color} strokeWidth="1.5" />
+                        <rect
+                          x={candle.x - (candle.bodyWidth / 2)}
+                          y={bodyTop}
+                          width={candle.bodyWidth}
+                          height={bodyHeight}
+                          rx="1.5"
+                          fill={color}
+                          opacity={falling ? 0.88 : 0.82}
+                        />
+                        {showLabel && (
+                          <text x={candle.x} y={intradaySvgChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="9" className="dark:fill-[rgba(255,255,255,0.45)]">
+                            {new Date(candle.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: intradayInterval === '1h' ? undefined : '2-digit',
+                              second: intradayInterval === '20s' ? '2-digit' : undefined,
+                            })}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })
                 ) : (
-                  <div className="max-h-72 space-y-2 overflow-y-auto">
-                    {selectedPokerBankrollEvents.slice().reverse().map(event => (
-                      <div key={event.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-textMain">{event.eventType} <span className="ml-2 text-xs font-normal text-secondary">{new Date(`${event.eventDate.split('T')[0]}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span></p>
-                          <p className="mt-1 truncate text-xs text-secondary">{pokerHoldings.find(holding => holding.id === event.investmentId)?.name || 'Poker bankroll'}</p>
-                          {event.notes && <p className="mt-1 break-words text-xs text-secondary">{event.notes}</p>}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <p className={`text-sm font-bold ${event.eventType === 'Withdrawal' ? 'text-red-500' : 'text-emerald-500'}`}>{event.eventType === 'Withdrawal' ? '−' : '+'}{formatMoney(event.amountUsd, 'USD')}</p>
-                          <button
-                            type="button"
-                            aria-label={`Delete ${event.eventType.toLowerCase()} of ${formatMoney(event.amountUsd, 'USD')}`}
-                            title="Delete bankroll entry"
-                            disabled={deletingBankrollId != null}
-                            onClick={async () => {
-                              if (deletingBankrollId != null || !confirm(`Delete this ${event.eventType.toLowerCase()} of ${formatMoney(event.amountUsd, 'USD')}? Your bankroll totals will be recalculated.`)) return;
-                              setDeletingBankrollId(event.id);
-                              setBankrollDeleteError('');
-                              try {
-                                await onDeletePokerMttBankrollTransaction(event.id);
-                              } catch (error) {
-                                setBankrollDeleteError(error instanceof Error ? error.message : 'Could not delete this bankroll entry. Please try again.');
-                              } finally {
-                                setDeletingBankrollId(null);
-                              }
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40"
-                          >
-                            {deletingBankrollId === event.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="rounded-2xl border border-border bg-background p-3">
-                  <p className="text-[10px] uppercase text-secondary font-bold">Bankroll</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.netPortfolio, "USD")}</p>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-3">
-                  <p className="text-[10px] uppercase text-secondary font-bold">Tournament Profit</p>
-                  <p className={`text-lg font-black mt-1 ${pokerStats.tournamentProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                    {pokerStats.tournamentProfit >= 0 ? '+' : ''}{formatMoney(pokerStats.tournamentProfit, "USD")}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-3">
-                  <p className="text-[10px] uppercase text-secondary font-bold">Buy-ins</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCosts, "USD")}</p>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-3">
-                  <p className="text-[10px] uppercase text-secondary font-bold">Cashouts + Bounties</p>
-                  <p className="text-lg font-black text-textMain mt-1">{formatMoney(pokerStats.tournamentCashouts + pokerStats.tournamentBounties, "USD")}</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-background p-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-secondary">Portfolio Growth</p>
-                    <p className="text-xs text-secondary mt-1">Chronological bankroll movement across deposits and tournament results.</p>
-                  </div>
-                  <div className="text-right text-xs text-secondary">
-                    <p>ROI {pokerStats.tournamentCosts > 0 ? `${((pokerStats.tournamentProfit / pokerStats.tournamentCosts) * 100).toFixed(1)}%` : '0.0%'}</p>
-                    <p>{pokerStats.history.length} points</p>
-                  </div>
-                </div>
-                <div className="h-72 w-full">
-                  <svg viewBox={`0 0 ${pokerGrowthChart.width} ${pokerGrowthChart.height}`} className="w-full h-full overflow-visible">
-                    <defs>
-                      <linearGradient id="pokerGrowthFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={pokerGrowthChart.isProfitable ? '#22c55e' : '#ec4899'} stopOpacity="0.28" />
-                        <stop offset="100%" stopColor={pokerGrowthChart.isProfitable ? '#22c55e' : '#ec4899'} stopOpacity="0.02" />
-                      </linearGradient>
-                      <linearGradient id="pokerGrowthLine" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor={pokerGrowthChart.isProfitable ? '#22c55e' : '#ec4899'} />
-                        <stop offset="100%" stopColor={pokerGrowthChart.isProfitable ? '#16a34a' : '#f97316'} />
-                      </linearGradient>
-                    </defs>
-                    {Array.from({ length: 4 }).map((_, index) => {
-                      const y = 18 + (index * (pokerGrowthChart.height - 44)) / 3;
-                      return <line key={index} x1="48" x2="742" y1={y} y2={y} stroke="rgba(100,116,139,0.10)" strokeDasharray="4 6" className="dark:stroke-[rgba(255,255,255,0.06)]" />;
-                    })}
-                    {pokerGrowthChart.points.map((point, index) => {
-                      const showLabel = index === 0 || index === pokerGrowthChart.points.length - 1;
+                  <>
+                    {svgChart.points.map((point, index) => {
+                      const showLabel = index === 0 || index === svgChart.points.length - 1;
                       return (
                         <g key={`${point.name}-${index}`}>
-                          <circle
-                            cx={point.x}
-                            cy={point.y}
-                            r={index === pokerGrowthChart.points.length - 1 ? 5 : 3}
-                            fill={pokerGrowthChart.isProfitable ? '#22c55e' : '#ec4899'}
-                            opacity={index === pokerGrowthChart.points.length - 1 ? 1 : 0.75}
-                          />
+                          <circle cx={point.x} cy={point.y} r={index === svgChart.points.length - 1 ? 5 : 3} fill="#22d3ee" opacity={index === svgChart.points.length - 1 ? 1 : 0.75} />
                           {showLabel && (
-                            <text x={point.x} y={pokerGrowthChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.45)]">
+                            <text x={point.x} y={svgChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.45)]">
                               {point.name}
                             </text>
                           )}
                         </g>
                       );
                     })}
-                    {pokerGrowthChart.areaPath && <path d={pokerGrowthChart.areaPath} fill="url(#pokerGrowthFill)" />}
-                    {pokerGrowthChart.linePath && <path d={pokerGrowthChart.linePath} fill="none" stroke="url(#pokerGrowthLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
-                    <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                      {formatMoney(pokerGrowthChart.maxValue, "USD")}
-                    </text>
-                    <text x="8" y={pokerGrowthChart.height - 10} fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                      {formatMoney(pokerGrowthChart.minValue, "USD")}
-                    </text>
-                  </svg>
-                </div>
-                <p className="mt-2 text-xs text-secondary">
-                  The chart uses your poker event timeline, so bankroll changes appear in the order you logged them.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-background p-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-textMain">Recent Tournaments</h4>
-                    <p className="text-xs text-secondary mt-1">Newest poker results for the selected bankroll.</p>
-                  </div>
-                  <span className="text-xs text-secondary">{selectedPokerTournaments.length} total</span>
-                </div>
-                {selectedPokerTournaments.length === 0 ? (
-                  <p className="text-sm text-secondary">No tournament results logged yet.</p>
-                ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {selectedPokerTournaments.slice().reverse().map(tournament => {
-                      const cost = Number(tournament.buyInUsd || 0);
-                      const profit = Number(tournament.cashoutUsd || 0) + Number(tournament.bountyUsd || 0) - cost;
-                      return (
-                        <div key={tournament.id} className="rounded-xl border border-border bg-surface p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-textMain truncate">{tournament.tournamentName}</p>
-                              <p className="text-xs text-secondary mt-1">
-                                {new Date(tournament.tournamentDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                                {tournament.placement ? ` - Place ${tournament.placement}` : ''}
-                              </p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => startEditPokerTournament(tournament)}
-                                  className="text-primary text-xs font-bold flex items-center gap-1"
-                                >
-                                  <Pencil size={12} />
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteTournament(tournament.id)}
-                                  className="text-rose-500 text-xs font-bold flex items-center gap-1"
-                                >
-                                  <Trash2 size={12} />
-                                  Delete
-                                </button>
-                              </div>
-                              <p className={`mt-1 text-sm font-bold ${profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {profit >= 0 ? '+' : ''}{formatMoney(profit, 'USD')}
-                              </p>
-                              <p className="text-[10px] text-secondary">
-                                Cost {formatMoney(cost, 'USD')} - {tournament.entries} entries
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    <path d={svgChart.areaPath} fill="url(#investmentSvgFill)" />
+                    <path d={svgChart.linePath} fill="none" stroke="url(#investmentSvgLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="7" fill="#22d3ee" opacity="0.16" />
+                    <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="4" fill="#22d3ee" />
+                  </>
                 )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
-      {selectedCategory !== 'Poker (MTT)' && (<>
+                <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
+                  {formatMoney(rangeMode === '1D' ? intradaySvgChart.maxValue : svgChart.maxValue, baseCurrency)}
+                </text>
+                <text x="8" y="266" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
+                  {formatMoney(rangeMode === '1D' ? intradaySvgChart.minValue : svgChart.minValue, baseCurrency)}
+                </text>
+              </svg>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-white/50">
+              <p>
+                {rangeMode === '1D'
+                  ? isIntradayLoading
+                    ? 'Loading hourly market candles…'
+                    : intradayError || (intradayPortfolio.hasMarketData
+                      ? intradayInterval === '20s'
+                        ? 'Live 20-second candles are collected while this portfolio is open.'
+                        : `${intradayInterval === '5m' ? '5-minute' : 'Hourly'} candles · flat candles mark closed markets or non-traded assets.`
+                      : intradayInterval === '20s'
+                        ? 'Waiting for the next live 20-second quote update.'
+                        : 'No intraday movement is available; the last known value is carried forward.')
+                  : 'Flat line appears when you have no history yet.'}
+              </p>
+              <p>{selectedInvestments.length} holdings</p>
+              {chartZoom > 1 && <p className="w-full sm:w-auto">Swipe sideways to inspect the enlarged chart.</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
@@ -1304,7 +1664,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${transaction.transactionType === 'Buy' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : transaction.transactionType === 'Sell' ? 'bg-red-500/10 text-red-600 border-red-500/20' : 'bg-slate-500/10 text-slate-600 border-slate-500/20'}`}>
-                      {transaction.transactionType}
+                      {transactionTypeLabel(transaction.transactionType, investmentsById.get(transaction.investmentId)?.positionSide === 'Short')}
                     </span>
                     <p className="text-sm font-semibold text-textMain truncate">
                       {new Date(transaction.tradeDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -1318,6 +1678,11 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                 <div className="text-right">
+                  {transaction.realizedPnl != null && transaction.realizedPnl !== 0 && (
+                    <p className={`text-sm font-bold ${transaction.realizedPnl > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {transaction.realizedPnl > 0 ? '+' : ''}{transaction.realizedPnl.toFixed(2)} <span className="text-[10px] font-semibold">realized</span>
+                    </p>
+                  )}
                   <p className="text-sm font-bold text-textMain">{transaction.currency}</p>
                   <p className="text-[10px] text-secondary">{transaction.source || 'Manual entry'}</p>
                 </div>
@@ -1353,6 +1718,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         <button
           type="button"
           onClick={() => {
+            resetHoldingForm();
             setEntryMode(investments.length === 0 ? 'holding' : 'transaction');
             setIsEntryModalOpen(true);
           }}
@@ -1363,23 +1729,94 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </button>
       </div>
 
-      </>)}
+
+      {valuationTarget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setValuationTarget(null)}>
+          <div
+            className="bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-border my-4 sm:my-8"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border flex justify-between items-center bg-background">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-textMain">Log value</h3>
+                <p className="text-[10px] text-secondary truncate">{valuationTarget.name} - {valuationTarget.units} unit{valuationTarget.units === 1 ? '' : 's'}</p>
+              </div>
+              <button type="button" onClick={() => setValuationTarget(null)} className="text-secondary hover:text-textMain p-1 -mr-1" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitValuation} className="p-4 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={valuationDate}
+                  onChange={e => setValuationDate(e.target.value)}
+                  className="w-full h-12 min-w-0 bg-background border border-border rounded-xl px-3 text-sm text-textMain focus:border-primary outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">
+                  {valuationTarget.units === 1 ? 'Value' : 'Price per unit'} ({valuationTarget.currency})
+                </label>
+                <input
+                  autoFocus
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={valuationPrice}
+                  onChange={e => setValuationPrice(e.target.value)}
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:border-primary outline-none no-spinner"
+                  placeholder="0.00"
+                />
+                {valuationTarget.units !== 1 && Number.isFinite(Number(valuationPrice)) && valuationPrice.trim() !== '' && (
+                  <p className="mt-1 text-[10px] text-secondary">
+                    Total value: {formatMoney(valuationTarget.units * Number(valuationPrice), valuationTarget.currency)}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Notes</label>
+                <input
+                  type="text"
+                  value={valuationNotes}
+                  onChange={e => setValuationNotes(e.target.value)}
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:border-primary outline-none"
+                  placeholder="Optional"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={valuationPrice.trim() === '' || !Number.isFinite(Number(valuationPrice)) || Number(valuationPrice) < 0 || !valuationDate}
+                className="w-full rounded-xl bg-primary text-white font-bold py-3 text-sm shadow-lg disabled:opacity-40"
+              >
+                Save value
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {isEntryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => setIsEntryModalOpen(false)}>
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => { resetHoldingForm(); setIsEntryModalOpen(false); }}>
           <div className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface border border-border shadow-2xl overflow-hidden animate-fade-in sm:my-8 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-background shrink-0">
               <div>
-                <h3 className="text-base font-bold text-textMain">{entryMode === 'holding' ? 'Add Holding' : 'Log Entry'}</h3>
+                <h3 className="text-base font-bold text-textMain">
+                  {entryMode === 'holding' ? (editingHoldingId ? 'Edit Holding' : 'Add Holding') : 'Log Entry'}
+                </h3>
                 <p className="text-xs text-secondary mt-0.5">
                   {entryMode === 'holding'
-                    ? 'Create a stock, crypto, or poker holding.'
+                    ? editingHoldingId
+                      ? 'Update this holding\'s details.'
+                      : 'Create a stock, crypto, or card holding.'
                     : 'Store a buy, sell, dividend, or fee.'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setIsEntryModalOpen(false)}
+                onClick={() => { resetHoldingForm(); setIsEntryModalOpen(false); }}
                 className="rounded-full p-2 text-secondary hover:text-textMain hover:bg-border/30 shrink-0"
                 aria-label="Close log entry modal"
               >
@@ -1411,7 +1848,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             </div>
 
             {entryMode === 'holding' ? (
-              <form onSubmit={handleCreateHolding} className="p-5 space-y-3 flex-1 min-h-0 overflow-y-auto">
+              <form onSubmit={handleSubmitHolding} className="p-5 space-y-3 flex-1 min-h-0 overflow-y-auto">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Name</label>
                   <input
@@ -1432,7 +1869,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                       onChange={e => setNewHoldingKind(e.target.value as InvestmentKind)}
                       className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
                     >
-                      {CATEGORIES.filter(category => category !== 'All').map(category => (
+                      {holdingKindOptions.map(category => (
                         <option key={category} value={category}>
                           {category}
                         </option>
@@ -1441,15 +1878,89 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Symbol</label>
-                    <input
-                      type="text"
-                      value={newHoldingSymbol}
-                      onChange={e => setNewHoldingSymbol(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
-                      placeholder="AAPL"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newHoldingSymbol}
+                        onChange={e => setNewHoldingSymbol(e.target.value)}
+                        onBlur={() => {
+                          if (newHoldingKind === 'Stocks' && newHoldingSymbol.trim()) setNewHoldingSymbol(normalizeTickerSymbol(newHoldingSymbol));
+                        }}
+                        className="w-full min-w-0 bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
+                        placeholder={newHoldingKind === 'Crypto' ? 'BTC-USD' : 'AAPL or 0700'}
+                      />
+                      {QUOTABLE_KINDS.includes(newHoldingKind) && (
+                        <button
+                          type="button"
+                          onClick={handleFetchQuote}
+                          disabled={isFetchingQuote || !newHoldingSymbol.trim()}
+                          title="Fetch current price from Yahoo Finance"
+                          className="shrink-0 rounded-xl border border-border bg-background px-3 text-secondary hover:text-primary hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {isFetchingQuote ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {QUOTABLE_KINDS.includes(newHoldingKind) && (quoteError || quoteNote) ? (
+                  <p className={`text-[11px] ${quoteError ? 'text-rose-500' : 'text-secondary'}`}>
+                    {quoteError || quoteNote}
+                  </p>
+                ) : newHoldingKind === 'Stocks' && (
+                  <p className="text-[11px] text-secondary">
+                    US: ticker (AAPL). Hong Kong: stock code (700, 00700 or 0700.HK). Tap refresh to fetch the price and name.
+                  </p>
+                )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary">Account</label>
+                    <button
+                      type="button"
+                      onClick={openAccountManager}
+                      className="text-[10px] font-bold text-primary hover:opacity-80"
+                    >
+                      {accounts.length > 0 ? 'Manage' : '+ New account'}
+                    </button>
+                  </div>
+                  <select
+                    value={newHoldingAccountId}
+                    onChange={e => setNewHoldingAccountId(e.target.value)}
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary [color-scheme:light] dark:[color-scheme:dark]"
+                  >
+                    <option value="">No account</option>
+                    {accounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} · {account.accountType}{account.broker ? ` (${account.broker})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {QUOTABLE_KINDS.includes(newHoldingKind) && (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Position</label>
+                    <div className="flex rounded-xl border border-border bg-background p-1">
+                      <button
+                        type="button"
+                        onClick={() => setNewHoldingPositionSide('Long')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${newHoldingPositionSide === 'Long' ? 'bg-emerald-500 text-white' : 'text-secondary hover:text-textMain'}`}
+                      >
+                        <TrendingUp size={13} /> Long
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewHoldingPositionSide('Short')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${newHoldingPositionSide === 'Short' ? 'bg-rose-500 text-white' : 'text-secondary hover:text-textMain'}`}
+                      >
+                        <TrendingDown size={13} /> Short
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[10px] text-secondary">Short means you profit when the price falls.</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -1500,12 +2011,15 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Currency</label>
-                    <input
-                      type="text"
-                      value={baseCurrency}
-                      disabled
-                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none opacity-70"
-                    />
+                    <select
+                      value={newHoldingCurrency}
+                      onChange={e => setNewHoldingCurrency(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary [color-scheme:light] dark:[color-scheme:dark]"
+                    >
+                      {(CURRENCIES.includes(newHoldingCurrency) ? CURRENCIES : [newHoldingCurrency, ...CURRENCIES]).map(code => (
+                        <option key={code} value={code}>{getCurrencySymbol(code)} {code}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1521,7 +2035,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </div>
 
                 <button type="submit" className="w-full rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
-                  Create Holding
+                  {editingHoldingId ? 'Save Changes' : 'Create Holding'}
                 </button>
               </form>
             ) : (
@@ -1535,7 +2049,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   >
                     {investments.map(investment => (
                       <option key={investment.id} value={investment.id}>
-                        {investment.name} ({investment.symbol || investment.kind})
+                        {investment.name} ({investment.symbol || investment.kind}){holdingAccount(investment) ? ` · ${holdingAccount(investment)!.name}` : ''}
                       </option>
                     ))}
                   </select>
@@ -1550,7 +2064,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                       className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain outline-none focus:border-primary"
                     >
                       {TRANSACTION_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
+                        <option key={type} value={type}>{transactionTypeLabel(type, isShortEntry)}</option>
                       ))}
                     </select>
                   </div>
@@ -1612,7 +2126,31 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   />
                 </div>
 
-                <button type="submit" className="w-full rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity">
+                {isShortEntry && (
+                  <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-500">
+                    Short position: <strong>Short sell</strong> opens or adds to it, <strong>Buy back</strong> closes it. You profit when you buy back below your average sale price.
+                  </p>
+                )}
+                {entryHolding && entryExceedsPosition && (
+                  <p role="alert" className="rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-500">
+                    You only hold {entryHolding.units} unit{entryHolding.units === 1 ? '' : 's'} of {entryHolding.name} - you can't {isShortEntry ? 'buy back' : 'sell'} {entryUnitsNumber}.
+                  </p>
+                )}
+                {entryHolding && entryPreview && (
+                  <div className="rounded-xl border border-border bg-background px-3 py-2 text-xs text-secondary space-y-0.5">
+                    {entryPreview.realizedPnl !== undefined && (
+                      <p className={`text-sm font-bold ${entryPreview.realizedPnl > 0 ? 'text-emerald-500' : entryPreview.realizedPnl < 0 ? 'text-red-500' : 'text-textMain'}`}>
+                        Realized {entryPreview.realizedPnl > 0 ? '+' : ''}{formatMoney(entryPreview.realizedPnl, entryHolding.currency)}
+                      </p>
+                    )}
+                    <p>
+                      After this: {entryPreview.holding.units} unit{entryPreview.holding.units === 1 ? '' : 's'}
+                      {entryPreview.holding.units > 0 ? ` at avg ${entryPreview.holding.averageCost.toFixed(2)} ${entryHolding.currency}` : ' (position closed)'}
+                    </p>
+                  </div>
+                )}
+
+                <button type="submit" disabled={entryExceedsPosition} className="w-full rounded-xl bg-primary text-white font-bold py-3 shadow-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
                   Save Transaction
                 </button>
               </form>
@@ -1621,7 +2159,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       )}
 
-      {selectedCategory !== 'Poker (MTT)' && (<>
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-2">
           <div>
@@ -1667,59 +2204,160 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         <p className="mt-2 text-xs text-secondary">This chart follows your transaction entries, so you can see how invested cash changes over time.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {categorySummary.map(summary => (
-          <button
-            key={summary.category}
-            onClick={() => setSelectedCategory(summary.category)}
-            className={`text-left bg-surface rounded-2xl border p-4 shadow-sm transition-colors ${selectedCategory === summary.category ? 'border-primary ring-2 ring-primary/10' : 'border-border hover:border-primary/40'}`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-secondary">{summary.category}</p>
-                <p className="mt-2 text-lg font-extrabold text-textMain">{formatMoney(summary.value, baseCurrency)}</p>
+      <section className="space-y-3" aria-labelledby="portfolio-categories-heading">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Browse portfolios</p>
+            <h3 id="portfolio-categories-heading" className="mt-1 text-lg font-extrabold text-textMain">Asset categories</h3>
+          </div>
+          <p className="hidden text-xs text-secondary sm:block">Select a category to focus the dashboard</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {categorySummary.map(summary => {
+            const isSelected = selectedCategory === summary.category;
+            const accent = colorForInvestmentKind(summary.category);
+            const CategoryIcon = summary.category === 'Crypto'
+              ? Coins
+              : summary.category === 'Stocks'
+                ? TrendingUp
+                : Shield;
+
+            return (
+              <button
+                key={summary.category}
+                onClick={() => setSelectedCategory(summary.category)}
+                aria-pressed={isSelected}
+                className={`group relative min-h-36 overflow-hidden rounded-2xl border p-5 text-left transition-all duration-200 ${
+                  isSelected
+                    ? 'bg-surface shadow-xl -translate-y-1 ring-2 ring-offset-2 ring-offset-background'
+                    : 'bg-surface/70 border-border shadow-sm hover:-translate-y-0.5 hover:bg-surface hover:shadow-lg'
+                }`}
+                style={isSelected ? { borderColor: accent, boxShadow: `0 18px 45px -26px ${accent}`, '--tw-ring-color': accent } as React.CSSProperties : undefined}
+              >
+                <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
+                <span className="absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-10 blur-xl transition-opacity group-hover:opacity-20" style={{ backgroundColor: accent }} />
+
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ color: accent, backgroundColor: `${accent}18` }}>
+                      <CategoryIcon size={18} />
+                    </span>
+                    <div>
+                      <p className="text-xs font-extrabold uppercase tracking-wide text-textMain">{summary.category}</p>
+                      <p className="mt-0.5 text-[11px] text-secondary">{summary.count} holding{summary.count === 1 ? '' : 's'}</p>
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <span className="rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white" style={{ backgroundColor: accent }}>
+                      Selected
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative mt-5 flex items-end justify-between gap-3">
+                  <p className="text-xl font-black text-textMain">{formatMoney(summary.value, baseCurrency)}</p>
+                  <div className={`rounded-lg border px-2.5 py-1.5 ${summary.gain > 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : summary.gain < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-slate-500/10 border-slate-500/20 text-secondary'}`}>
+                    <p className="text-[9px] font-bold uppercase tracking-wide">{summary.category === 'Pokemon Cards' ? 'Change' : 'Gain'}</p>
+                    <p className="text-xs font-black">{summary.gain > 0 ? '+' : ''}{summary.gainPct.toFixed(1)}%</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section
+        className="relative overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.12] via-surface to-surface p-5 shadow-[0_20px_60px_-35px_rgba(59,130,246,0.65)] sm:p-6"
+        aria-labelledby="selected-portfolio-heading"
+      >
+        <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Performance snapshot</p>
+              <h3 id="selected-portfolio-heading" className="mt-1 text-xl font-black text-textMain">{selectedSummary.title}</h3>
+              <p className="mt-1 text-xs text-secondary">{selectedSummary.description}</p>
+            </div>
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+              Current selection
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-primary/20 bg-primary/[0.08] p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider">
+                <CircleDollarSign size={16} />
+                Portfolio Value
               </div>
-              <div className={`px-3 py-2 rounded-xl border ${summary.gain >= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-                <p className="text-[10px] font-bold uppercase tracking-wide">Gain</p>
-                <p className="text-sm font-extrabold">{summary.gain >= 0 ? '+' : ''}{summary.gainPct.toFixed(1)}%</p>
+              <p className="mt-3 text-3xl font-black tracking-tight text-textMain">{formatMoney(portfolioValue, baseCurrency)}</p>
+              <p className="mt-1 text-xs text-secondary">Current market value</p>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
+                <Coins size={16} />
+                {selectedCategory === 'Pokemon Cards' ? 'Original Value' : 'Cost Basis'}
+              </div>
+              <p className="mt-3 text-2xl font-extrabold text-textMain">{formatMoney(costBasis, baseCurrency)}</p>
+              <p className="mt-1 text-xs text-secondary">{selectedCategory === 'Pokemon Cards' ? 'Your first logged value' : 'What you put in originally'}</p>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
+                <TrendingUp size={16} />
+                {selectedCategory === 'Pokemon Cards' ? 'Value Change' : 'Unrealized Gain'}
+              </div>
+              <p className={`mt-3 text-2xl font-extrabold ${gainValue > 0 ? 'text-emerald-500' : gainValue < 0 ? 'text-red-500' : 'text-textMain'}`}>
+                {gainValue > 0 ? '+' : ''}{formatMoney(gainValue, baseCurrency)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-secondary">
+                {gainPct > 0 ? '+' : ''}{gainPct.toFixed(1)}% {selectedCategory === 'Pokemon Cards' ? 'since first logged value' : 'overall'}
+              </p>
+            </div>
+          </div>
+
+          {selectedCategory !== 'Pokemon Cards' && (
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
+                  <Coins size={16} />
+                  Realized P&amp;L
+                </div>
+                <p className={`mt-3 text-2xl font-extrabold ${realizedStats.realized > 0 ? 'text-emerald-500' : realizedStats.realized < 0 ? 'text-red-500' : 'text-textMain'}`}>
+                  {realizedStats.realized > 0 ? '+' : ''}{formatMoney(realizedStats.realized, baseCurrency)}
+                </p>
+                <p className="mt-1 text-xs text-secondary">Locked in by sells, buy-backs and dividends</p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
+                  <TrendingUp size={16} />
+                  Total P&amp;L
+                </div>
+                <p className={`mt-3 text-2xl font-extrabold ${gainValue + realizedStats.realized > 0 ? 'text-emerald-500' : gainValue + realizedStats.realized < 0 ? 'text-red-500' : 'text-textMain'}`}>
+                  {gainValue + realizedStats.realized > 0 ? '+' : ''}{formatMoney(gainValue + realizedStats.realized, baseCurrency)}
+                </p>
+                <p className="mt-1 text-xs text-secondary">Unrealized + realized</p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
+                  <BarChart3 size={16} />
+                  Closed trades
+                </div>
+                <p className="mt-3 text-2xl font-extrabold text-textMain">{realizedStats.closedTrades}</p>
+                <p className="mt-1 text-xs text-secondary">
+                  {realizedStats.closedTrades > 0
+                    ? `${realizedStats.wins} win${realizedStats.wins === 1 ? '' : 's'} \u00b7 ${((realizedStats.wins / realizedStats.closedTrades) * 100).toFixed(0)}% win rate`
+                    : 'Log a Sell (or Buy back for a short) to start'}
+                </p>
               </div>
             </div>
-            <p className="mt-3 text-xs text-secondary">{summary.count} holding{summary.count === 1 ? '' : 's'}</p>
-          </button>
-        ))}
-      </div>
-
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-            <CircleDollarSign size={14} />
-            Selected Value
-          </div>
-          <p className="mt-3 text-2xl font-extrabold text-textMain">{formatMoney(portfolioValue, baseCurrency)}</p>
-          <p className="mt-1 text-xs text-secondary">{selectedSummary.title}</p>
+          )}
         </div>
-
-        <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-            <Coins size={14} />
-            Cost Basis
-          </div>
-          <p className="mt-3 text-2xl font-extrabold text-textMain">{formatMoney(costBasis, baseCurrency)}</p>
-          <p className="mt-1 text-xs text-secondary">What you put in originally</p>
-        </div>
-
-        <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-            <TrendingUp size={14} />
-            Unrealized Gain
-          </div>
-          <p className={`mt-3 text-2xl font-extrabold ${gainValue >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {gainValue >= 0 ? '+' : ''}{formatMoney(gainValue, baseCurrency)}
-          </p>
-          <p className="mt-1 text-xs text-secondary">{gainPct >= 0 ? '+' : ''}{gainPct.toFixed(1)}% overall</p>
-        </div>
-      </div>
+      </section>
 
       <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
@@ -1741,33 +2379,51 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         ) : (
           <div className="space-y-3">
             {selectedInvestments.map(investment => {
-              const currentValue = investment.units * investment.currentPrice;
-              const basis = investment.units * investment.averageCost;
-              const profit = currentValue - basis;
-              const profitPct = basis > 0 ? (profit / basis) * 100 : 0;
+              const { currentValue, gain: profit, gainPct: profitPct } = getBaseMetrics(investment);
 
               return (
                 <div key={investment.id} className="bg-background rounded-2xl border border-border p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: investment.color }} />
-                        <h4 className="font-bold text-textMain truncate">{investment.name}</h4>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/30 dark:text-slate-300 dark:border-slate-800/50">
-                          {investment.kind}
-                        </span>
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <InvestmentLogo investment={investment} className="h-11 w-11 shrink-0 rounded-xl" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h4 className="font-bold text-textMain truncate">{investment.name}</h4>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/30 dark:text-slate-300 dark:border-slate-800/50">
+                            {investment.kind}
+                          </span>
+                          {investment.positionSide === 'Short' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800/50">
+                              Short
+                            </span>
+                          )}
+                          {holdingAccount(investment) && (
+                            <span
+                              className="flex shrink-0 items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-border bg-surface text-secondary"
+                              title={`${holdingAccount(investment)!.accountType} account`}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: holdingAccount(investment)!.color }} />
+                              {holdingAccount(investment)!.name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[11px] text-secondary truncate">
+                          {investment.symbol ? `${investment.symbol} - ` : ''}
+                          {investment.source || investment.notes || 'No extra notes'}
+                        </p>
                       </div>
-                      <p className="mt-1 text-[11px] text-secondary truncate">
-                        {investment.symbol ? `${investment.symbol} - ` : ''}
-                        {investment.source || investment.notes || 'No extra notes'}
-                      </p>
                     </div>
 
                     <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-textMain">{formatMoney(currentValue, baseCurrency)}</p>
-                      <p className={`text-[10px] font-semibold ${profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        {profit >= 0 ? '+' : ''}{formatMoney(profit, baseCurrency)} ({profitPct >= 0 ? '+' : ''}{profitPct.toFixed(1)}%)
+                      <p className={`text-[10px] font-semibold ${profit > 0 ? 'text-emerald-500' : profit < 0 ? 'text-red-500' : 'text-secondary'}`}>
+                        {profit > 0 ? '+' : ''}{formatMoney(profit, baseCurrency)} ({profitPct > 0 ? '+' : ''}{profitPct.toFixed(1)}%)
                       </p>
+                      {realizedByHolding.has(investment.id) && (
+                        <p className={`text-[10px] font-semibold ${(realizedByHolding.get(investment.id) || 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          Realized {(realizedByHolding.get(investment.id) || 0) >= 0 ? '+' : ''}{formatMoney(realizedByHolding.get(investment.id) || 0, baseCurrency)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1781,13 +2437,118 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                       <p className="text-sm font-bold text-textMain mt-1">{formatMoney(investment.currentPrice, investment.currency)}</p>
                     </div>
                   </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
+                    {QUOTABLE_KINDS.includes(investment.kind) && investment.symbol && (
+                      <button
+                        type="button"
+                        onClick={() => setTickerDetailHoldingId(investment.id)}
+                        className="flex items-center gap-1 rounded-lg bg-cyan-500/10 px-2.5 py-1.5 text-xs font-black text-cyan-600 hover:bg-cyan-500/15 dark:text-cyan-300"
+                      >
+                        <LineChartIcon size={12} />
+                        View chart
+                      </button>
+                    )}
+                    {QUOTABLE_KINDS.includes(investment.kind) && investment.symbol && (
+                      <button
+                        type="button"
+                        onClick={() => handleRefreshHoldingPrice(investment)}
+                        disabled={refreshingHoldingId === investment.id}
+                        title="Refresh price from Yahoo Finance"
+                        className="text-secondary hover:text-primary text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {refreshingHoldingId === investment.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        Refresh Price
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openLogValue(investment)}
+                      title="Record what this holding is worth today, to track its ups and downs"
+                      className="text-emerald-500 text-xs font-bold flex items-center gap-1"
+                    >
+                      <LineChartIcon size={12} />
+                      Log value
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEditHolding(investment)}
+                      className="text-primary text-xs font-bold flex items-center gap-1"
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteHolding(investment.id)}
+                      className="text-rose-500 text-xs font-bold flex items-center gap-1"
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </div>
+
+                  {(valuationsByHolding.get(investment.id)?.length ?? 0) > 0 && (() => {
+                    const history = valuationsByHolding.get(investment.id) || [];
+                    const isOpen = expandedValuationHoldingId === investment.id;
+                    const first = history[0];
+                    const last = history[history.length - 1];
+                    const change = last.marketValue - first.marketValue;
+                    const changePct = first.marketValue !== 0 ? (change / first.marketValue) * 100 : 0;
+                    return (
+                      <div className="mt-3 border-t border-border pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedValuationHoldingId(isOpen ? null : investment.id)}
+                          className="w-full flex items-center justify-between gap-2 text-[11px] font-bold text-secondary hover:text-textMain"
+                        >
+                          <span>{isOpen ? 'Hide value history' : `Value history (${history.length})`}</span>
+                          {history.length > 1 && (
+                            <span className={change >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                              {change >= 0 ? '+' : ''}{formatMoney(change, investment.currency)} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%) since {first.valuationDate.split('T')[0]}
+                            </span>
+                          )}
+                        </button>
+                        {isOpen && (
+                          <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto">
+                            {history.slice().reverse().map((entry, reverseIndex) => {
+                              const previous = history[history.length - 2 - reverseIndex];
+                              const delta = previous ? entry.marketValue - previous.marketValue : null;
+                              const deltaPct = previous && previous.marketValue !== 0 ? (delta! / previous.marketValue) * 100 : null;
+                              return (
+                                <div key={entry.id} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="text-secondary shrink-0">
+                                    {entry.valuationDate.split('T')[0]}
+                                    {entry.createdAt && !Number.isNaN(new Date(entry.createdAt).getTime()) && (
+                                      <span className="ml-1 opacity-70">{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    )}
+                                  </span>
+                                  <span className="font-semibold text-textMain">{formatMoney(entry.marketValue, entry.currency)}</span>
+                                  <span className={`min-w-[5.5rem] text-right text-[10px] font-semibold ${delta === null ? 'text-secondary' : delta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    {delta === null ? 'first entry' : `${delta >= 0 ? '+' : ''}${formatMoney(delta, entry.currency)}${deltaPct !== null ? ` (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)` : ''}`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => { if (confirm(`Delete the ${entry.valuationDate.split('T')[0]} value?`)) onDeleteValuation(entry.id); }}
+                                    className="text-secondary hover:text-red-500 shrink-0"
+                                    aria-label="Delete logged value"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
           </div>
         )}
       </div>
-      </>)}
     </div>
   );
 };
