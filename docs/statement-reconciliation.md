@@ -122,8 +122,12 @@ If no token is configured, or the PDF has no extractable text (e.g. a
 scanned image), the panel surfaces a clear inline error instead of
 silently failing or sending anything to the model.
 
-Swapping the model is a one-line change (`HF_MODEL` in
-`huggingFaceService.ts`) — any chat-completion model available through
+Models are tried in order from the `HF_MODELS` list in
+`huggingFaceService.ts`: if one fails (e.g. a provider paused by Hugging Face's
+circuit breaker with a 503, a rate limit, or a provider not enabled on the
+account), the next one is tried, and the last one that worked becomes the
+starting point for later calls. Only a 401 (bad `HF_TOKEN`) stops immediately.
+Editing that list — any chat-completion model available through
 Hugging Face's router works, as long as it follows the "return only a JSON
 array" instruction reasonably well. Free-tier Inference Providers can have
 cold-start latency or rate limits; the panel's "Re-scan" button exists partly
