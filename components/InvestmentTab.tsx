@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   Coins,
   Eye,
+  EyeOff,
   LineChart as LineChartIcon,
   Loader2,
   Pencil,
@@ -19,13 +20,15 @@ import {
 } from 'lucide-react';
 import { CURRENCIES } from '../types';
 import type { InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentPositionSide, InvestmentTransaction, InvestmentTransactionType, InvestmentValuation } from '../types';
-import { fetchStockIntradayHistory, fetchStockQuote, isHongKongSymbol, normalizeTickerSymbol, type StockIntradayHistory } from '../services/stockQuoteService';
+import { fetchStockIntradayHistory, type StockIntradayHistory, fetchStockQuote, isHongKongSymbol, normalizeTickerSymbol } from '../services/stockQuoteService';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { applyInvestmentTransaction, colorForInvestmentKind, compareValuations, getPositionMetrics, transactionTypeLabel, type PositionMetrics } from '../services/investmentService';
 import InvestmentLogo from './InvestmentLogo';
+import BrokerageLogo from './BrokerageLogo';
+import { recordedHoldingValueAt } from '../services/portfolioHistoryService';
 import TickerDetail from './TickerDetail';
 
-type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | 'MAX';
+type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX';
 type InvestmentCategory = 'All' | InvestmentKind;
 
 interface InvestmentTabProps {
@@ -52,14 +55,13 @@ const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Ca
 // Kinds a Yahoo Finance ticker lookup makes sense for, and where going Long vs Short is a
 // meaningful distinction (Pokemon Cards aren't traded either way).
 const QUOTABLE_KINDS: InvestmentKind[] = ['Stocks', 'Crypto'];
-const RANGES: RangeMode[] = ['1D', '7D', '1M', '3M', '6M', 'MAX'];
+const RANGES: RangeMode[] = ['1D', '7D', '1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', 'MAX'];
 const TRANSACTION_TYPES: InvestmentTransactionType[] = ['Buy', 'Sell', 'Dividend', 'Fee', 'Transfer In', 'Transfer Out', 'Split'];
 type EntryMode = 'holding' | 'transaction';
 // Which account's holdings are shown: every holding, the ones not tagged to any account, or one account's id.
 type AccountFilter = 'all' | 'unassigned' | string;
 const ACCOUNT_TYPES: InvestmentAccountType[] = ['Margin', 'Cash'];
 const ACCOUNT_COLORS = ['#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#ef4444', '#3b82f6', '#64748b'];
-type IntradayInterval = '20s' | '5m' | '1h';
 
 const rangeConfig: Record<RangeMode, { points: number; label: string }> = {
   '1D': { points: 1, label: 'Last 24 hours' },
@@ -67,6 +69,10 @@ const rangeConfig: Record<RangeMode, { points: number; label: string }> = {
   '1M': { points: 30, label: 'Last 1 month' },
   '3M': { points: 90, label: 'Last 3 months' },
   '6M': { points: 180, label: 'Last 6 months' },
+  '1Y': { points: 365, label: 'Last 1 year' },
+  '2Y': { points: 365 * 2, label: 'Last 2 years' },
+  '5Y': { points: 365 * 5, label: 'Last 5 years' },
+  '10Y': { points: 365 * 10, label: 'Last 10 years' },
   MAX: { points: 365 * 5, label: 'All time' },
 };
 
@@ -191,11 +197,11 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const [deleteError, setDeleteError] = useState('');
   const [rangeMode, setRangeMode] = useState<RangeMode>('1M');
   const [chartZoom, setChartZoom] = useState(1);
-  const [intradayInterval, setIntradayInterval] = useState<IntradayInterval>('1h');
-  const [intradayByHolding, setIntradayByHolding] = useState<Record<string, StockIntradayHistory>>({});
-  const [isIntradayLoading, setIsIntradayLoading] = useState(false);
-  const [intradayError, setIntradayError] = useState('');
-  const [livePortfolioTicks, setLivePortfolioTicks] = useState<Array<{ timestamp: number; value: number }>>([]);
+  const [portfolioHidden, setPortfolioHidden] = useState(false);
+  const [marketHistory, setMarketHistory] = useState<Record<string, StockIntradayHistory>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFailures, setHistoryFailures] = useState(0);
+  const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
   const [valuationTarget, setValuationTarget] = useState<InvestmentHolding | null>(null);
   const [valuationDate, setValuationDate] = useState(new Date().toISOString().split('T')[0]);
   const [valuationPrice, setValuationPrice] = useState('');
@@ -380,53 +386,29 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     .join('|');
 
   React.useEffect(() => {
-    if (rangeMode !== '1D') return;
+    setHoveredPoint(null);
+    setChartZoom(1);
+  }, [rangeMode, selectedIntradayKey]);
 
-    if (intradayInterval === '20s') {
-      setIntradayByHolding({});
-      setLivePortfolioTicks([]);
-      setIsIntradayLoading(false);
-      setIntradayError('');
-      return;
-    }
-
+  React.useEffect(() => {
     const controller = new AbortController();
-    const quotable = selectedInvestments.filter(
-      (investment): investment is InvestmentHolding & { symbol: string } =>
-        QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol),
-    );
-
-    if (quotable.length === 0) {
-      setIntradayByHolding({});
-      setIsIntradayLoading(false);
-      setIntradayError('No stock or crypto symbols are available for intraday pricing.');
-      return () => controller.abort();
-    }
-
-    setIntradayByHolding({});
-    setIsIntradayLoading(true);
-    setIntradayError('');
-    Promise.allSettled(
-      quotable.map(async investment => ({
-        investmentId: investment.id,
-        history: await fetchStockIntradayHistory(investment.symbol, intradayInterval === '5m' ? '5m' : '60m', controller.signal),
-      })),
-    ).then(results => {
+    const holdings = selectedInvestments.filter(item => QUOTABLE_KINDS.includes(item.kind) && item.symbol);
+    const range = rangeMode === '1D' ? '1d' : ['MAX', '2Y', '5Y', '10Y'].includes(rangeMode) ? 'max' : ['6M', '1Y'].includes(rangeMode) ? '1y' : rangeMode === '3M' ? '3mo' : '1mo';
+    setMarketHistory({}); setHistoryFailures(0); setHistoryLoading(holdings.length > 0);
+    Promise.allSettled(holdings.map(async holding => ({ id: holding.id,
+      data: await fetchStockIntradayHistory(holding.symbol!, rangeMode === '1D' ? '5m' : '1d', controller.signal, range),
+    }))).then(results => {
       if (controller.signal.aborted) return;
       const next: Record<string, StockIntradayHistory> = {};
       let failures = 0;
       results.forEach(result => {
-        if (result.status === 'fulfilled') next[result.value.investmentId] = result.value.history;
-        else failures += 1;
+        if (result.status === 'fulfilled' && result.value.data.candles.length) next[result.value.id] = result.value.data;
+        else failures++;
       });
-      setIntradayByHolding(next);
-      setIntradayError(failures > 0 ? `${failures} holding${failures === 1 ? '' : 's'} could not load ${intradayInterval === '5m' ? '5-minute' : 'hourly'} prices.` : '');
-    }).finally(() => {
-      if (!controller.signal.aborted) setIsIntradayLoading(false);
+      setMarketHistory(next); setHistoryFailures(failures); setHistoryLoading(false);
     });
-
     return () => controller.abort();
-  }, [rangeMode, intradayInterval, selectedIntradayKey]);
+  }, [rangeMode, selectedIntradayKey]);
 
   // The visible kinds (Cash/Other are hidden for now), plus whichever kind the holding
   // currently being edited already has - so editing an older Cash/Other holding doesn't
@@ -441,15 +423,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     return selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
   }, [selectedInvestments, baseCurrency, valuationsByHolding]);
 
-  React.useEffect(() => {
-    if (rangeMode !== '1D' || intradayInterval !== '20s') return;
-    setLivePortfolioTicks(previous => {
-      if (priceRefreshedAt === null && previous.length > 0) return previous;
-      const timestamp = priceRefreshedAt || Date.now();
-      if (previous.at(-1)?.timestamp === timestamp) return previous;
-      return [...previous, { timestamp, value: portfolioValue }].slice(-90);
-    });
-  }, [rangeMode, intradayInterval, priceRefreshedAt, portfolioValue]);
+
 
   const costBasis = useMemo(() => {
     return selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).basis, 0);
@@ -848,192 +822,38 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     });
   }, [accountInvestments, baseCurrency, valuationsByHolding]);
 
-  const intradayPortfolio = useMemo(() => {
-    if (intradayInterval === '20s') {
-      const ticks = livePortfolioTicks.length > 0
-        ? livePortfolioTicks
-        : [{ timestamp: Date.now(), value: portfolioValue }];
-      return {
-        candles: ticks.map((tick, index) => {
-          const previousValue = ticks[index - 1]?.value ?? tick.value;
-          return {
-            timestamp: tick.timestamp,
-            open: previousValue,
-            high: Math.max(previousValue, tick.value),
-            low: Math.min(previousValue, tick.value),
-            close: tick.value,
-          };
-        }),
-        hasMarketData: ticks.length > 1,
-      };
-    }
-
-    const intervalMs = intradayInterval === '5m' ? 5 * 60 * 1000 : 60 * 60 * 1000;
-    const bucketCount = intradayInterval === '5m' ? 288 : 24;
-    const finalBucket = Math.floor(Date.now() / intervalMs) * intervalMs;
-    const buckets = Array.from({ length: bucketCount }, (_, index) => finalBucket - ((bucketCount - 1 - index) * intervalMs));
-    let hasMarketData = false;
-
-    const candles = buckets.map(timestamp => {
-      let open = 0;
-      let high = 0;
-      let low = 0;
-      let close = 0;
-
-      selectedInvestments.forEach(investment => {
-        const history = intradayByHolding[investment.id];
-        const activeCandle = history?.candles.find(candle => Math.floor(candle.timestamp / intervalMs) * intervalMs === timestamp);
-        const previous = history?.candles
-          .filter(candle => candle.timestamp < timestamp + intervalMs)
-          .at(-1);
-        const source = activeCandle || previous;
-
-        if (!source) {
-          const staticValue = getBaseMetrics(investment).currentValue;
-          open += staticValue;
-          high += staticValue;
-          low += staticValue;
-          close += staticValue;
-          return;
-        }
-
-        if (activeCandle) hasMarketData = true;
-        const fromCurrency = history.currency || investment.currency || baseCurrency;
-        const basis = investment.units * investment.averageCost;
-        const valueAtPrice = (price: number) => convertCurrency(
-          investment.positionSide === 'Short'
-            ? (2 * basis) - (price * investment.units)
-            : price * investment.units,
-          fromCurrency,
-          baseCurrency,
-        );
-
-        const holdingOpen = valueAtPrice(source.open);
-        const holdingClose = valueAtPrice(source.close);
-        const edgeOne = valueAtPrice(source.high);
-        const edgeTwo = valueAtPrice(source.low);
-        open += holdingOpen;
-        close += holdingClose;
-        high += Math.max(edgeOne, edgeTwo, holdingOpen, holdingClose);
-        low += Math.min(edgeOne, edgeTwo, holdingOpen, holdingClose);
-      });
-
-      return { timestamp, open, high, low, close };
-    });
-
-    return { candles, hasMarketData };
-  }, [intradayInterval, livePortfolioTicks, portfolioValue, selectedInvestments, intradayByHolding, baseCurrency, valuationsByHolding]);
-
   const chartData = useMemo(() => {
-    const { points, label } = rangeConfig[rangeMode];
-    const fallbackFlatValue = selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
-    if (selectedInvestments.length === 0) {
-      const history = Array.from({ length: points }, (_, index) => {
-        const name =
-          rangeMode === '1D'
-            ? 'Now'
-            : rangeMode === '7D'
-              ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index % 7]
-              : rangeMode === 'MAX'
-                ? `P${index + 1}`
-                : `${index + 1}`;
-
-        return { name, total: 1 };
-      });
-      return { label, history, domain: [0, 2] as [number, number] };
-    }
-
-    const selectedIds = new Set(selectedInvestments.map(investment => investment.id));
-    const relevantValuations = valuations
-      .filter(valuation => selectedIds.has(valuation.investmentId))
-      .slice()
-      .sort(compareValuations);
-
-    const anchorDate = relevantValuations.length > 0
-      ? new Date(relevantValuations[relevantValuations.length - 1].valuationDate)
-      : new Date();
-    anchorDate.setHours(0, 0, 0, 0);
-
-    const buckets: { start: Date; end: Date; name: string }[] = [];
-    const daysToUse = rangeMode === '1D' ? 1 : rangeMode === '7D' ? 7 : rangeMode === '1M' ? 30 : rangeMode === '3M' ? 90 : rangeMode === '6M' ? 180 : 365 * 5;
-    const startDate = rangeMode === 'MAX'
-      ? new Date(Math.min(...relevantValuations.map(item => new Date(item.valuationDate).getTime()), anchorDate.getTime()))
-      : addDays(anchorDate, -(daysToUse - 1));
-
-    if (rangeMode === 'MAX') {
-      const seriesDates = relevantValuations.map(item => new Date(item.valuationDate).getTime());
-      const firstDate = seriesDates.length > 0 ? new Date(Math.min(...seriesDates)) : anchorDate;
-      const maxDate = anchorDate;
-      const span = Math.max(1, Math.ceil((maxDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const bucketCount = Math.min(12, Math.max(5, Math.ceil(span / 30)));
-      for (let i = 0; i < bucketCount; i += 1) {
-        const start = addDays(firstDate, Math.floor((span / bucketCount) * i));
-        const end = i === bucketCount - 1 ? addDays(maxDate, 1) : addDays(firstDate, Math.floor((span / bucketCount) * (i + 1)));
-        buckets.push({
-          start,
-          end,
-          name: start.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
-        });
-      }
-    } else {
-      for (let i = 0; i < points; i += 1) {
-        const day = addDays(startDate, i);
-        day.setHours(0, 0, 0, 0);
-        buckets.push({
-          start: day,
-          end: addDays(day, 1),
-          name:
-            rangeMode === '1D'
-              ? day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-              : rangeMode === '7D'
-                ? day.toLocaleDateString(undefined, { weekday: 'short' })
-                : day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        });
-      }
-    }
-
-    const valuationMap = new Map<string, InvestmentValuation[]>();
-    for (const valuation of relevantValuations) {
-      const list = valuationMap.get(valuation.investmentId) ?? [];
-      list.push(valuation);
-      valuationMap.set(valuation.investmentId, list);
-    }
-
-    const history = buckets.map(bucket => {
+    const now = new Date();
+    const selectedIds = new Set(selectedInvestments.map(item => item.id));
+    const records = valuations.filter(item => selectedIds.has(item.investmentId) && new Date(item.valuationDate).getTime() <= now.getTime()).slice().sort(compareValuations);
+    const requestedStart = rangeMode === 'MAX'
+      ? new Date(records[0]?.valuationDate || now)
+      : rangeMode.endsWith('Y') ? addYears(now, -Number.parseInt(rangeMode))
+      : new Date(now.getTime() - rangeConfig[rangeMode].points * 86400000);
+    const start = requestedStart.getTime();
+    const end = now.getTime();
+    const count = Math.min(366, Math.max(2, Math.ceil((end - start) / 86400000) + 1));
+    const grid = Array.from({ length: count }, (_, index) => start + (end - start) * index / (count - 1));
+    const marketTimes = Object.values<StockIntradayHistory>(marketHistory).flatMap(item => item.candles.map(candle => candle.timestamp));
+    // Preserve record boundaries and every market close, including zero before the first record.
+    const events = [...records.map(item => new Date(item.valuationDate).getTime()), ...marketTimes].filter(time => time >= start && time <= end);
+    const timestamps = [...new Set([...grid, ...events])].sort((a, b) => a - b);
+    const history = timestamps.map(timestamp => {
       let total = 0;
-
-      for (const investment of selectedInvestments) {
-        const fallbackValue = getBaseMetrics(investment).currentValue;
-        const series = valuationMap.get(investment.id) ?? [];
-        const valueAtBucket = series
-          .filter(item => new Date(item.valuationDate).getTime() < bucket.end.getTime())
-          .sort((a, b) => compareValuations(b, a))[0];
-
-        total += valueAtBucket
-          ? convertCurrency(Number(valueAtBucket.marketValue), valueAtBucket.currency || investment.currency || baseCurrency, baseCurrency)
-          : (series.length === 0 ? fallbackValue : 0);
+      for (const holding of selectedInvestments) {
+        const result = recordedHoldingValueAt(holding, records.filter(item => item.investmentId === holding.id), marketHistory[holding.id], timestamp);
+        total += convertCurrency(result.value, result.currency || baseCurrency, baseCurrency);
       }
-
       return {
-        name: bucket.name,
+        timestamp,
+        name: new Date(timestamp).toLocaleString(undefined, rangeMode === '1D'
+          ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+          : { month: 'short', day: 'numeric', year: 'numeric' }),
         total,
       };
     });
-
-    const hasRealHistory = relevantValuations.length > 0;
-    const baseValue = fallbackFlatValue > 0 ? fallbackFlatValue : 1;
-    const flatHistory = history.map(point => ({
-      ...point,
-      total: hasRealHistory ? point.total : baseValue,
-    }));
-
-    const values = flatHistory.map(point => point.total);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const pad = Math.max(1, (maxValue - minValue) * 0.12 || maxValue * 0.12 || 1);
-
-    return { label, history: flatHistory, domain: [Math.max(0, minValue - pad), maxValue + pad] as [number, number] };
-  }, [rangeMode, selectedInvestments, valuations, baseCurrency, valuationsByHolding]);
+    return { label: rangeConfig[rangeMode].label, history, hasRecords: records.length > 0 };
+  }, [rangeMode, selectedInvestments, valuations, baseCurrency, marketHistory]);
 
   const svgChart = useMemo(() => {
     const width = 760;
@@ -1042,12 +862,15 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     const plotWidth = width - padding.left - padding.right;
     const plotHeight = height - padding.top - padding.bottom;
     const values = chartData.history.map(point => point.total);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const range = Math.max(1, maxValue - minValue);
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    const pad = Math.max((high - low) * 0.15, Math.abs(high) * 0.001, 0.01);
+    const minValue = low - pad;
+    const maxValue = high + pad;
+    const range = maxValue - minValue;
 
     const points = chartData.history.map((point, index) => {
-      const x = padding.left + (chartData.history.length === 1 ? plotWidth / 2 : (index / (chartData.history.length - 1)) * plotWidth);
+      const x = padding.left + (chartData.history.length === 1 ? plotWidth / 2 : ((point.timestamp - chartData.history[0].timestamp) / Math.max(1, chartData.history.at(-1)!.timestamp - chartData.history[0].timestamp)) * plotWidth);
       const normalized = (point.total - minValue) / range;
       const y = padding.top + (1 - normalized) * plotHeight;
       return { x, y, value: point.total, name: point.name };
@@ -1067,39 +890,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       maxValue,
     };
   }, [chartData.history]);
-
-  const intradaySvgChart = useMemo(() => {
-    const width = 760;
-    const height = 280;
-    const padding = { top: 18, right: 18, bottom: 28, left: 48 };
-    const plotWidth = width - padding.left - padding.right;
-    const plotHeight = height - padding.top - padding.bottom;
-    const rawMin = Math.min(...intradayPortfolio.candles.map(candle => candle.low));
-    const rawMax = Math.max(...intradayPortfolio.candles.map(candle => candle.high));
-    const pad = Math.max(1, (rawMax - rawMin) * 0.08 || Math.abs(rawMax) * 0.005);
-    const minValue = rawMin - pad;
-    const maxValue = rawMax + pad;
-    const valueRange = Math.max(1, maxValue - minValue);
-    const yFor = (value: number) => padding.top + (1 - ((value - minValue) / valueRange)) * plotHeight;
-    const slotWidth = plotWidth / intradayPortfolio.candles.length;
-    const bodyWidth = Math.max(1, Math.min(17, slotWidth * 0.68));
-
-    return {
-      width,
-      height,
-      minValue,
-      maxValue,
-      candles: intradayPortfolio.candles.map((candle, index) => ({
-        ...candle,
-        x: padding.left + (index + 0.5) * slotWidth,
-        openY: yFor(candle.open),
-        highY: yFor(candle.high),
-        lowY: yFor(candle.low),
-        closeY: yFor(candle.close),
-        bodyWidth,
-      })),
-    };
-  }, [intradayPortfolio.candles]);
 
   const transactionSvgChart = useMemo(() => {
     const width = 760;
@@ -1167,7 +957,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     : null;
 
   return (
-    <div className="pb-24 animate-fade-in space-y-6">
+    <div className="desktop-layout investment-layout pb-24 animate-fade-in space-y-6">
       {tickerDetailInvestment && (
         <TickerDetail
           investment={tickerDetailInvestment}
@@ -1238,7 +1028,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleSubmitAccount} className="space-y-3 rounded-2xl border border-border bg-background/60 p-4">
+              <form onSubmit={handleSubmitAccount} className="space-y-3 rounded-2xl border border-border bg-background p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-secondary">{editingAccountId ? 'Edit account' : 'New account'}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1333,7 +1123,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         </div>
       )}
-      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
+      <div className="investment-controls bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Select a Category</h3>
@@ -1398,7 +1188,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   aria-pressed={selectedAccount === option.id}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-bold transition-colors ${selectedAccount === option.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'}`}
                 >
-                  {option.color && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />}
+                  {accountsById.get(option.id) && <BrokerageLogo account={accountsById.get(option.id)!} className="h-6 w-6" />}
                   {option.label}
                   <span className="opacity-70">({option.count})</span>
                 </button>
@@ -1411,13 +1201,14 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       </div>
 
 
-      <div className="rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
+      <div className="investment-chart rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
         <div className="absolute inset-0 opacity-60 pointer-events-none bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.06),_transparent_30%)] dark:bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.12),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.08),_transparent_30%)]" />
         <div className="absolute -right-6 -top-8 w-32 h-32 rounded-full bg-cyan-400/10 blur-2xl" />
         <div className="relative z-10 flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-slate-600 text-sm font-bold dark:text-white/65">
+                <BrokerageLogo account={accountsById.get(selectedAccount)} className="h-9 w-9" />
                 <span className="text-slate-700 dark:text-white/70">Portfolio</span>
                 <span className="text-cyan-600 dark:text-cyan-400">{selectedAccountLabel}</span>
                 {selectedAccount !== 'all' && selectedAccount !== 'unassigned' && accountsById.get(selectedAccount) && (
@@ -1439,16 +1230,16 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 )}
               </div>
               <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
-                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-none">{formatMoney(portfolioValue, baseCurrency)}</h2>
-                <p className="text-sm sm:text-base text-slate-600 font-medium dark:text-white/65">Combined Value: {formatMoney(portfolioValue, baseCurrency)}</p>
+                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-none">{portfolioHidden ? '****' : formatMoney(portfolioValue, baseCurrency)}</h2>
+                <p className="text-sm sm:text-base text-slate-600 font-medium dark:text-white/65">{portfolioHidden ? 'Balance hidden' : 'Total across selected holdings'}</p>
               </div>
               <div className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold border ${gainValue >= 0 ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-300'}`}>
-                <span>{gainValue >= 0 ? '+' : ''}{formatMoney(gainValue, baseCurrency)}</span>
-                <span className="opacity-90">{gainPct >= 0 ? '+' : ''}{gainPct.toFixed(2)}% vs. what you paid</span>
+                <span>{portfolioHidden ? '****' : `${gainValue >= 0 ? '+' : ''}${formatMoney(gainValue, baseCurrency)}`}</span>
+                <span className="opacity-90">{portfolioHidden ? '****' : `${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}% vs. what you paid`}</span>
               </div>
             </div>
-            <button className="shrink-0 mt-1 text-slate-500 hover:text-cyan-600 transition-colors dark:text-white/55 dark:hover:text-cyan-300" aria-label="Toggle portfolio visibility">
-              <Eye size={20} />
+            <button type="button" onClick={() => setPortfolioHidden(value => !value)} aria-pressed={portfolioHidden} className="shrink-0 mt-1 text-slate-500 hover:text-cyan-600 transition-colors dark:text-white/55 dark:hover:text-cyan-300" aria-label="Toggle portfolio visibility">
+              {portfolioHidden ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
 
@@ -1464,41 +1255,17 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </button>
               ))}
             </div>
-            {rangeMode === '1D' && (
-              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-white/[0.04]" aria-label="Candlestick interval">
-                {([
-                  ['20s', '20 sec'],
-                  ['5m', '5 min'],
-                  ['1h', '1 hour'],
-                ] as const).map(([interval, label]) => (
-                  <button
-                    key={interval}
-                    type="button"
-                    onClick={() => setIntradayInterval(interval)}
-                    aria-pressed={intradayInterval === interval}
-                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-colors ${intradayInterval === interval ? 'bg-white text-slate-950 shadow-sm dark:bg-white/15 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-white/45 dark:hover:text-white'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+
           </div>
 
           <div className="rounded-[1.25rem] border border-slate-200 bg-white/90 p-4 shadow-inner shadow-black/5 dark:border-white/10 dark:bg-white/[0.025] dark:shadow-black/20">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
               <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold dark:text-white/45">
-                {rangeMode === '1D' ? 'Hourly Price Action' : 'Portfolio Growth'}
+                Portfolio value history
               </p>
               <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-600 dark:text-white/60">
-                {rangeMode === '1D' ? <BarChart3 size={14} /> : <LineChartIcon size={14} />}
-                {rangeMode === '1D'
-                  ? intradayInterval === '20s'
-                    ? 'Live · 20-second candles'
-                    : intradayInterval === '5m'
-                      ? 'Last 24 hours · 5-minute candles'
-                      : 'Last 24 hours · hourly candles'
-                  : chartData.label}
+                <LineChartIcon size={14} />
+                {chartData.label}
                 <div className="ml-1 flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-white/10 dark:bg-white/[0.05]" aria-label="Chart zoom controls">
                   <button
                     type="button"
@@ -1530,9 +1297,17 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
               </div>
             </div>
             <p className="mb-3 text-xs text-slate-600 dark:text-white/55">{selectedSummary.description}</p>
-            <div className="h-[360px] w-full overflow-x-auto overscroll-x-contain rounded-xl" role="region" aria-label="Scrollable investment chart">
+            <div className={`relative h-[260px] sm:h-[300px] w-full overflow-x-auto overscroll-x-contain rounded-xl ${portfolioHidden ? 'invisible' : ''}`} role="region" aria-label="Scrollable investment chart">
               <svg
                 viewBox={`0 0 ${svgChart.width} ${svgChart.height}`}
+                preserveAspectRatio="none"
+                onPointerLeave={() => setHoveredPoint(null)}
+                onPointerMove={event => {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  const x = (event.clientX - bounds.left) / bounds.width * svgChart.width;
+                  const index = svgChart.points.reduce((nearest, point, index, points) => Math.abs(point.x - x) < Math.abs(points[nearest].x - x) ? index : nearest, 0);
+                  setHoveredPoint(Math.max(0, Math.min(svgChart.points.length - 1, index)));
+                }}
                 className="h-full max-w-none overflow-visible transition-[width] duration-200"
                 style={{ width: `${chartZoom * 100}%`, minWidth: '100%' }}
               >
@@ -1552,50 +1327,13 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   return <line key={index} x1="48" x2="742" y1={y} y2={y} stroke="rgba(100,116,139,0.10)" strokeDasharray="4 6" className="dark:stroke-[rgba(255,255,255,0.06)]" />;
                 })}
 
-                {rangeMode === '1D' ? (
-                  intradaySvgChart.candles.map((candle, index) => {
-                    const rising = candle.close > candle.open;
-                    const falling = candle.close < candle.open;
-                    const color = rising ? '#22c55e' : falling ? '#ef4444' : '#94a3b8';
-                    const bodyTop = Math.min(candle.openY, candle.closeY);
-                    const bodyHeight = Math.max(2, Math.abs(candle.closeY - candle.openY));
-                    const labelEvery = intradayInterval === '5m'
-                      ? 72
-                      : intradayInterval === '1h'
-                        ? 6
-                        : Math.max(1, Math.ceil(intradaySvgChart.candles.length / 4));
-                    const showLabel = index % labelEvery === 0 || index === intradaySvgChart.candles.length - 1;
-                    return (
-                      <g key={candle.timestamp}>
-                        <line x1={candle.x} x2={candle.x} y1={candle.highY} y2={candle.lowY} stroke={color} strokeWidth="1.5" />
-                        <rect
-                          x={candle.x - (candle.bodyWidth / 2)}
-                          y={bodyTop}
-                          width={candle.bodyWidth}
-                          height={bodyHeight}
-                          rx="1.5"
-                          fill={color}
-                          opacity={falling ? 0.88 : 0.82}
-                        />
-                        {showLabel && (
-                          <text x={candle.x} y={intradaySvgChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="9" className="dark:fill-[rgba(255,255,255,0.45)]">
-                            {new Date(candle.timestamp).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: intradayInterval === '1h' ? undefined : '2-digit',
-                              second: intradayInterval === '20s' ? '2-digit' : undefined,
-                            })}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })
-                ) : (
-                  <>
+                <>
+
                     {svgChart.points.map((point, index) => {
-                      const showLabel = index === 0 || index === svgChart.points.length - 1;
+                      const showLabel = index === 0 || index === svgChart.points.length - 1 || index === Math.floor(svgChart.points.length / 2);
                       return (
                         <g key={`${point.name}-${index}`}>
-                          <circle cx={point.x} cy={point.y} r={index === svgChart.points.length - 1 ? 5 : 3} fill="#22d3ee" opacity={index === svgChart.points.length - 1 ? 1 : 0.75} />
+                          <title>{point.name}: {formatMoney(point.value, baseCurrency)}</title>
                           {showLabel && (
                             <text x={point.x} y={svgChart.height - 8} textAnchor="middle" fill="rgba(71,85,105,0.85)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.45)]">
                               {point.name}
@@ -1604,34 +1342,36 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                         </g>
                       );
                     })}
+                    {hoveredPoint !== null && svgChart.points[hoveredPoint] && (
+                      <g>
+                        <line x1={svgChart.points[hoveredPoint].x} x2={svgChart.points[hoveredPoint].x} y1="18" y2="252" stroke="#22d3ee" strokeDasharray="4 4" opacity="0.5" />
+                        <circle cx={svgChart.points[hoveredPoint].x} cy={svgChart.points[hoveredPoint].y} r="5" fill="#22d3ee" />
+                      </g>
+                    )}
                     <path d={svgChart.areaPath} fill="url(#investmentSvgFill)" />
                     <path d={svgChart.linePath} fill="none" stroke="url(#investmentSvgLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
                     <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="7" fill="#22d3ee" opacity="0.16" />
                     <circle cx={svgChart.points.at(-1)?.x ?? 48} cy={svgChart.points.at(-1)?.y ?? 18} r="4" fill="#22d3ee" />
-                  </>
-                )}
+                </>
 
                 <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                  {formatMoney(rangeMode === '1D' ? intradaySvgChart.maxValue : svgChart.maxValue, baseCurrency)}
+                  {formatMoney(svgChart.maxValue, baseCurrency)}
                 </text>
                 <text x="8" y="266" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-                  {formatMoney(rangeMode === '1D' ? intradaySvgChart.minValue : svgChart.minValue, baseCurrency)}
+                  {formatMoney(svgChart.minValue, baseCurrency)}
                 </text>
               </svg>
             </div>
+            {!portfolioHidden && chartData.hasRecords && (
+              <p className="mt-2 text-sm font-semibold text-cyan-600 dark:text-cyan-300" aria-live="polite">
+                {hoveredPoint !== null && svgChart.points[hoveredPoint]
+                  ? svgChart.points[hoveredPoint].name + ' | ' + formatMoney(svgChart.points[hoveredPoint].value, baseCurrency)
+                  : 'Period change: ' + formatMoney((chartData.history.at(-1)?.total ?? 0) - (chartData.history[0]?.total ?? 0), baseCurrency)}
+              </p>
+            )}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-white/50">
               <p>
-                {rangeMode === '1D'
-                  ? isIntradayLoading
-                    ? 'Loading hourly market candles…'
-                    : intradayError || (intradayPortfolio.hasMarketData
-                      ? intradayInterval === '20s'
-                        ? 'Live 20-second candles are collected while this portfolio is open.'
-                        : `${intradayInterval === '5m' ? '5-minute' : 'Hourly'} candles · flat candles mark closed markets or non-traded assets.`
-                      : intradayInterval === '20s'
-                        ? 'Waiting for the next live 20-second quote update.'
-                        : 'No intraday movement is available; the last known value is carried forward.')
-                  : 'Flat line appears when you have no history yet.'}
+                {historyLoading ? 'Loading market price history...' : chartData.hasRecords ? 'Zero before the first record. Market prices track movement between recorded values; current FX rates apply.' + (historyFailures ? ` ${historyFailures} holding(s) unavailable; recorded values carried forward.` : '') : 'No recorded valuations yet. Portfolio history is zero until your first record.'}
               </p>
               <p>{selectedInvestments.length} holdings</p>
               {chartZoom > 1 && <p className="w-full sm:w-auto">Swipe sideways to inspect the enlarged chart.</p>}
@@ -1640,7 +1380,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       </div>
 
-      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
+      <div className="investment-recent bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Recent Entries</h3>
@@ -2359,7 +2099,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       </section>
 
-      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
+      <div className="investment-holdings bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Category Details</h3>
@@ -2377,7 +2117,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             <p className="text-sm font-medium">No investments in this category yet.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="desktop-collection holdings-collection space-y-3">
             {selectedInvestments.map(investment => {
               const { currentValue, gain: profit, gainPct: profitPct } = getBaseMetrics(investment);
 
