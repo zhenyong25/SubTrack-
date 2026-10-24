@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet } from 'lucide-react';
+import { Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -17,10 +17,11 @@ import ExpenseTab from './components/ExpenseTab';
 import InvestmentTab from './components/InvestmentTab';
 import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
+import DebtsTab from './components/DebtsTab';
 import { applyInvestmentTransaction, isPortfolioHolding } from './services/investmentService';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind } from './types';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
 import { calculateNextPayment, getExpenseCategoryColor, isUpcoming, getUrgencyLevel } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 import GlobalSearch from './components/GlobalSearch';
@@ -34,6 +35,7 @@ enum Tab {
   Income = 'Income',
   Investment = 'Investment',
   CashFlow = 'CashFlow',
+  Debts = 'Debts',
   Settings = 'Settings'
 }
 
@@ -70,6 +72,10 @@ function App() {
   const [cashBalanceEntries, setCashBalanceEntries] = useState<CashBalanceEntry[]>([]);
   const [retirementFunds, setRetirementFunds] = useState<RetirementFund[]>([]);
   const [retirementEntries, setRetirementEntries] = useState<RetirementBalanceEntry[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
+  // A card whose debt the Debts tab should open (or start) next, set from the card's page.
+  const [debtFocusCardId, setDebtFocusCardId] = useState<string | null>(null);
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
   const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
@@ -200,6 +206,8 @@ function App() {
         setCashBalanceEntries([]);
         setRetirementFunds([]);
         setRetirementEntries([]);
+        setLoans([]);
+        setLoanPayments([]);
         setCards([]);
         setCardPointTransactions([]);
         setCashbackPrograms([]);
@@ -267,6 +275,8 @@ function App() {
         setCashBalanceEntries(loaded.cashBalanceEntries);
         setRetirementFunds(loaded.retirementFunds);
         setRetirementEntries(loaded.retirementEntries);
+        setLoans(loaded.loans);
+        setLoanPayments(loaded.loanPayments);
         setCards(loaded.cards);
         setCardPointTransactions(loaded.cardPointTransactions);
         setCardBenefits(loaded.cardBenefits);
@@ -364,6 +374,8 @@ function App() {
       setCashBalanceEntries([]);
       setRetirementFunds([]);
       setRetirementEntries([]);
+      setLoans([]);
+      setLoanPayments([]);
       setCards([]);
       setCardPointTransactions([]);
       setCardBenefits([]);
@@ -793,6 +805,36 @@ function App() {
     if (failure) showToast(`Saved on this device, but the database rejected it: ${failure}`);
   };
 
+  const handleSaveLoan = (loan: Loan) => {
+    const exists = loans.some(item => item.id === loan.id);
+    const updated = exists ? loans.map(item => (item.id === loan.id ? loan : item)) : [...loans, loan];
+    setLoans(updated);
+    void saveLoans(updated).then(failure => failure ? reportSyncFailure(failure) : showToast(exists ? `Saved ${loan.name}` : `Added ${loan.name}`));
+  };
+
+  // Payments go first so the database never holds payments for a loan that's gone (the
+  // foreign key would cascade them anyway, but the local copy needs the same cleanup).
+  const handleDeleteLoan = (loanId: string) => {
+    const updatedPayments = loanPayments.filter(payment => payment.loanId !== loanId);
+    setLoanPayments(updatedPayments);
+    void saveLoanPayments(updatedPayments).then(reportSyncFailure);
+    const updatedLoans = loans.filter(item => item.id !== loanId);
+    setLoans(updatedLoans);
+    void saveLoans(updatedLoans).then(failure => failure ? reportSyncFailure(failure) : showToast('Loan deleted.'));
+  };
+
+  const handleAddLoanPayment = (payment: LoanPayment) => {
+    const updated = [...loanPayments, payment];
+    setLoanPayments(updated);
+    void saveLoanPayments(updated).then(failure => failure ? reportSyncFailure(failure) : showToast('Payment logged.'));
+  };
+
+  const handleDeleteLoanPayment = (paymentId: string) => {
+    const updated = loanPayments.filter(payment => payment.id !== paymentId);
+    setLoanPayments(updated);
+    void saveLoanPayments(updated).then(reportSyncFailure);
+  };
+
   const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
     const updatedHoldings = [...investments, holding];
     setInvestments(updatedHoldings);
@@ -894,6 +936,8 @@ function App() {
           setPokerMttBankrollTransactions([]);
           setRetirementFunds([]);
           setRetirementEntries([]);
+          setLoans([]);
+          setLoanPayments([]);
           setUserProfile(createDefaultProfile());
           setEditingSub(undefined);
           setEditingIncome(undefined);
@@ -956,8 +1000,12 @@ function App() {
                   : expense,
           );
           const updatedPointTransactions = cardPointTransactions.filter(transaction => transaction.cardId !== card.id);
+          // A debt linked to this card stays in Debts, just unlinked (the database does the same).
+          const linkedLoans = loans.some(loan => loan.cardId === card.id);
+          const updatedLoans = loans.map(loan => (loan.cardId === card.id ? { ...loan, cardId: undefined } : loan));
 
           setCards(previous => previous.filter(item => item.id !== card.id));
+          if (linkedLoans) setLoans(updatedLoans);
           setSubscriptions(updatedSubscriptions);
           setExpenses(updatedExpenses);
           setCardPointTransactions(updatedPointTransactions);
@@ -971,6 +1019,7 @@ function App() {
               saveExpenses(updatedExpenses, updatedExpenses.filter((expense, index) => expense !== expenses[index])),
               saveCardPointTransactions(updatedPointTransactions),
               ...cardPrograms.map(program => deleteCashbackProgram(program.id)),
+              ...(linkedLoans ? [saveLoans(updatedLoans)] : []),
           ]);
           showToast(`${card.name} deleted`);
       } catch (error) {
@@ -1281,6 +1330,22 @@ function App() {
             />
         )}
 
+        {activeTab === Tab.Debts && (
+            <DebtsTab
+                baseCurrency={userProfile.currency}
+                loans={loans}
+                payments={loanPayments}
+                onSaveLoan={handleSaveLoan}
+                onDeleteLoan={handleDeleteLoan}
+                onAddPayment={handleAddLoanPayment}
+                onDeletePayment={handleDeleteLoanPayment}
+                cards={cards}
+                cardStatements={accountStatements.filter(statement => statement.accountKind === 'Card')}
+                focusCardId={debtFocusCardId}
+                onFocusHandled={() => setDebtFocusCardId(null)}
+            />
+        )}
+
         {activeTab === Tab.CashFlow && (
             <CashFlowTab
                 baseCurrency={userProfile.currency}
@@ -1404,6 +1469,17 @@ function App() {
           <span className="desktop-nav-label">Net worth</span>
         </button>
         <button
+          aria-label="Debts"
+          aria-current={activeTab === Tab.Debts ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.Debts)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Debts ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Debts ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <HandCoins size={20} />
+          </div>
+          <span className="desktop-nav-label">Debts</span>
+        </button>
+        <button
           aria-label="Settings"
           aria-current={activeTab === Tab.Settings ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Settings)}
@@ -1483,6 +1559,13 @@ function App() {
               incomes={incomes}
               onAddIncome={handleAddIncomeFromStatement}
               onUpdateIncome={handleUpdateIncomeFromStatement}
+              linkedLoan={loans.find(loan => loan.cardId === viewingCard.id && !loan.isArchived)}
+              loanPayments={loanPayments}
+              onOpenDebt={() => {
+                setDebtFocusCardId(viewingCard.id);
+                setViewingCardId(null);
+                setActiveTab(Tab.Debts);
+              }}
           />
       )}
 
