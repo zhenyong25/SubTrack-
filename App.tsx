@@ -1351,6 +1351,8 @@ function App() {
 
         {activeTab === Tab.CashFlow && (
             <CashFlowTab
+                cards={cards}
+                forecast={{ incomes, subscriptions, expenses, loans, payments: loanPayments }}
                 baseCurrency={userProfile.currency}
                 accounts={cashAccounts}
                 balanceEntries={cashBalanceEntries}

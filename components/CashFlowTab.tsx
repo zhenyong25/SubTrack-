@@ -13,14 +13,18 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES, InvestmentHolding, InvestmentKind, InvestmentValuation, RetirementBalanceEntry, RetirementFund } from '../types';
+import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES, InvestmentHolding, InvestmentKind, InvestmentValuation, PaymentCard, RetirementBalanceEntry, RetirementFund } from '../types';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import StatementsList from './StatementsList';
 import RetirementFundsPanel from './RetirementFundsPanel';
+import CashForecastPanel, { type CashForecastProps } from './CashForecastPanel';
+import FinancialReviewPanel from './FinancialReviewPanel';
 import { balancesAsOf, RETIREMENT_SCHEME_COLORS, sumBalances } from '../services/retirementService';
 import { colorForInvestmentKind, compareValuations, getPositionMetrics } from '../services/investmentService';
 
 interface CashFlowTabProps {
+  cards: PaymentCard[];
+  forecast: Omit<CashForecastProps, 'accounts' | 'balances' | 'currency'>;
   baseCurrency: string;
   accounts: CashAccount[];
   balanceEntries: CashBalanceEntry[];
@@ -181,6 +185,8 @@ const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
 const formatAmount = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const CashFlowTab: React.FC<CashFlowTabProps> = ({
+  cards,
+  forecast,
   baseCurrency,
   accounts,
   balanceEntries,
@@ -202,6 +208,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDownloadStatement,
   onDeleteStatement,
 }) => {
+  const [pageView, setPageView] = useState<'overview' | 'forecast' | 'review'>('overview');
   const [rangeMode, setRangeMode] = useState<RangeMode>('Monthly');
   const [windowOffset, setWindowOffset] = useState(0);
   const [expandedStatementsAccountId, setExpandedStatementsAccountId] = useState<string | null>(null);
@@ -613,6 +620,8 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
 
   return (
     <div className="desktop-layout cashflow-layout space-y-4 pb-4">
+      <div className="cashflow-view-switch flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1" role="group" aria-label="Net worth view">{(['overview', 'forecast', 'review'] as const).map(view => <button key={view} type="button" aria-pressed={pageView === view} onClick={() => setPageView(view)} className={`rounded-lg px-4 py-2 text-xs font-semibold ${pageView === view ? 'bg-primary text-white' : 'text-secondary'}`}>{view === 'overview' ? 'Overview' : view === 'forecast' ? 'Forecast' : 'Financial review'}</button>)}</div>
+      {pageView === 'review' ? <FinancialReviewPanel {...forecast} accounts={accounts} balances={balanceEntries} holdings={investments} valuations={investmentValuations} funds={retirementFunds} retirement={retirementEntries} cards={cards} cardCurrency={baseCurrency} currency={displayCurrency} onCurrencyChange={setDisplayCurrency} /> : pageView === 'forecast' ? <CashForecastPanel {...forecast} accounts={accounts} balances={balanceEntries} currency={displayCurrency} /> : <>
       <section className="cashflow-summary bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-start justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">Net worth</p>
@@ -1208,6 +1217,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 };
