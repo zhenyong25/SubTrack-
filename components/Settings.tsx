@@ -140,27 +140,27 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 <div className="flex items-center justify-between mb-4">
                      <div className="flex items-center text-primary">
                         <User size={20} className="mr-2" />
-                        <h3 className="font-bold text-lg">Account</h3>
+                        <h3 className="font-bold text-lg">Profile</h3>
                     </div>
-                    {currentProfile.isLoggedIn && currentProfile.photoUrl && (
-                        <img src={currentProfile.photoUrl} alt="Profile" className="w-8 h-8 rounded-full" />
+                    {currentProfile.photoUrl ? (
+                        <img src={currentProfile.photoUrl} alt="Profile" className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary" aria-hidden="true">
+                            {currentProfile.name?.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || <User size={20} />}
+                        </span>
                     )}
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                    {currentProfile.isLoggedIn ? (
-                        <div className="bg-background p-3 rounded-lg border border-border flex justify-between items-center">
-                            <div>
-                                <p className="text-sm font-bold text-textMain">{currentProfile.name}</p>
-                                <p className="text-xs text-secondary">{currentProfile.email}</p>
-                            </div>
-                            <button onClick={onSignOut} className="text-xs text-red-500 font-bold hover:underline">Sign Out</button>
+                    <div className="bg-background p-3 rounded-lg border border-border flex justify-between items-center gap-3">
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-textMain break-words">{currentProfile.name || 'Your profile'}</p>
+                            <p className="text-xs text-secondary break-words">{currentProfile.email || (currentProfile.isLoggedIn ? 'Personal account' : 'Saved on this device')}</p>
                         </div>
-                    ) : (
-                        <div className="bg-background p-3 rounded-lg border border-border text-sm text-secondary">
-                            Sign in from the login screen to connect this profile to Supabase.
-                        </div>
-                    )}
+                        {currentProfile.isLoggedIn && (
+                            <button onClick={onSignOut} className="shrink-0 text-xs text-red-500 font-bold hover:underline">Sign Out</button>
+                        )}
+                    </div>
                 </div>
             </div>
 
