@@ -443,3 +443,29 @@ export interface UserProfile {
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'INR', 'CNY', 'MYR', 'SGD', 'HKD', 'THB', 'IDR', 'VND', 'PHP', 'KRW', 'TWD', 'AED', 'CHF', 'NZD'];
 
 export const DEFAULT_CATEGORIES = ['Entertainment', 'Music', 'Utilities', 'Productivity', 'Social', 'Health', 'Education', 'Shopping', 'Gym', 'Software'];
+
+export type SavingsGoalKind = 'Savings' | 'Sinking fund';
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  kind: SavingsGoalKind;
+  targetAmount: number;
+  openingBalance: number;
+  currency: string;
+  targetDate?: string;
+  repeatMonths: number;
+  color: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface SavingsEntry {
+  id: string;
+  goalId: string;
+  direction: 'Contribution' | 'Withdrawal';
+  amount: number;
+  entryDate: string;
+  notes?: string;
+  advancedCycle?: boolean;
+  createdAt: string;
+}

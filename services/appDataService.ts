@@ -1,3 +1,4 @@
+import { SAVINGS_STORAGE_KEY } from './savingsGoalMath';
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
@@ -2196,6 +2197,7 @@ export const markStatementTransactionDismissed = async (
 };
 
 export const clearStoredAppData = async () => {
+  localStorage.removeItem(SAVINGS_STORAGE_KEY);
   localStorage.removeItem(PROFILE_STORAGE_KEY);
   localStorage.removeItem(SUBSCRIPTIONS_STORAGE_KEY);
   localStorage.removeItem(INCOMES_STORAGE_KEY);
@@ -2229,6 +2231,7 @@ export const clearStoredAppData = async () => {
   }
 
   await Promise.all([
+    supabase.from('savings_goals').delete().eq('user_id', userId),
     supabase.from('subscriptions').delete().eq('user_id', userId),
     supabase.from('incomes').delete().eq('user_id', userId),
     supabase.from('expenses').delete().eq('user_id', userId),
