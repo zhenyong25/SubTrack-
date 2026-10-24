@@ -27,7 +27,7 @@ export interface StockIntradayHistory {
 }
 
 export type StockHistoryInterval = '1m' | '5m' | '15m' | '60m' | '1d';
-export type StockHistoryRange = '1d' | '5d' | '1mo' | '3mo' | '1y' | 'max';
+export type StockHistoryRange = '1d' | '5d' | '1mo' | '60d' | '3mo' | '1y' | 'max';
 
 // Yahoo Finance lists Hong Kong stocks as a zero-padded 4-digit code plus ".HK" (Tencent is
 // 0700.HK; "700.HK" returns nothing), while people usually write them as 700, 00700 or HK:700.
