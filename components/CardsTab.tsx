@@ -59,8 +59,8 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
   const totalPoints = cardRows.reduce((sum, row) => sum + row.currentPoints, 0);
 
   return (
-    <div className="pb-24 animate-fade-in space-y-6">
-      <div className="bg-gradient-to-br from-[#1f2a44] via-[#18233a] to-[#11182b] rounded-2xl border border-white/5 p-5 shadow-[0_20px_60px_-30px_rgba(59,130,246,0.45)] text-white">
+    <div className="desktop-layout cards-layout pb-24 animate-fade-in space-y-6">
+      <div className="cards-overview bg-gradient-to-br from-[#1f2a44] via-[#18233a] to-[#11182b] rounded-2xl border border-white/5 p-5 shadow-[0_20px_60px_-30px_rgba(59,130,246,0.45)] text-white">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -114,7 +114,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="desktop-collection cards-collection space-y-3">
           {filteredRows.map(({ card, monthlySpend, isCreditCard, limitOrBalance, debt, available, currentBalance, linkedCount, currentPoints, krisflyerMiles, expiryStatus }) => (
             (() => {
               const milesSummary = getCardMilesSummary(card.name, cardBenefits);

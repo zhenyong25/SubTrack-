@@ -165,8 +165,8 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
   }, [incomes]);
 
   return (
-    <div className="space-y-6 pb-24 animate-fade-in">
-      <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+    <div className="desktop-layout income-layout space-y-6 pb-24 animate-fade-in">
+      <div className="income-hero bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
             <TrendingUp size={12} className="mr-1" /> Income Snapshot
@@ -182,11 +182,11 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         <div className="absolute -right-6 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
       </div>
 
-      <p className="text-xs text-secondary -mt-2">
+      <p className="income-note text-xs text-secondary -mt-2">
         Top source: {stats.topIncome ? `${stats.topIncome.name} - ${getIncomeValueForMonth(stats.topIncome, baseCurrency, currentYear, currentMonth).toFixed(2)} ${baseCurrency}/mo` : 'No active income yet'}
       </p>
 
-      <div className="flex justify-between items-center gap-3">
+      <div className="income-controls flex justify-between items-center gap-3">
         <div className="bg-surface p-1 rounded-lg border border-border flex space-x-1">
           {(['Daily', 'Monthly', 'Yearly'] as ViewMode[]).map(mode => (
             <button
@@ -214,7 +214,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="income-stats grid grid-cols-2 gap-4">
         <div className="bg-surface p-5 rounded-xl shadow-sm border border-border">
           <div className="flex items-center space-x-2 text-secondary mb-3">
             <Wallet size={18} className="text-emerald-500" />
@@ -252,7 +252,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         </div>
       </div>
 
-      <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div className="income-year bg-surface p-6 rounded-xl shadow-sm border border-border">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Income Progression</h3>
           <div className="flex items-center space-x-2 bg-background border border-border rounded-lg px-2 py-1">
@@ -277,7 +277,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         </div>
       </div>
 
-      <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div className="income-categories bg-surface p-6 rounded-xl shadow-sm border border-border">
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Income by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
@@ -321,7 +321,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         </div>
       </div>
 
-      <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="income-ledger bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center space-x-2 min-w-0">
             <CircleDollarSign className="text-primary" size={18} />
@@ -338,7 +338,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
             <button onClick={onAddIncome} className="mt-2 text-primary text-xs font-bold hover:underline">Add income source</button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="desktop-collection income-collection space-y-3">
             {incomeRows.map(income => {
               const monthlyValue = getIncomeValueForMonth(income, baseCurrency, today.getFullYear(), today.getMonth());
               const isOneTime = income.incomeMode === 'One-time';

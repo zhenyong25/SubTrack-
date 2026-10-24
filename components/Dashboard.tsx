@@ -206,11 +206,11 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
   const activeMonthIndex = cardFilterDate.getFullYear() === selectedYear ? cardFilterDate.getMonth() : -1;
 
   return (
-    <div className="space-y-6 pb-24 animate-fade-in">
+    <div className="desktop-layout dashboard-layout space-y-6 pb-24 animate-fade-in">
       
       {/* Widget / Focus Card */}
       {stats.nextUpSub && (
-        <div className="bg-gradient-to-r from-primary to-blue-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+        <div className="dashboard-next bg-gradient-to-r from-primary to-blue-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
             <div className="relative z-10">
                 <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
                     <Clock size={12} className="mr-1" /> Next Bill
@@ -237,7 +237,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       )}
 
       {/* Global Controls */}
-      <div className="flex justify-between items-center">
+      <div className="dashboard-controls flex justify-between items-center">
          <div className="bg-surface p-1 rounded-lg border border-border flex space-x-1">
              {(['Daily', 'Monthly', 'Yearly'] as ViewMode[]).map((mode) => (
                  <button
@@ -264,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {/* Summary */}
-      <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col items-center text-center">
+      <div className="dashboard-summary bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col items-center text-center">
              <p className="text-sm font-medium text-secondary uppercase tracking-wide mb-2">
                  Total {viewMode} Spending
              </p>
@@ -275,7 +275,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {/* Grid Stats */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="dashboard-stats grid grid-cols-2 gap-4">
         <div className="bg-surface p-5 rounded-xl shadow-sm border border-border flex flex-col justify-between">
           <div className="flex items-center space-x-2 text-secondary mb-3">
             <Calendar size={18} className="text-primary" />
@@ -330,7 +330,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {/* Yearly Expense Chart */}
-      <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div className="dashboard-year bg-surface p-6 rounded-xl shadow-sm border border-border">
           <div className="flex items-center justify-between mb-6">
               <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expenses</h3>
               <div className="flex items-center space-x-2 bg-background border border-border rounded-lg px-2 py-1">
@@ -383,7 +383,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {/* Subscriptions */}
-      <div className="bg-surface p-5 rounded-xl shadow-sm border border-border">
+      <div className="dashboard-subscriptions bg-surface p-5 rounded-xl shadow-sm border border-border">
           <SubscriptionList
               subscriptions={subscriptions}
               baseCurrency={baseCurrency}
@@ -394,7 +394,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
        {/* Spending by Card */}
-       <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+       <div className="dashboard-cards bg-surface p-6 rounded-xl shadow-sm border border-border">
             <div className="flex items-center justify-between mb-4">
                  <div className="flex items-center space-x-2">
                     <CreditCard className="text-primary" size={18} />
@@ -462,7 +462,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
        </div>
 
       {/* Spending by Category Chart */}
-      <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div className="dashboard-categories bg-surface p-6 rounded-xl shadow-sm border border-border">
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Spending by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (

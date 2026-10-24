@@ -612,8 +612,8 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-4">
-      <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+    <div className="desktop-layout cashflow-layout space-y-4 pb-4">
+      <section className="cashflow-summary bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-start justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">Net worth</p>
           <select
@@ -646,7 +646,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
 
         {breakdownRows.length > 0 && (
           <div className="mt-4 border-t border-border pt-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">Breakdown</p>
               <div className="flex items-center gap-1 bg-background border border-border rounded-full p-1">
                 {BREAKDOWN_MODES.map(option => (
@@ -689,7 +689,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
         )}
       </section>
 
-      <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+      <section className="cashflow-trend bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">
@@ -792,7 +792,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
         )}
       </section>
 
-      <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+      <section className="cashflow-accounts bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Accounts</h3>
           <button
@@ -848,7 +848,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
             <p className="text-xs text-secondary">No accounts match this filter.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="desktop-collection accounts-collection space-y-2">
             {visibleAccounts.map(account => {
               const list = balancesByAccount.get(account.id) || [];
               const latest = list[list.length - 1];
