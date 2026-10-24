@@ -1,12 +1,61 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+<img width="1200" alt="SubTrack - subscriptions, cards, expenses, investments, debts and savings goals in one place" src="docs/media/hero.png" />
+
+# SubTrack
+
+**All your money, one clear picture.** Subscriptions, cards, expenses, income, investments, debts and savings goals - tracked together, with forecasts that tell you what's safe to spend.
+
+[Open the app](https://subtrack.zhenyong25.workers.dev) · [Watch the 45-second promo video](docs/media/subtrack-promo.webm) · [Run it locally](#run-locally)
+
+<img width="960" alt="A tour of SubTrack: subscriptions, expenses, investments and portfolio insights, net worth forecast, debts and savings goals" src="docs/media/tour.gif" />
 </div>
 
-# Run and deploy your AI Studio app
+## See it in action
 
-This contains everything you need to run your app locally.
+<table>
+  <tr>
+    <td width="50%"><img alt="Planning a TSLA trade, passing the risk check and running the 10,000-replay Time Machine" src="docs/media/trade.gif" /></td>
+    <td width="50%"><img alt="Global search filtering expenses, subscriptions and trades as you type" src="docs/media/search.gif" /></td>
+  </tr>
+  <tr>
+    <td><b>Trade planner (beta)</b> - size a trade from your stop, check it against your risk rules, and replay the rest of the day 10,000 times before you enter.</td>
+    <td><b>Search everything</b> - Ctrl/Cmd+K finds expenses, subscriptions and trades as you type, with <code>#tags</code>.</td>
+  </tr>
+</table>
 
-View your app in AI Studio: https://ai.studio/apps/drive/1VKaTbQT_UmpdEQmMiwATE11URb_QKo6B
+## Features
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Subscriptions dashboard" src="docs/media/subscriptions.png" /><br><b>Subscriptions &amp; bills</b><br>Renewals, free trials and shared plans with logos, card usage and yearly spend.</td>
+    <td width="50%"><img alt="Portfolio insights allocation view" src="docs/media/portfolio-insights.png" /><br><b>Portfolio insights</b><br>Allocation by holding, asset class, account and currency, with concentration alerts.</td>
+  </tr>
+  <tr>
+    <td><img alt="Portfolio returns view" src="docs/media/portfolio-returns.png" /><br><b>Real returns</b><br>Money-weighted returns (XIRR), dividends with upcoming payments, and FIFO tax lots.</td>
+    <td><img alt="Trade Time Machine results" src="docs/media/trade-time-machine.png" /><br><b>Time Machine</b><br>Odds of hitting target or stop first, built from the stock's own last 60 days.</td>
+  </tr>
+  <tr>
+    <td><img alt="Trade journal statistics" src="docs/media/trade-journal.png" /><br><b>Trade journal</b><br>Expectancy, profit factor, equity curve in R - and what breaking your plan costs.</td>
+    <td><img alt="Net worth overview" src="docs/media/net-worth.png" /><br><b>Net worth</b><br>Bank accounts, investments and CPF in one number, month by month.</td>
+  </tr>
+  <tr>
+    <td><img alt="Safe to spend and cash-flow forecast" src="docs/media/forecast.png" /><br><b>Safe to spend &amp; forecast</b><br>What's left after bills, debts and savings, 30, 60 or 90 days ahead.</td>
+    <td><img alt="Debts and loans" src="docs/media/debts.png" /><br><b>Debts &amp; loans</b><br>Card statements, mortgages and car loans with due dates, payoff dates and real rates.</td>
+  </tr>
+  <tr>
+    <td><img alt="Savings goals and sinking funds" src="docs/media/goals.png" /><br><b>Savings goals</b><br>Targets, monthly funding plans and sinking funds for known costs.</td>
+    <td><img alt="Smart reminders panel" src="docs/media/smart-reminders.png" /><br><b>Smart reminders</b><br>Bills, trial expiries, debt payments and goal deadlines in one list.</td>
+  </tr>
+</table>
+
+<p align="center">
+  <img width="260" alt="SubTrack on a phone: subscriptions" src="docs/media/phone-subscriptions.png" />
+  &nbsp;&nbsp;
+  <img width="260" alt="SubTrack on a phone: debts" src="docs/media/phone-debts.png" />
+  <br><sub>Installable as an app on your phone, with a full sidebar layout on desktop.</sub>
+</p>
+
+<sub>Screenshots use fictional demo data. The Trade tab is in beta and is for practice and education, not financial advice.</sub>
 
 ## Run Locally
 
@@ -84,3 +133,11 @@ See [CSV import setup and behavior](docs/csv-statement-import.md) and the [ficti
 Open **Net worth → Financial review** for monthly spending comparisons, income and savings-rate estimates, debt reduction, and recorded net-worth changes. Review category changes, six-month charts, and opening/closing snapshot coverage. No additional SQL is required.
 
 See [Financial review calculations and limits](docs/financial-review.md). Run `npm run test:review` to verify the report calculations.
+
+## Debts and loans
+
+The **Debts** tab tracks mortgages, car loans, personal loans and credit cards: balances, interest (reducing-balance or flat rate, with the effective rate), instalments, due dates and payoff dates. Credit cards are tracked statement by statement and can be linked to a card in the **Cards** tab. Local storage works immediately; for cloud storage, run [supabase_loans_schema.sql](supabase_loans_schema.sql) in Supabase (safe to run again after updates). Run `npm run test:loans` to verify the calculations.
+
+## Trade (beta)
+
+The **Trade** tab plans day trades with position sizing and a risk checklist, simulates them with the Time Machine, scans a watchlist for setups, and keeps a trade journal. Rules are adapted from the open-source [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill). Prices come from Yahoo Finance's unofficial, delayed feed. For cloud storage of rules and the journal, run [supabase_trading_schema.sql](supabase_trading_schema.sql) in Supabase. Run `npm run test:trading` to verify the calculations. For practice and education only - not financial advice.
