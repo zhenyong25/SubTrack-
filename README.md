@@ -60,3 +60,9 @@ Use the header search button or Ctrl+K / Command+K to search expenses, subscript
 For cloud tag storage, run [supabase_global_search_tags.sql](supabase_global_search_tags.sql) in Supabase and reload the app. Local-only storage works immediately. See [Global search setup and behavior](docs/global-search.md).
 
 Run `npm run test:search` to check search matching and tag persistence.
+
+## Savings goals and sinking funds
+
+The **Goals** tab tracks savings targets, monthly funding plans, contributions, withdrawals, and recurring sinking funds. Local storage works immediately. For cloud storage, run [supabase_savings_goals_schema.sql](supabase_savings_goals_schema.sql) in Supabase and reload the app.
+
+See [Savings goals setup and behavior](docs/savings-goals.md). Run `npm run test:goals` to check calculations and persistence.

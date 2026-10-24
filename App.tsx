@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
+import { PiggyBank, Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -9,6 +9,7 @@ import AddIncome from './components/AddIncome';
 import AddExpense from './components/AddExpense';
 import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
+import SavingsGoalsTab from './components/SavingsGoalsTab';
 import CardDetail from './components/CardDetail';
 import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
@@ -36,6 +37,7 @@ enum Tab {
   Investment = 'Investment',
   CashFlow = 'CashFlow',
   Debts = 'Debts',
+  Goals = 'Goals',
   Settings = 'Settings'
 }
 
@@ -946,6 +948,7 @@ function App() {
           setIsAddingIncome(false);
           setIsAddingExpense(false);
           await clearStoredAppData();
+          window.dispatchEvent(new Event('subtrack-data-cleared'));
           showToast("All data cleared.");
       }
   };
@@ -1371,6 +1374,8 @@ function App() {
             />
         )}
 
+        {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} />}
+
         {activeTab === Tab.Settings && (
             <Settings 
                 currentProfile={userProfile}
@@ -1478,6 +1483,15 @@ function App() {
             <HandCoins size={20} />
           </div>
           <span className="desktop-nav-label">Debts</span>
+        </button>
+        <button
+          aria-label="Goals"
+          aria-current={activeTab === Tab.Goals ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.Goals)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Goals ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Goals ? 'bg-primary/10' : 'bg-transparent'}`}><PiggyBank size={20} /></div>
+          <span className="desktop-nav-label">Goals</span>
         </button>
         <button
           aria-label="Settings"
