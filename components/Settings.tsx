@@ -133,10 +133,10 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
     };
 
     return (
-        <div className="pb-24 animate-fade-in space-y-6">
+        <div className="desktop-layout settings-layout pb-24 animate-fade-in space-y-6">
             
             {/* Account / Login Section */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-account bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                      <div className="flex items-center text-primary">
                         <User size={20} className="mr-2" />
@@ -165,7 +165,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             </div>
 
             {/* App Settings */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-preferences bg-surface rounded-xl p-5 border border-border shadow-sm">
                  <div className="flex items-center mb-4 text-primary">
                     <SettingsIcon size={20} className="mr-2" />
                     <h3 className="font-bold text-lg">App Settings</h3>
@@ -228,7 +228,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             </div>
 
             {/* Expense Reminder */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-reminders bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center mb-4 text-primary">
                     <Bell size={20} className="mr-2" />
                     <h3 className="font-bold text-lg">Expense Reminder</h3>
@@ -267,7 +267,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             </div>
 
             {/* Friend List Manager */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-friends bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center mb-4 text-primary">
                     <Users size={20} className="mr-2" />
                     <h3 className="font-bold text-lg">Friends</h3>
@@ -320,7 +320,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             </div>
 
             {/* Cards */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-cards bg-surface rounded-xl p-5 border border-border shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center text-primary">
                         <CreditCard size={20} className="mr-2" />
@@ -368,7 +368,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
             </div>
 
             {/* Data Management */}
-            <div className="bg-surface rounded-xl p-5 border border-border shadow-sm">
+            <div className="settings-data bg-surface rounded-xl p-5 border border-border shadow-sm">
                  <div className="flex items-center mb-4 text-primary">
                     <Download size={20} className="mr-2" />
                     <h3 className="font-bold text-lg">Data</h3>

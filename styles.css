@@ -167,3 +167,192 @@
     stroke-dasharray: 12 18;
   }
 }
+
+/* Desktop workspace. Mobile rules above remain unchanged. */
+.desktop-nav-label { display: none; }
+
+@media (min-width: 1024px) {
+  .app-main {
+    width: calc(100% - 192px);
+    max-width: none;
+    margin-left: 192px;
+    margin-right: 0;
+    padding: calc(env(safe-area-inset-top) + 84px) 16px 24px !important;
+  }
+
+  .app-header { padding-left: 24px; padding-right: 24px; }
+
+  .app-navigation {
+    top: calc(env(safe-area-inset-top) + 84px);
+    bottom: auto !important;
+    left: 12px;
+    width: 176px;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 100px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    transform: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px -16px rgb(0 0 0 / 0.2);
+  }
+
+  /* [class] outranks the nav's responsive px-/py- utilities, which Tailwind emits after this file. */
+  .app-navigation[class] { padding: 8px; }
+
+  .app-navigation > button {
+    min-height: 42px;
+    flex-shrink: 0;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    transform: none;
+    text-align: left;
+  }
+
+  .app-navigation[class] > button:nth-child(n),
+  .app-navigation[class] > button[class] > * { margin: 0; }
+  .app-navigation > button:hover,
+  .app-navigation > button[aria-current="page"] {
+    background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+  }
+  .app-navigation > button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .desktop-nav-label { display: inline; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .app-add-button { bottom: 20px !important; right: 20px; }
+
+  .desktop-layout {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+  .desktop-layout > :not(.fixed) { min-width: 0; grid-column: 1 / -1; order: 0; }
+  .desktop-layout[class] > :not([hidden]),
+  .desktop-collection[class] > :not([hidden]) { margin-top: 0 !important; margin-bottom: 0 !important; }
+
+  .desktop-layout > :is(.bg-surface, .investment-chart, .retirement-panel),
+  .desktop-layout > :is(.dashboard-next, .income-hero, .expense-hero, .cards-overview) { padding: 16px; }
+  .desktop-collection {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 12px;
+  }
+  .desktop-collection > * { min-width: 0; }
+  :is(.dashboard-stats, .income-stats, .expense-stats) { gap: 12px; }
+  :is(.dashboard-stats, .income-stats, .expense-stats) > div { padding: 14px; }
+  :is(.dashboard-stats, .income-stats, .expense-stats) > div > .mb-3 { margin-bottom: 8px; }
+
+  /* Chart pairs share their outer bounds and use compact, consistent interiors. */
+  :is(.dashboard-year, .dashboard-categories, .income-year, .income-categories, .expense-year, .expense-categories) {
+    display: flex;
+    flex-direction: column;
+  }
+  :is(.dashboard-year, .dashboard-categories, .income-year, .income-categories, .expense-year, .expense-categories) > :first-child {
+    margin-bottom: 12px;
+    min-height: 30px;
+  }
+  :is(.dashboard-year, .income-year, .expense-year) > .h-56 { flex: 1 0 220px; height: auto; min-height: 220px; }
+  :is(.dashboard-categories, .income-categories, .expense-categories) > .h-64 { height: 200px; flex-shrink: 0; }
+  :is(.dashboard-categories, .income-categories, .expense-categories) > .mt-6 { margin-top: 12px; gap: 8px; }
+
+  .dashboard-layout > .dashboard-controls { order: -1; }
+  .dashboard-layout > :is(.dashboard-next, .dashboard-summary) { grid-column: span 6; }
+  .dashboard-layout:not(:has(.dashboard-next)) > .dashboard-summary { grid-column: 1 / -1; }
+  .dashboard-layout > .dashboard-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .dashboard-layout > .dashboard-year { grid-column: span 8; order: 1; }
+  .dashboard-layout > .dashboard-categories { grid-column: span 4; order: 1; }
+  .dashboard-layout > .dashboard-subscriptions { grid-column: span 8; order: 2; align-self: start; }
+  .dashboard-layout > .dashboard-cards { grid-column: span 4; order: 2; align-self: start; }
+
+  .investment-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .investment-controls > :first-child { grid-column: 1 / -1; margin-bottom: 0; }
+  .investment-controls > .flex-wrap { align-self: end; }
+  .investment-controls > .border-t { margin-top: 0; padding-top: 0; padding-left: 12px; border-top-width: 0; border-left-width: 1px; }
+  .investment-layout > .investment-chart { grid-column: span 8; }
+  .investment-layout > .investment-recent {
+    grid-column: span 4;
+    max-height: 680px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .investment-chart > .relative { gap: 12px; }
+  .investment-chart [aria-label="Scrollable investment chart"] { height: 300px; }
+  .investment-layout > .fixed.bottom-24 { bottom: 20px; right: 20px; }
+  .investment-categories > .grid { gap: 12px; }
+  .investment-summary .grid { gap: 12px; }
+
+  .income-layout > .income-controls { order: -1; }
+  .income-layout > .income-hero { grid-column: span 4; }
+  .income-layout > .income-stats { grid-column: span 8; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .income-layout > .income-note { order: 1; }
+  .income-layout > .income-year { grid-column: span 8; order: 2; }
+  .income-layout > .income-categories { grid-column: span 4; order: 2; }
+  .income-layout > .income-ledger { order: 3; }
+
+  /* The budget gets its own compact row, so an unset budget cannot leave a hole beside statistics. */
+  .expense-layout > .expense-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .expense-budget > section { padding: 16px; }
+  .expense-budget > section.bg-surface:not(.overflow-hidden) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: 12px;
+  }
+  .expense-budget > section.bg-surface:not(.overflow-hidden) > * { margin-top: 0; }
+  .expense-budget > section.bg-surface > .grid { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .expense-layout > .expense-calendar { grid-column: span 8; grid-row: span 2; display: flex; flex-direction: column; }
+  .expense-calendar > .grid-cols-7:not(.text-center) { flex: 1; grid-auto-rows: minmax(80px, 1fr); }
+  .expense-layout > :is(.expense-categories, .expense-year) { grid-column: 9 / -1; }
+  .expense-layout > .expense-ledger { grid-column: 1 / -1; order: 1; align-self: start; }
+  .expense-days-month { columns: 2; column-gap: 12px; }
+  .expense-days-month[class] > * { break-inside: avoid; margin-top: 0 !important; margin-bottom: 12px; }
+
+  .cashflow-layout > .cashflow-summary { grid-column: span 4; }
+  .cashflow-layout > .cashflow-trend { grid-column: span 8; }
+  .cashflow-layout > .cashflow-accounts { grid-column: span 8; align-self: start; }
+  .cashflow-layout > .retirement-panel { grid-column: span 4; align-self: start; }
+  .retirement-panel > :first-child { flex-wrap: wrap; }
+  .retirement-panel > :first-child > :last-child { margin-left: auto; flex-shrink: 0; }
+
+  /* Independent settings columns avoid empty grid tracks below shorter panels. */
+  .settings-layout { display: block; columns: 2; column-gap: 12px; }
+  .settings-layout[class] > :not(.fixed) {
+    break-inside: avoid;
+    margin-bottom: 12px !important;
+  }
+}
+
+@media (min-width: 1440px) {
+  .cards-collection { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .subscription-collection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .subscription-collection[class] > * { margin-top: 0 !important; margin-bottom: 0 !important; min-width: 0; }
+}
+@media (min-width: 1600px) {
+  .holdings-collection, .income-collection { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-layout { columns: 3; }
+  .expense-days-month { columns: 3; }
+}
+
+/* Preserve usable chart and panel widths on smaller laptops. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .dashboard-layout > :is(.dashboard-year, .dashboard-categories, .dashboard-subscriptions, .dashboard-cards),
+  .expense-layout > :is(.expense-categories, .expense-year) { grid-column: span 6; }
+  .expense-layout > :is(.expense-calendar, .expense-ledger) { grid-column: 1 / -1; grid-row: auto; }
+  .expense-layout > :is(.expense-categories, .expense-year) { order: 1; }
+  .expense-layout > .expense-ledger { order: 0; }
+  .investment-layout > .investment-chart { grid-column: 1 / -1; }
+  .investment-layout > .investment-recent { grid-column: 1 / -1; }
+  .cashflow-layout > :is(.cashflow-summary, .cashflow-trend, .cashflow-accounts, .retirement-panel) { grid-column: span 6; }
+  .cashflow-layout .accounts-collection { grid-template-columns: minmax(0, 1fr); }
+  .income-layout > :is(.income-hero, .income-stats, .income-year, .income-categories) { grid-column: span 6; }
+  .income-layout > .income-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

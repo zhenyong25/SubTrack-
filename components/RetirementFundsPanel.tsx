@@ -246,7 +246,7 @@ const RetirementFundsPanel: React.FC<RetirementFundsPanelProps> = ({
   const balanceFormFund = balanceForm ? funds.find(fund => fund.id === balanceForm.fundId) : undefined;
 
   return (
-    <section className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+    <section className="retirement-panel bg-surface rounded-2xl border border-border shadow-sm p-5">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Retirement funds</h3>

@@ -561,8 +561,8 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   const searchTotal = useMemo(() => searchResults.reduce((sum, entry) => sum + entry.amount, 0), [searchResults]);
 
   return (
-    <div className="flex flex-col gap-6 pb-24 animate-fade-in">
-      <div className="bg-gradient-to-r from-rose-500 to-orange-500 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+    <div className="desktop-layout expense-layout flex flex-col gap-6 pb-24 animate-fade-in">
+      <div className="expense-hero bg-gradient-to-r from-rose-500 to-orange-500 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
             <TrendingDown size={12} className="mr-1" /> {viewLabel}
@@ -578,11 +578,11 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         <div className="absolute -right-6 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
       </div>
 
-      <p className="text-xs text-secondary -mt-2">
+      <p className="expense-note text-xs text-secondary -mt-2">
         Top spend: {stats.topExpense ? `${stats.topExpense.name} - ${stats.topExpense.value.toFixed(2)} ${baseCurrency}/mo` : 'No expenses yet'}
       </p>
 
-      <div className="relative">
+      <div className="expense-search relative">
         <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary" aria-hidden="true" />
         <input
           type="text"
@@ -670,7 +670,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       ) : (
       <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="expense-controls flex flex-wrap items-center justify-between gap-3">
         <div className="bg-surface p-1 rounded-lg border border-border flex flex-wrap gap-1">
           {(['Daily', 'Monthly', 'Yearly'] as ViewMode[]).map(mode => (
             <button
@@ -698,6 +698,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
+      <div className="expense-budget">
       <BudgetPanel
         monthLabel={monthLabel}
         monthKey={budgetMonthKey}
@@ -708,8 +709,9 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         availableCategories={availableBudgetCategories}
         onSave={onSaveBudgetPlan}
       />
+      </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="expense-stats grid grid-cols-2 gap-3">
         <div className="bg-surface p-4 rounded-xl shadow-sm border border-border">
           <div className="flex items-center space-x-2 text-secondary mb-2">
             <Wallet size={16} className="text-rose-500" />
@@ -747,7 +749,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div className="expense-calendar bg-surface p-6 rounded-xl shadow-sm border border-border">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Monthly Calendar</h3>
           <MonthNavigator label={monthLabel} onPrevious={goToPreviousMonth} onNext={goToNextMonth} />
@@ -817,7 +819,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="order-2 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="expense-categories order-2 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <h3 className="text-sm font-bold text-textMain uppercase mb-4 tracking-wide">Monthly Category Split</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
@@ -868,7 +870,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="order-1 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="expense-ledger order-1 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <div className={`mb-4 border-b border-border pb-4 ${selectedDay == null ? 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between' : 'space-y-4'}`}>
           <div className="flex items-center space-x-2">
             <CircleDollarSign className="text-primary" size={18} />
@@ -898,7 +900,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
             <p className="text-xs">{selectedDateLabel ? `No expenses recorded on ${selectedDateLabel}.` : 'No expenses yet for this month.'}</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className={`expense-days space-y-3 ${selectedDay == null && visibleLedgerDays.length > 1 ? 'expense-days-month' : ''}`}>
             {visibleLedgerDays.map(dayGroup => (
               <div key={dayGroup.dayKey} className="rounded-2xl border border-border overflow-hidden shadow-sm">
                 {selectedDay == null && (
@@ -937,7 +939,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         )}
       </div>
 
-      <div className="order-3 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
+      <div className="expense-year order-3 bg-surface p-4 sm:p-6 rounded-xl shadow-sm border border-border">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expense Progression</h3>
           <div className="flex items-center justify-between gap-2 bg-background border border-border rounded-lg px-2 py-1 w-full sm:w-auto">

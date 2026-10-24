@@ -1104,13 +1104,11 @@ function App() {
   return (
     <div className="bg-background min-h-screen text-textMain font-sans selection:bg-primary selection:text-white transition-colors duration-300">
       {/* Header */}
-      <header className="fixed top-0 w-full z-20 bg-background/90 backdrop-blur-md border-b border-border px-6 pb-4 flex justify-between items-center transition-colors duration-300" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+      <header className="app-header fixed top-0 w-full z-20 bg-background/90 backdrop-blur-md border-b border-border px-6 pb-4 flex justify-between items-center transition-colors duration-300" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
         <div className="flex items-center space-x-3">
              <AppLogo />
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
-               {activeTab === Tab.Investment
-                 ? (userProfile.name ? `${userProfile.name}'s Portfolio` : 'Portfolio')
-                 : (userProfile.name ? `${userProfile.name}'s SubTrack` : 'SubTrack')}
+               SubTrack
             </h1>
         </div>
         <div className="flex items-center space-x-3 relative" ref={notificationRef}>
@@ -1169,7 +1167,7 @@ function App() {
 
       {/* Main Content */}
       <main
-        className="px-4 max-w-2xl mx-auto"
+        className="app-main px-4 max-w-2xl mx-auto"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top) + 6rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom) + 6rem)',
@@ -1290,64 +1288,86 @@ function App() {
 
       {/* Navigation Tabs */}
       <nav
-        className="fixed left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-3 sm:px-6 py-3 flex space-x-3 sm:space-x-5 z-40"
+        aria-label="Main navigation"
+        className="app-navigation fixed left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border/50 shadow-2xl rounded-full px-3 sm:px-6 py-3 flex space-x-1 min-[400px]:space-x-2 sm:space-x-5 z-40"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
       >
         <button 
+          aria-label="Subscriptions"
+          aria-current={activeTab === Tab.Dashboard ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Dashboard)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Dashboard ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Dashboard ? 'bg-primary/10' : 'bg-transparent'}`}>
              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
           </div>
+          <span className="desktop-nav-label">Subscriptions</span>
         </button>
         <button 
+          aria-label="Cards"
+          aria-current={activeTab === Tab.Cards ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Cards)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Cards ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Cards ? 'bg-primary/10' : 'bg-transparent'}`}>
             <Landmark size={20} />
           </div>
+          <span className="desktop-nav-label">Cards</span>
         </button>
         <button 
+          aria-label="Expenses"
+          aria-current={activeTab === Tab.Expenses ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Expenses)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Expenses ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Expenses ? 'bg-primary/10' : 'bg-transparent'}`}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18" /><path d="M6 7h12" /><path d="M8 17h8" /></svg>
           </div>
+          <span className="desktop-nav-label">Expenses</span>
         </button>
         <button 
+          aria-label="Income"
+          aria-current={activeTab === Tab.Income ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Income)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Income ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Income ? 'bg-primary/10' : 'bg-transparent'}`}>
             <TrendingUp size={20} />
           </div>
+          <span className="desktop-nav-label">Income</span>
         </button>
         <button 
+          aria-label="Investments"
+          aria-current={activeTab === Tab.Investment ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Investment)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Investment ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Investment ? 'bg-primary/10' : 'bg-transparent'}`}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12l5-5 4 4 9-9" /><path d="M21 7v5h-5" /></svg>
           </div>
+          <span className="desktop-nav-label">Investments</span>
         </button>
         <button
+          aria-label="Net worth"
+          aria-current={activeTab === Tab.CashFlow ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.CashFlow)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.CashFlow ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.CashFlow ? 'bg-primary/10' : 'bg-transparent'}`}>
             <Wallet size={20} />
           </div>
+          <span className="desktop-nav-label">Net worth</span>
         </button>
         <button
+          aria-label="Settings"
+          aria-current={activeTab === Tab.Settings ? 'page' : undefined}
           onClick={() => setActiveTab(Tab.Settings)}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Settings ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
            <div className={`p-1 rounded-lg ${activeTab === Tab.Settings ? 'bg-primary/10' : 'bg-transparent'}`}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
           </div>
+          <span className="desktop-nav-label">Settings</span>
         </button>
       </nav>
 
@@ -1366,7 +1386,7 @@ function App() {
             setIsAdding(true);
             setEditingSub(undefined);
           }}
-          className="fixed right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
+          className="app-add-button fixed right-6 bg-primary hover:bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95 z-30"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 6rem)' }}
           aria-label={activeTab === Tab.Income ? 'Add income' : activeTab === Tab.Expenses ? 'Add expense' : 'Add subscription'}
         >

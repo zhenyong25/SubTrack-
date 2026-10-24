@@ -120,7 +120,7 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
       )}
 
       {/* Subscription List */}
-      <div className="space-y-3 mt-2">
+      <div className="subscription-collection space-y-3 mt-2">
         {sortedSubs.map((sub) => {
             const isTrial = sub.billingCycle === BillingCycle.FreeTrial;
             const daysRemaining = getDaysRemaining(sub.nextPaymentDate);
