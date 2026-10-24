@@ -15,6 +15,7 @@ import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
+import StatementCsvImport from './components/StatementCsvImport';
 import InvestmentTab from './components/InvestmentTab';
 import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
@@ -1291,6 +1292,10 @@ function App() {
 
         {activeTab === Tab.Expenses && (
             <ExpenseTab
+                importPanel={<StatementCsvImport key={session?.user.id || 'local'} accounts={cashAccounts} cards={cards} expenses={expenses} incomes={incomes} subscriptions={subscriptions} currency={userProfile.currency} onCommitted={result => {
+                  if (result.expenses.length) setExpenses(current => [...current, ...result.expenses.filter(record => !current.some(item => item.id === record.id))]);
+                  if (result.incomes.length) setIncomes(current => [...current, ...result.incomes.filter(record => !current.some(item => item.id === record.id))]);
+                }} />}
                 expenses={expenses}
                 subscriptions={subscriptions}
                 budgetPlans={budgetPlans}
