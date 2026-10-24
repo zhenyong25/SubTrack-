@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
+import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins, CandlestickChart } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -17,6 +17,7 @@ import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
 import StatementCsvImport from './components/StatementCsvImport';
 import InvestmentTab from './components/InvestmentTab';
+import TradeTab from './components/TradeTab';
 import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
 import DebtsTab from './components/DebtsTab';
@@ -37,6 +38,7 @@ enum Tab {
   Expenses = 'Expenses',
   Income = 'Income',
   Investment = 'Investment',
+  Trade = 'Trade',
   CashFlow = 'CashFlow',
   Debts = 'Debts',
   Goals = 'Goals',
@@ -1261,6 +1263,13 @@ function App() {
             />
         )}
 
+        {activeTab === Tab.Trade && (
+            <TradeTab
+                holdingSymbols={portfolioHoldings.filter(holding => holding.kind === 'Stocks' && holding.symbol).map(holding => holding.symbol!)}
+                onNotify={showToast}
+            />
+        )}
+
         {activeTab === Tab.Investment && (
         <InvestmentTab
                 baseCurrency={userProfile.currency}
@@ -1412,6 +1421,22 @@ function App() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12l5-5 4 4 9-9" /><path d="M21 7v5h-5" /></svg>
           </div>
           <span className="desktop-nav-label">Investments</span>
+        </button>
+        <button
+          aria-label="Trade (beta)"
+          aria-current={activeTab === Tab.Trade ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.Trade)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Trade ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`relative p-1 rounded-lg ${activeTab === Tab.Trade ? 'bg-primary/10' : 'bg-transparent'}`}>
+            <CandlestickChart size={20} />
+            {/* Icon-only nav (phones): a small beta mark; the desktop label carries its own pill. */}
+            <span className="absolute -right-1.5 -top-1 rounded-full bg-amber-500 px-1 text-[8px] font-black leading-[12px] text-white lg:hidden" aria-hidden="true">β</span>
+          </div>
+          <span className="desktop-nav-label">
+            Trade
+            <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-px align-middle text-[9px] font-black uppercase tracking-wide text-white">Beta</span>
+          </span>
         </button>
         <button
           aria-label="Net worth"

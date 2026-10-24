@@ -114,11 +114,11 @@ export default defineConfig(({ mode }) => {
               const requestUrl = new URL(req.url || '', 'http://localhost');
               const symbol = (requestUrl.searchParams.get('symbol') || '').trim().toUpperCase();
               const supportedIntervals = new Set(['1m', '5m', '15m', '60m', '1d']);
-              const supportedRanges = new Set(['1d', '5d', '1mo', '3mo', '1y', 'max']);
+              const supportedRanges = new Set(['1d', '5d', '1mo', '60d', '3mo', '1y', 'max']);
               let interval = supportedIntervals.has(requestUrl.searchParams.get('interval') || '') ? requestUrl.searchParams.get('interval')! : '60m';
               let range = supportedRanges.has(requestUrl.searchParams.get('range') || '') ? requestUrl.searchParams.get('range')! : '5d';
               if (interval === '1m' && range !== '1d' && range !== '5d') range = '5d';
-              if ((interval === '5m' || interval === '15m') && !['1d', '5d', '1mo'].includes(range)) range = '1mo';
+              if ((interval === '5m' || interval === '15m') && !['1d', '5d', '1mo', '60d'].includes(range)) range = '1mo';
               if (interval === '60m' && range === 'max') range = '1y';
               if (!/^[A-Z0-9.\-^=]{1,20}$/.test(symbol)) {
                 res.statusCode = 400;

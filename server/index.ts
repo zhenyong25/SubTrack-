@@ -41,7 +41,7 @@ interface YahooChartQuote {
 }
 
 const HISTORY_INTERVALS = new Set(['1m', '5m', '15m', '60m', '1d']);
-const HISTORY_RANGES = new Set(['1d', '5d', '1mo', '3mo', '1y', 'max']);
+const HISTORY_RANGES = new Set(['1d', '5d', '1mo', '60d', '3mo', '1y', 'max']);
 
 const safeHistoryRequest = (requestedInterval: string | null, requestedRange: string | null) => {
   let interval = HISTORY_INTERVALS.has(requestedInterval || '') ? requestedInterval! : '60m';
@@ -50,8 +50,9 @@ const safeHistoryRequest = (requestedInterval: string | null, requestedRange: st
   // Yahoo limits how far its smallest candles can be requested. Keep every request inside
   // a reliable window even if somebody manually changes the URL query parameters.
   if (interval === '1m' && range !== '1d' && range !== '5d') range = '5d';
-  if (interval === '5m' && !['1d', '5d', '1mo'].includes(range)) range = '1mo';
-  if (interval === '15m' && !['1d', '5d', '1mo'].includes(range)) range = '1mo';
+  // Yahoo serves 5m and 15m bars for up to 60 days; the trade simulator needs that much history.
+  if (interval === '5m' && !['1d', '5d', '1mo', '60d'].includes(range)) range = '1mo';
+  if (interval === '15m' && !['1d', '5d', '1mo', '60d'].includes(range)) range = '1mo';
   if (interval === '60m' && range === 'max') range = '1y';
 
   return { interval, range };

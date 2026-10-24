@@ -15,6 +15,7 @@
     "test:search": "node scripts/test-global-search.mjs",
     "test:portfolio": "node scripts/test-portfolio-analytics.mjs",
     "test:loans": "node scripts/test-loans.mjs",
+    "test:trading": "node scripts/test-trading.mjs",
     "test:goals": "node scripts/test-savings-goals.mjs",
     "test:planning": "node scripts/test-finance-planning.mjs",
     "test:import": "node scripts/test-statement-import.mjs",
