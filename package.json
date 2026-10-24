@@ -12,7 +12,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:search": "node scripts/test-global-search.mjs"
+    "test:search": "node scripts/test-global-search.mjs",
+    "test:portfolio": "node scripts/test-portfolio-analytics.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

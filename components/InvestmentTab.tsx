@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
   BarChart3,
   ChevronDown,
-  CircleDollarSign,
   Coins,
   Eye,
   EyeOff,
@@ -27,6 +26,7 @@ import InvestmentLogo from './InvestmentLogo';
 import BrokerageLogo from './BrokerageLogo';
 import { recordedHoldingValueAt } from '../services/portfolioHistoryService';
 import TickerDetail from './TickerDetail';
+import PortfolioInsights, { type InsightPosition } from './PortfolioInsights';
 
 type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX';
 type InvestmentCategory = 'All' | InvestmentKind;
@@ -78,6 +78,17 @@ const rangeConfig: Record<RangeMode, { points: number; label: string }> = {
 
 const formatMoney = (value: number, currency: string) =>
   `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+
+const toneFor = (value: number) => (value > 0 ? 'text-emerald-500' : value < 0 ? 'text-red-500' : 'text-textMain');
+
+// Same flat tile as the Portfolio insights panel, so the two sections read as one design.
+const SnapshotStat: React.FC<{ label: string; value: string; note: string; tone?: string }> = ({ label, value, note, tone = 'text-textMain' }) => (
+  <div className="rounded-2xl border border-border bg-background p-4">
+    <p className="text-xs font-bold uppercase tracking-wider text-secondary">{label}</p>
+    <p className={`mt-2 text-lg font-extrabold tabular-nums sm:text-xl ${tone}`}>{value}</p>
+    <p className="mt-1 text-[11px] text-secondary">{note}</p>
+  </div>
+);
 
 const formatRelativeSeconds = (timestampMs: number): string => {
   const seconds = Math.max(0, Math.round((Date.now() - timestampMs) / 1000));
@@ -429,6 +440,14 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     return selectedInvestments.reduce((sum, investment) => sum + getBaseMetrics(investment).basis, 0);
   }, [selectedInvestments, baseCurrency, valuationsByHolding]);
 
+  const insightPositions = useMemo<InsightPosition[]>(
+    () => selectedInvestments.map(holding => {
+      const { currentValue, basis } = getBaseMetrics(holding);
+      return { holding, value: currentValue, basis };
+    }),
+    [selectedInvestments, baseCurrency, valuationsByHolding],
+  );
+
   const gainValue = portfolioValue - costBasis;
   const gainPct = costBasis > 0 ? (gainValue / costBasis) * 100 : 0;
 
@@ -490,60 +509,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     });
     return { realized, closedTrades, wins };
   }, [selectedTransactions, baseCurrency]);
-
-  const transactionChartData = useMemo(() => {
-    const relevant = transactions
-      .filter(transaction => selectedInvestmentIds.has(transaction.investmentId))
-      .slice()
-      .sort((a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime());
-
-    if (relevant.length === 0) {
-      return {
-        label: 'No transaction history yet',
-        history: [{ name: 'No entries', total: 0 }],
-        minValue: 0,
-        maxValue: 1,
-      };
-    }
-
-    const dailyTotals = new Map<string, number>();
-
-    relevant.forEach(transaction => {
-      const dateKey = transaction.tradeDate.split('T')[0];
-      const flow =
-        transaction.transactionType === 'Buy' || transaction.transactionType === 'Transfer In'
-          ? -((transaction.units * transaction.price) + transaction.fees)
-          : transaction.transactionType === 'Sell'
-            ? (transaction.units * transaction.price) - transaction.fees
-            : transaction.transactionType === 'Dividend'
-              ? transaction.price
-              : transaction.transactionType === 'Fee'
-                ? -transaction.fees
-                : 0;
-      dailyTotals.set(dateKey, (dailyTotals.get(dateKey) || 0) + convertCurrency(flow, transaction.currency || baseCurrency, baseCurrency));
-    });
-
-    let running = 0;
-    const history = Array.from(dailyTotals.entries()).map(([dateKey, delta]) => {
-      running += delta;
-      const label = new Date(dateKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      return {
-        name: label,
-        total: running,
-      };
-    });
-
-    const values = history.map(point => point.total);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-
-    return {
-      label: 'Cumulative net cash flow',
-      history,
-      minValue,
-      maxValue,
-    };
-  }, [transactions, selectedInvestmentIds, baseCurrency]);
 
   const handleAddEntry = (event: React.FormEvent) => {
     event.preventDefault();
@@ -890,38 +855,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       maxValue,
     };
   }, [chartData.history]);
-
-  const transactionSvgChart = useMemo(() => {
-    const width = 760;
-    const height = 220;
-    const padding = { top: 18, right: 18, bottom: 26, left: 48 };
-    const plotWidth = width - padding.left - padding.right;
-    const plotHeight = height - padding.top - padding.bottom;
-    const values = transactionChartData.history.map(point => point.total);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const range = Math.max(1, maxValue - minValue);
-
-    const points = transactionChartData.history.map((point, index) => {
-      const x = padding.left + (transactionChartData.history.length === 1 ? plotWidth / 2 : (index / (transactionChartData.history.length - 1)) * plotWidth);
-      const normalized = (point.total - minValue) / range;
-      const y = padding.top + (1 - normalized) * plotHeight;
-      return { x, y, value: point.total, name: point.name };
-    });
-
-    const linePath = buildSmoothPath(points);
-    const areaPath = `${linePath} L ${points.at(-1)?.x ?? padding.left} ${height - padding.bottom} L ${points[0]?.x ?? padding.left} ${height - padding.bottom} Z`;
-
-    return {
-      width,
-      height,
-      points,
-      linePath,
-      areaPath,
-      minValue,
-      maxValue,
-    };
-  }, [transactionChartData.history]);
 
   const selectedSummary = selectedCategory === 'All'
     ? {
@@ -1899,53 +1832,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       )}
 
-      <div className="bg-surface rounded-2xl border border-border p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div>
-            <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Entry Flow</h3>
-            <p className="text-xs text-secondary mt-1">{transactionChartData.label}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-secondary">Latest value</p>
-            <p className="text-sm font-bold text-textMain">
-              {transactionChartData.history.at(-1)?.total.toFixed(2) ?? '0.00'} {baseCurrency}
-            </p>
-          </div>
-        </div>
-        <div className="h-56 w-full">
-          <svg viewBox={`0 0 ${transactionSvgChart.width} ${transactionSvgChart.height}`} className="w-full h-full overflow-visible">
-            <defs>
-              <linearGradient id="investmentTxFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.02" />
-              </linearGradient>
-              <linearGradient id="investmentTxLine" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#f59e0b" />
-                <stop offset="100%" stopColor="#f97316" />
-              </linearGradient>
-            </defs>
-            {Array.from({ length: 4 }).map((_, index) => {
-              const y = 18 + (index * (transactionSvgChart.height - 44)) / 3;
-              return <line key={index} x1="48" x2="742" y1={y} y2={y} stroke="rgba(100,116,139,0.10)" strokeDasharray="4 6" className="dark:stroke-[rgba(255,255,255,0.06)]" />;
-            })}
-            <path d={transactionSvgChart.areaPath} fill="url(#investmentTxFill)" />
-            <path d={transactionSvgChart.linePath} fill="none" stroke="url(#investmentTxLine)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-            {transactionSvgChart.points.map((point, index) => (
-              <circle key={`${point.name}-${index}`} cx={point.x} cy={point.y} r={index === transactionSvgChart.points.length - 1 ? 5 : 3} fill="#f59e0b" opacity={index === transactionSvgChart.points.length - 1 ? 1 : 0.75} />
-            ))}
-            <text x="8" y="22" fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-              {transactionSvgChart.maxValue.toFixed(2)} {baseCurrency}
-            </text>
-            <text x="8" y={transactionSvgChart.height - 10} fill="rgba(71,85,105,0.72)" fontSize="10" className="dark:fill-[rgba(255,255,255,0.42)]">
-              {transactionSvgChart.minValue.toFixed(2)} {baseCurrency}
-            </text>
-          </svg>
-        </div>
-        <p className="mt-2 text-xs text-secondary">This chart follows your transaction entries, so you can see how invested cash changes over time.</p>
-      </div>
-
-      <section className="space-y-3" aria-labelledby="portfolio-categories-heading">
-        <div className="flex items-end justify-between gap-3">
+      <section className="investment-categories bg-surface rounded-2xl border border-border p-4 shadow-sm" aria-labelledby="portfolio-categories-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Browse portfolios</p>
             <h3 id="portfolio-categories-heading" className="mt-1 text-lg font-extrabold text-textMain">Asset categories</h3>
@@ -1953,7 +1841,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           <p className="hidden text-xs text-secondary sm:block">Select a category to focus the dashboard</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {categorySummary.map(summary => {
             const isSelected = selectedCategory === summary.category;
             const accent = colorForInvestmentKind(summary.category);
@@ -1966,138 +1854,85 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             return (
               <button
                 key={summary.category}
+                type="button"
                 onClick={() => setSelectedCategory(summary.category)}
                 aria-pressed={isSelected}
-                className={`group relative min-h-36 overflow-hidden rounded-2xl border p-5 text-left transition-all duration-200 ${
-                  isSelected
-                    ? 'bg-surface shadow-xl -translate-y-1 ring-2 ring-offset-2 ring-offset-background'
-                    : 'bg-surface/70 border-border shadow-sm hover:-translate-y-0.5 hover:bg-surface hover:shadow-lg'
+                className={`rounded-2xl border p-4 text-left transition-colors ${
+                  isSelected ? 'border-primary bg-background ring-1 ring-primary' : 'border-border bg-background hover:border-secondary'
                 }`}
-                style={isSelected ? { borderColor: accent, boxShadow: `0 18px 45px -26px ${accent}`, '--tw-ring-color': accent } as React.CSSProperties : undefined}
               >
-                <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
-                <span className="absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-10 blur-xl transition-opacity group-hover:opacity-20" style={{ backgroundColor: accent }} />
-
-                <div className="relative flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ color: accent, backgroundColor: `${accent}18` }}>
-                      <CategoryIcon size={18} />
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ color: accent, backgroundColor: `${accent}1f` }}>
+                      <CategoryIcon size={15} />
                     </span>
-                    <div>
-                      <p className="text-xs font-extrabold uppercase tracking-wide text-textMain">{summary.category}</p>
-                      <p className="mt-0.5 text-[11px] text-secondary">{summary.count} holding{summary.count === 1 ? '' : 's'}</p>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <span className="rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white" style={{ backgroundColor: accent }}>
-                      Selected
-                    </span>
-                  )}
+                    <span className="truncate text-xs font-bold uppercase tracking-wide text-textMain">{summary.category}</span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-secondary">{summary.count} holding{summary.count === 1 ? '' : 's'}</span>
                 </div>
-
-                <div className="relative mt-5 flex items-end justify-between gap-3">
-                  <p className="text-xl font-black text-textMain">{formatMoney(summary.value, baseCurrency)}</p>
-                  <div className={`rounded-lg border px-2.5 py-1.5 ${summary.gain > 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : summary.gain < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-slate-500/10 border-slate-500/20 text-secondary'}`}>
-                    <p className="text-[9px] font-bold uppercase tracking-wide">{summary.category === 'Pokemon Cards' ? 'Change' : 'Gain'}</p>
-                    <p className="text-xs font-black">{summary.gain > 0 ? '+' : ''}{summary.gainPct.toFixed(1)}%</p>
-                  </div>
-                </div>
+                <p className="mt-3 text-lg font-extrabold tabular-nums text-textMain sm:text-xl">{formatMoney(summary.value, baseCurrency)}</p>
+                <p className={`mt-1 text-[11px] font-semibold ${summary.gain > 0 ? 'text-emerald-500' : summary.gain < 0 ? 'text-red-500' : 'text-secondary'}`}>
+                  {summary.gain > 0 ? '+' : ''}{summary.gainPct.toFixed(1)}% {summary.category === 'Pokemon Cards' ? 'change' : 'gain'}
+                </p>
               </button>
             );
           })}
         </div>
       </section>
 
-      <section
-        className="relative overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.12] via-surface to-surface p-5 shadow-[0_20px_60px_-35px_rgba(59,130,246,0.65)] sm:p-6"
-        aria-labelledby="selected-portfolio-heading"
-      >
-        <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
-        <div className="relative">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Performance snapshot</p>
-              <h3 id="selected-portfolio-heading" className="mt-1 text-xl font-black text-textMain">{selectedSummary.title}</h3>
-              <p className="mt-1 text-xs text-secondary">{selectedSummary.description}</p>
-            </div>
-            <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-              Current selection
-            </span>
-          </div>
+      <section className="investment-summary bg-surface rounded-2xl border border-border p-4 shadow-sm" aria-labelledby="selected-portfolio-heading">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Performance snapshot</p>
+          <h3 id="selected-portfolio-heading" className="mt-1 text-lg font-extrabold text-textMain">{selectedSummary.title}</h3>
+          <p className="mt-1 text-xs text-secondary">{selectedSummary.description}</p>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-primary/20 bg-primary/[0.08] p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider">
-                <CircleDollarSign size={16} />
-                Portfolio Value
-              </div>
-              <p className="mt-3 text-3xl font-black tracking-tight text-textMain">{formatMoney(portfolioValue, baseCurrency)}</p>
-              <p className="mt-1 text-xs text-secondary">Current market value</p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-                <Coins size={16} />
-                {selectedCategory === 'Pokemon Cards' ? 'Original Value' : 'Cost Basis'}
-              </div>
-              <p className="mt-3 text-2xl font-extrabold text-textMain">{formatMoney(costBasis, baseCurrency)}</p>
-              <p className="mt-1 text-xs text-secondary">{selectedCategory === 'Pokemon Cards' ? 'Your first logged value' : 'What you put in originally'}</p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-                <TrendingUp size={16} />
-                {selectedCategory === 'Pokemon Cards' ? 'Value Change' : 'Unrealized Gain'}
-              </div>
-              <p className={`mt-3 text-2xl font-extrabold ${gainValue > 0 ? 'text-emerald-500' : gainValue < 0 ? 'text-red-500' : 'text-textMain'}`}>
-                {gainValue > 0 ? '+' : ''}{formatMoney(gainValue, baseCurrency)}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-secondary">
-                {gainPct > 0 ? '+' : ''}{gainPct.toFixed(1)}% {selectedCategory === 'Pokemon Cards' ? 'since first logged value' : 'overall'}
-              </p>
-            </div>
-          </div>
-
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <SnapshotStat label="Portfolio value" value={formatMoney(portfolioValue, baseCurrency)} note="Current market value" />
+          <SnapshotStat
+            label={selectedCategory === 'Pokemon Cards' ? 'Original value' : 'Cost basis'}
+            value={formatMoney(costBasis, baseCurrency)}
+            note={selectedCategory === 'Pokemon Cards' ? 'Your first logged value' : 'What you put in originally'}
+          />
+          <SnapshotStat
+            label={selectedCategory === 'Pokemon Cards' ? 'Value change' : 'Unrealized gain'}
+            value={`${gainValue > 0 ? '+' : ''}${formatMoney(gainValue, baseCurrency)}`}
+            note={`${gainPct > 0 ? '+' : ''}${gainPct.toFixed(1)}% ${selectedCategory === 'Pokemon Cards' ? 'since first logged value' : 'overall'}`}
+            tone={toneFor(gainValue)}
+          />
           {selectedCategory !== 'Pokemon Cards' && (
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
-                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-                  <Coins size={16} />
-                  Realized P&amp;L
-                </div>
-                <p className={`mt-3 text-2xl font-extrabold ${realizedStats.realized > 0 ? 'text-emerald-500' : realizedStats.realized < 0 ? 'text-red-500' : 'text-textMain'}`}>
-                  {realizedStats.realized > 0 ? '+' : ''}{formatMoney(realizedStats.realized, baseCurrency)}
-                </p>
-                <p className="mt-1 text-xs text-secondary">Locked in by sells, buy-backs and dividends</p>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
-                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-                  <TrendingUp size={16} />
-                  Total P&amp;L
-                </div>
-                <p className={`mt-3 text-2xl font-extrabold ${gainValue + realizedStats.realized > 0 ? 'text-emerald-500' : gainValue + realizedStats.realized < 0 ? 'text-red-500' : 'text-textMain'}`}>
-                  {gainValue + realizedStats.realized > 0 ? '+' : ''}{formatMoney(gainValue + realizedStats.realized, baseCurrency)}
-                </p>
-                <p className="mt-1 text-xs text-secondary">Unrealized + realized</p>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
-                <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
-                  <BarChart3 size={16} />
-                  Closed trades
-                </div>
-                <p className="mt-3 text-2xl font-extrabold text-textMain">{realizedStats.closedTrades}</p>
-                <p className="mt-1 text-xs text-secondary">
-                  {realizedStats.closedTrades > 0
-                    ? `${realizedStats.wins} win${realizedStats.wins === 1 ? '' : 's'} \u00b7 ${((realizedStats.wins / realizedStats.closedTrades) * 100).toFixed(0)}% win rate`
-                    : 'Log a Sell (or Buy back for a short) to start'}
-                </p>
-              </div>
-            </div>
+            <>
+              <SnapshotStat
+                label="Realized P&L"
+                value={`${realizedStats.realized > 0 ? '+' : ''}${formatMoney(realizedStats.realized, baseCurrency)}`}
+                note="Locked in by sells, buy-backs and dividends"
+                tone={toneFor(realizedStats.realized)}
+              />
+              <SnapshotStat
+                label="Total P&L"
+                value={`${gainValue + realizedStats.realized > 0 ? '+' : ''}${formatMoney(gainValue + realizedStats.realized, baseCurrency)}`}
+                note="Unrealized + realized"
+                tone={toneFor(gainValue + realizedStats.realized)}
+              />
+              <SnapshotStat
+                label="Closed trades"
+                value={String(realizedStats.closedTrades)}
+                note={realizedStats.closedTrades > 0
+                  ? `${realizedStats.wins} win${realizedStats.wins === 1 ? '' : 's'} \u00b7 ${((realizedStats.wins / realizedStats.closedTrades) * 100).toFixed(0)}% win rate`
+                  : 'Log a Sell (or Buy back for a short) to start'}
+              />
+            </>
           )}
         </div>
       </section>
+
+      <PortfolioInsights
+        baseCurrency={baseCurrency}
+        positions={insightPositions}
+        transactions={transactions}
+        valuationsByHolding={valuationsByHolding}
+        accounts={accounts}
+      />
 
       <div className="investment-holdings bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
