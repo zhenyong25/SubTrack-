@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { AccountStatement, AccountStatementKind, CardBenefit, CardPointTransaction, CardPointsActivityType, CashbackProgram, Expense, Income, PaymentCard, Subscription } from '../types';
+import { AccountStatement, AccountStatementKind, CardBenefit, CardPointTransaction, CardPointsActivityType, CashbackProgram, Expense, Income, Loan, LoanPayment, PaymentCard, Subscription } from '../types';
+import { dueStatus, loanStatus } from '../services/loanService';
+import { dateKeyToUtc } from '../services/portfolioAnalyticsService';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getCardMilesSummary } from '../services/cardBenefitsService';
 import { isCashbackCard } from '../services/cashbackService';
@@ -8,7 +10,7 @@ import CardLogo from './CardLogo';
 import CashbackPanel from './CashbackPanel';
 import StatementsList from './StatementsList';
 import StatementReconcilePanel from './StatementReconcilePanel';
-import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3, HandCoins } from 'lucide-react';
 
 interface CardDetailProps {
   card: PaymentCard;
@@ -34,6 +36,10 @@ interface CardDetailProps {
   incomes: Income[];
   onAddIncome: (income: Omit<Income, 'id'>) => Promise<Income>;
   onUpdateIncome: (income: Income) => Promise<void>;
+  // The Debts tab entry tracking this card's statements, if one is linked.
+  linkedLoan?: Loan;
+  loanPayments?: LoanPayment[];
+  onOpenDebt?: () => void;
 }
 
 const POINT_ACTIVITY_TYPES: CardPointsActivityType[] = ['Earned', 'Redeemed', 'Expired', 'Adjusted', 'Transferred In', 'Transferred Out'];
@@ -113,8 +119,14 @@ const CardDetail: React.FC<CardDetailProps> = ({
   incomes = [],
   onAddIncome,
   onUpdateIncome,
+  linkedLoan,
+  loanPayments = [],
+  onOpenDebt,
 }) => {
   const isCreditCard = card.kind === 'Credit';
+  const today = dateKeyToUtc(toDateInputValue());
+  const debt = linkedLoan ? { status: loanStatus(linkedLoan, loanPayments), due: dueStatus(linkedLoan, loanPayments, today) } : null;
+  const formatDay = (timestamp: number) => new Date(timestamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
   const isCashback = isCashbackCard(card);
   const expiryStatus = getCardExpiryStatus(card);
   const [pointsRange, setPointsRange] = useState<PointsRangeMode>('Monthly');
@@ -397,6 +409,41 @@ const CardDetail: React.FC<CardDetailProps> = ({
                         </p>
                     </div>
                 </div>
+
+                {isCreditCard && card.id !== 'new' && onOpenDebt && (
+                    <div className="mb-6 rounded-xl border border-border bg-background p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-secondary font-bold">
+                                    <HandCoins size={13} /> Statement balance
+                                </p>
+                                {linkedLoan && debt ? (
+                                    <>
+                                        <p className="text-xl font-black text-textMain mt-1">
+                                            {debt.status.outstanding.toFixed(2)} {linkedLoan.currency}
+                                            <span className="ml-1.5 text-xs font-semibold text-secondary">{debt.status.cleared ? 'paid in full' : 'left to pay'}</span>
+                                        </p>
+                                        <p className={`mt-1 text-xs ${debt.due?.overdue ? 'font-semibold text-red-500' : 'text-secondary'}`}>
+                                            {debt.status.statement
+                                              ? `${debt.status.statement.amount.toFixed(2)} ${linkedLoan.currency} statement on ${formatDay(debt.status.statement.date)}`
+                                              : `Started at ${linkedLoan.principal.toFixed(2)} ${linkedLoan.currency} on ${formatDay(dateKeyToUtc(linkedLoan.startDate))}`}
+                                            {debt.due && ` · ${debt.due.overdue ? 'overdue since' : 'due'} ${formatDay(debt.due.nextDue)}`}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="mt-1 text-xs text-secondary">Track each month's statement and what you've paid against it in the Debts tab.</p>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={onOpenDebt}
+                                className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-primary hover:border-primary"
+                            >
+                                {linkedLoan ? 'Open in Debts' : 'Track in Debts'}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {(expiryStatus === 'expired' || expiryStatus === 'expiring-soon') && (
                     <div className={`mb-6 flex items-start gap-2 p-3 rounded-lg ${

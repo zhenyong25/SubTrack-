@@ -1,6 +1,6 @@
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
+import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -22,6 +22,8 @@ const CASH_BALANCE_ENTRIES_STORAGE_KEY = 'subtrack_cash_balance_entries_v1';
 const INVESTMENT_VALUATIONS_STORAGE_KEY = 'subtrack_investment_valuations_v1';
 const RETIREMENT_FUNDS_STORAGE_KEY = 'subtrack_retirement_funds_v1';
 const RETIREMENT_ENTRIES_STORAGE_KEY = 'subtrack_retirement_entries_v1';
+const LOANS_STORAGE_KEY = 'subtrack_loans_v1';
+const LOAN_PAYMENTS_STORAGE_KEY = 'subtrack_loan_payments_v1';
 
 const normalizeCurrency = (currency?: string | null) => {
   if (!currency || currency === 'USD') return 'SGD';
@@ -80,6 +82,8 @@ export interface LoadedAppData {
   investmentValuations: InvestmentValuation[];
   investmentTransactions: InvestmentTransaction[];
   investmentAccounts: InvestmentAccount[];
+  loans: Loan[];
+  loanPayments: LoanPayment[];
   pokerMttTournaments: PokerMttTournament[];
   pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
   cashAccounts: CashAccount[];
@@ -443,6 +447,41 @@ type CashBalanceEntryRow = {
   created_at?: string;
 };
 
+type LoanRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  lender: string | null;
+  kind: LoanKind;
+  currency: string;
+  principal: number;
+  annual_rate: number;
+  interest_method: LoanInterestMethod;
+  term_months: number | null;
+  start_date: string;
+  instalment: number | null;
+  payment_day: number | null;
+  opening_balance: number | null;
+  opening_balance_date: string | null;
+  card_id?: string | null; // absent until the updated supabase_loans_schema.sql is run
+  color: string;
+  notes: string | null;
+  is_archived: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type LoanPaymentRow = {
+  id: string;
+  user_id: string;
+  loan_id: string;
+  entry_type?: LoanEntryType | null; // absent until the updated supabase_loans_schema.sql is run
+  payment_date: string;
+  amount: number;
+  notes: string | null;
+  created_at?: string;
+};
+
 const readLocalJson = <T,>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
@@ -457,6 +496,71 @@ const writeLocalJson = (key: string, value: unknown) => {
 };
 
 const dateOnly = (value: string) => value.split('T')[0];
+
+const mapLoanRow = (row: LoanRow): Loan => ({
+  id: row.id,
+  name: row.name,
+  lender: row.lender || undefined,
+  kind: row.kind,
+  currency: row.currency,
+  principal: Number(row.principal),
+  annualRate: Number(row.annual_rate),
+  interestMethod: row.interest_method,
+  termMonths: row.term_months ?? undefined,
+  startDate: dateOnly(row.start_date),
+  instalment: row.instalment == null ? undefined : Number(row.instalment),
+  paymentDay: row.payment_day ?? undefined,
+  openingBalance: row.opening_balance == null ? undefined : Number(row.opening_balance),
+  openingBalanceDate: row.opening_balance_date ? dateOnly(row.opening_balance_date) : undefined,
+  cardId: row.card_id || undefined,
+  color: row.color,
+  notes: row.notes || undefined,
+  isArchived: row.is_archived ?? false,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapLoanToRow = (loan: Loan, userId: string) => ({
+  id: loan.id,
+  user_id: userId,
+  name: loan.name,
+  lender: loan.lender || null,
+  kind: loan.kind,
+  currency: loan.currency,
+  principal: loan.principal,
+  annual_rate: loan.annualRate,
+  interest_method: loan.interestMethod,
+  term_months: loan.termMonths ?? null,
+  start_date: dateOnly(loan.startDate),
+  instalment: loan.instalment ?? null,
+  payment_day: loan.paymentDay ?? null,
+  opening_balance: loan.openingBalance ?? null,
+  opening_balance_date: loan.openingBalanceDate ? dateOnly(loan.openingBalanceDate) : null,
+  card_id: loan.cardId || null,
+  color: loan.color,
+  notes: loan.notes || null,
+  is_archived: loan.isArchived ?? false,
+});
+
+const mapLoanPaymentRow = (row: LoanPaymentRow): LoanPayment => ({
+  id: row.id,
+  loanId: row.loan_id,
+  entryType: row.entry_type === 'statement' ? 'statement' : 'payment',
+  paymentDate: dateOnly(row.payment_date),
+  amount: Number(row.amount),
+  notes: row.notes || undefined,
+  createdAt: row.created_at,
+});
+
+const mapLoanPaymentToRow = (payment: LoanPayment, userId: string) => ({
+  id: payment.id,
+  user_id: userId,
+  loan_id: payment.loanId,
+  entry_type: payment.entryType ?? 'payment',
+  payment_date: dateOnly(payment.paymentDate),
+  amount: payment.amount,
+  notes: payment.notes || null,
+});
 
 const toIsoDate = (value: string) => {
   if (!value) return value;
@@ -1014,6 +1118,8 @@ const loadLocalData = (): LoadedAppData => {
     investmentValuations: readLocalJson<InvestmentValuation[]>(INVESTMENT_VALUATIONS_STORAGE_KEY, []),
     investmentTransactions,
     investmentAccounts: readLocalJson<InvestmentAccount[]>(INVESTMENT_ACCOUNTS_STORAGE_KEY, []),
+    loans: readLocalJson<Loan[]>(LOANS_STORAGE_KEY, []),
+    loanPayments: readLocalJson<LoanPayment[]>(LOAN_PAYMENTS_STORAGE_KEY, []),
     pokerMttTournaments,
     pokerMttBankrollTransactions,
     cashAccounts,
@@ -1119,6 +1225,19 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const cardBenefits = (benefitsResult.data as CardBenefitRow[] | null | undefined)?.map(mapCardBenefitRow) ?? [];
   const accountStatements = (accountStatementsResult.data as AccountStatementRow[] | null | undefined)?.map(mapAccountStatementRow) ?? [];
   // Missing tables (SQL not run yet) come back as errors with no data, which just means "no rule sets".
+  // Fetched apart from the big batch above so the loan tables stay optional: until
+  // supabase_loans_schema.sql is run they error, and the copy saved on this device is used instead.
+  const [loansResult, loanPaymentsResult] = await Promise.all([
+    supabase.from('loans').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+    selectAllRows('loan_payments', userId, 'payment_date', true),
+  ]);
+  const loanTablesMissing = Boolean(loansResult.error || loanPaymentsResult.error);
+  const loans = loanTablesMissing
+    ? readLocalJson<Loan[]>(LOANS_STORAGE_KEY, [])
+    : (loansResult.data as LoanRow[] | null | undefined)?.map(mapLoanRow) ?? [];
+  const loanPayments = loanTablesMissing
+    ? readLocalJson<LoanPayment[]>(LOAN_PAYMENTS_STORAGE_KEY, [])
+    : (loanPaymentsResult.data as LoanPaymentRow[] | null | undefined)?.map(mapLoanPaymentRow) ?? [];
   const cashbackPrograms = mapCashbackProgramRows(
     (cashbackProgramsResult.data as CashbackProgramRow[] | null | undefined) ?? [],
     (cashbackCategoriesResult.data as CashbackCategoryRow[] | null | undefined) ?? [],
@@ -1146,6 +1265,8 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     investmentValuations,
     investmentTransactions,
     investmentAccounts,
+    loans,
+    loanPayments,
     pokerMttTournaments,
     pokerMttBankrollTransactions,
     cashAccounts,
@@ -1595,6 +1716,44 @@ export const saveInvestmentValuations = async (valuations: InvestmentValuation[]
   const { error } = await supabase.from('investment_valuations').upsert(rows, { onConflict: 'id' });
   if (error) console.error('Saving investment valuations failed', error);
   return error ? error.message : null;
+};
+
+// Same replace-the-list approach as saveRetirementFunds. Deleting a loan in Supabase also deletes
+// its payments (on delete cascade). Returns the database's error message, if it refused the save.
+const replaceUserRows = async <T,>(table: string, items: T[], toRow: (item: T, userId: string) => { id: string }): Promise<string | null> => {
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+
+  const existingResult = await supabase.from(table).select('id').eq('user_id', userId);
+  if (existingResult.error) return existingResult.error.message;
+  const rows = items.map(item => toRow(item, userId));
+  const nextIds = new Set(rows.map(row => row.id));
+  const staleIds = (existingResult.data ?? []).map(row => row.id).filter(id => !nextIds.has(id));
+  if (staleIds.length > 0) {
+    const { error } = await supabase.from(table).delete().eq('user_id', userId).in('id', staleIds);
+    if (error) return error.message;
+  }
+  if (rows.length === 0) return null;
+  const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+  if (error) console.error(`Saving ${table} failed`, error);
+  return error ? error.message : null;
+};
+
+export const saveLoans = async (loans: Loan[]) => {
+  writeLocalJson(LOANS_STORAGE_KEY, loans);
+  const failure = await replaceUserRows('loans', loans, mapLoanToRow);
+  return failure?.includes('card_id')
+    ? 'linking cards needs the database update - run supabase_loans_schema.sql again in Supabase'
+    : failure;
+};
+
+export const saveLoanPayments = async (payments: LoanPayment[]) => {
+  writeLocalJson(LOAN_PAYMENTS_STORAGE_KEY, payments);
+  const failure = await replaceUserRows('loan_payments', payments, mapLoanPaymentToRow);
+  return failure?.includes('entry_type')
+    ? 'card statements need the database update - run supabase_loans_schema.sql again in Supabase'
+    : failure;
 };
 
 export const saveRetirementFunds = async (funds: RetirementFund[]) => {
@@ -2056,6 +2215,8 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(INVESTMENT_VALUATIONS_STORAGE_KEY);
   localStorage.removeItem(RETIREMENT_FUNDS_STORAGE_KEY);
   localStorage.removeItem(RETIREMENT_ENTRIES_STORAGE_KEY);
+  localStorage.removeItem(LOANS_STORAGE_KEY);
+  localStorage.removeItem(LOAN_PAYMENTS_STORAGE_KEY);
 
   if (!supabase) return;
   const userId = await getSupabaseUserId();
@@ -2078,6 +2239,7 @@ export const clearStoredAppData = async () => {
     supabase.from('cash_accounts').delete().eq('user_id', userId),
     supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('retirement_funds').delete().eq('user_id', userId),
+    supabase.from('loans').delete().eq('user_id', userId),
     supabase.from('investment_accounts').delete().eq('user_id', userId),
     supabase.from('payment_cards').delete().eq('user_id', userId),
     supabase.from('card_point_transactions').delete().eq('user_id', userId),

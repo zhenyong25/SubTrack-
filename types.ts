@@ -335,6 +335,53 @@ export interface RetirementBalanceEntry {
   createdAt?: string;
 }
 
+export type LoanKind = 'Mortgage' | 'Car' | 'Personal' | 'Student' | 'Credit card' | 'Instalment plan' | 'Family & friends' | 'Other';
+
+// Reducing: interest is charged on what's still owed (mortgages, most personal loans, cards).
+// Flat: interest is fixed upfront on the original amount for the whole term (car loans, many
+// instalment plans), so the real cost is much higher than the quoted rate suggests.
+export type LoanInterestMethod = 'Reducing' | 'Flat';
+
+// Money owed. Its balance is worked out from the starting point plus the LoanPayment rows.
+export interface Loan {
+  id: string;
+  name: string;
+  lender?: string;
+  kind: LoanKind;
+  currency: string;
+  principal: number; // amount originally borrowed
+  annualRate: number; // quoted yearly rate in percent, e.g. 3.5
+  interestMethod: LoanInterestMethod;
+  termMonths?: number; // optional for open-ended debts (cards, family loans); required for Flat
+  startDate: string; // ISO date the money was borrowed
+  instalment?: number; // monthly payment; derived from the term when absent
+  paymentDay?: number; // day of the month it's due, 1-31
+  // For loans that started before tracking: what was still owed on a date, so older payments
+  // don't need logging. For Flat loans this is the remaining amount payable, interest included.
+  openingBalance?: number;
+  openingBalanceDate?: string;
+  cardId?: string; // the PaymentCard a credit card debt belongs to
+  color: string;
+  notes?: string;
+  isArchived?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// 'statement' entries reset what's owed to `amount` on that date (a credit card's monthly
+// statement balance, or any lender statement); later payments count down from there.
+export type LoanEntryType = 'payment' | 'statement';
+
+export interface LoanPayment {
+  id: string;
+  loanId: string;
+  entryType?: LoanEntryType; // absent = 'payment'
+  paymentDate: string; // ISO date string
+  amount: number;
+  notes?: string;
+  createdAt?: string;
+}
+
 export type AccountStatementKind = 'Cash' | 'Card';
 
 export interface AccountStatement {
