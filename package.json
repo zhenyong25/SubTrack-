@@ -11,7 +11,8 @@
     "test:catalog:browser": "node scripts/test-service-picker-browser.mjs",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:search": "node scripts/test-global-search.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

@@ -18,6 +18,7 @@ test('service identity survives saves and reloads with and without the SQL migra
     from(table: string) {
       return {
         select() { return this; }, eq() { return this; }, order() { return this; },
+        async range(from: number, to: number) { return { data: table === 'subscriptions' ? rows.slice(from, to + 1) : [], error: null }; },
         async maybeSingle() { return { data: null, error: null }; },
         then(resolve: (value: unknown) => void) { resolve({ data: table === 'subscriptions' ? rows : [], error: null }); },
         async upsert(next: Record<string, unknown>[]) {

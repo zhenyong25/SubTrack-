@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Bell, CheckCircle, Plus, Landmark, TrendingUp, Wallet } from 'lucide-react';
+import { Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -23,6 +23,9 @@ import { calculateNextPayment, getExpenseCategoryColor, isUpcoming, getUrgencyLe
 import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
+import GlobalSearch from './components/GlobalSearch';
+import { buildSearchRecords, normalizeTags, type SearchRecord } from './services/globalSearchService';
+import { saveRecordTags } from './services/appDataService';
 
 enum Tab {
   Dashboard = 'Dashboard',
@@ -41,6 +44,8 @@ const applyCategoryColorsToExpenses = (items: Expense[]): Expense[] =>
   });
 
 function App() {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const closeGlobalSearch = useCallback(() => setIsSearchOpen(false), []);
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Dashboard);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingIncome, setIsAddingIncome] = useState(false);
@@ -91,6 +96,31 @@ function App() {
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
+
+  const searchableRecords = useMemo(() => buildSearchRecords({
+    expenses, subscriptions, transactions: investmentTransactions, holdings: investments, accounts: investmentAccounts, cards,
+  }), [expenses, subscriptions, investmentTransactions, investments, investmentAccounts, cards]);
+
+  useEffect(() => {
+    if (isLoading || authChecking || (isSupabaseConfigured() && !session) || isAdding || isAddingExpense || isAddingIncome) return;
+    const openSearch = (event: KeyboardEvent) => {
+      if (!event.repeat && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        const dialog = document.querySelector('[role="dialog"]');
+        if (dialog && dialog.getAttribute('aria-labelledby') !== 'global-search-title') return;
+        event.preventDefault(); setIsSearchOpen(open => !open);
+      }
+    };
+    window.addEventListener('keydown', openSearch);
+    return () => window.removeEventListener('keydown', openSearch);
+  }, [isLoading, authChecking, session, isAdding, isAddingExpense, isAddingIncome]);
+
+  const handleSearchSaveTags = useCallback(async (record: SearchRecord, values: string[]) => {
+    const tags = normalizeTags(values);
+    await saveRecordTags(record.kind, record.id, tags);
+    if (record.kind === 'expense') setExpenses(current => current.map(item => item.id === record.id ? { ...item, tags } : item));
+    else if (record.kind === 'subscription') setSubscriptions(current => current.map(item => item.id === record.id ? { ...item, tags } : item));
+    else setInvestmentTransactions(current => current.map(item => item.id === record.id ? { ...item, tags } : item));
+  }, []);
 
   // Load auth state, data and theme on mount
   useEffect(() => {
@@ -319,6 +349,7 @@ function App() {
   };
 
   const handleSignOut = async () => {
+      setIsSearchOpen(false);
       await supabaseSignOut();
       setSession(null);
       setSubscriptions([]);
@@ -1112,6 +1143,11 @@ function App() {
             </h1>
         </div>
         <div className="flex items-center space-x-3 relative" ref={notificationRef}>
+            <button type="button" onClick={() => setIsSearchOpen(true)} aria-label="Open global search" title="Search (Ctrl / Command + K)" className="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-2 text-secondary transition-colors hover:border-primary/40 hover:text-primary lg:w-64">
+              <Search size={18} className="shrink-0" />
+              <span className="hidden text-xs md:inline">Search anything</span>
+              <kbd className="ml-auto hidden rounded border border-border px-1.5 py-0.5 text-[10px] lg:inline-flex">Ctrl K</kbd>
+            </button>
             <button 
             onClick={() => setShowNotifications(!showNotifications)}
             className={`p-2 rounded-full transition-colors relative ${showNotifications || upcomingNotifications.length > 0 ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
@@ -1285,6 +1321,15 @@ function App() {
             />
         )}
       </main>
+
+      {isSearchOpen && <GlobalSearch records={searchableRecords} onClose={closeGlobalSearch} onSaveTags={handleSearchSaveTags} onOpenRecord={record => {
+        setIsSearchOpen(false);
+        if (record.kind === 'expense') {
+          const expense = expenses.find(item => item.id === record.id);
+          if (expense) handleEditExpenseStart(expense);
+        } else if (record.kind === 'subscription') setSelectedSubId(record.id);
+        else setActiveTab(Tab.Investment);
+      }} />}
 
       {/* Navigation Tabs */}
       <nav
