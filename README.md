@@ -52,3 +52,11 @@ To connect the app to your Supabase database later, add these Vite environment v
 For sign-up confirmation emails to work on other devices, also set `VITE_APP_URL` to your deployed URL, and in the Supabase dashboard (Authentication > URL Configuration) set **Site URL** to that URL and add it under **Redirect URLs**. Otherwise the confirmation link points at `localhost`, which a phone can't reach.
 
 The app will use Supabase when those values are present and fall back to localStorage if they are missing. Because your tables are tied to `auth.users.id`, real database writes still require a signed-in Supabase user session.
+
+## Global search and tags
+
+Use the header search button or Ctrl+K / Command+K to search expenses, subscriptions, and investment transactions. Select a result to edit its tags; use `#travel` or the tag filters to find related records.
+
+For cloud tag storage, run [supabase_global_search_tags.sql](supabase_global_search_tags.sql) in Supabase and reload the app. Local-only storage works immediately. See [Global search setup and behavior](docs/global-search.md).
+
+Run `npm run test:search` to check search matching and tag persistence.

@@ -1,3 +1,4 @@
+import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
@@ -103,6 +104,7 @@ type ProfileRow = {
 };
 
 type SubscriptionRow = {
+  tags?: string[] | null;
   id: string;
   user_id: string;
   name: string;
@@ -143,6 +145,7 @@ type IncomeRow = {
 };
 
 type ExpenseRow = {
+  tags?: string[] | null;
   id: string;
   user_id: string;
   name: string;
@@ -333,6 +336,7 @@ type InvestmentValuationRow = {
 };
 
 type InvestmentTransactionRow = {
+  tags?: string[] | null;
   id: string;
   user_id: string;
   investment_id: string;
@@ -491,6 +495,7 @@ const mapProfileRow = (row: ProfileRow | null, friends: Friend[], isLoggedIn: bo
 
 const mapSubscriptionRow = (row: SubscriptionRow): Subscription => ({
   id: row.id,
+  tags: row.tags == null ? undefined : normalizeTags(row.tags),
   name: row.name,
   price: Number(row.price),
   currency: row.currency,
@@ -528,6 +533,7 @@ const mapSubscriptionToRow = (sub: Subscription, userId: string): SubscriptionRo
   logo_url: sub.logoUrl || (sub.serviceId ? `catalog:${sub.serviceId}` : null),
   service_id: sub.serviceId || null,
   notes: sub.notes || null,
+  ...(sub.tags === undefined ? {} : { tags: normalizeTags(sub.tags) }),
   status: sub.status,
   shared_with: sub.sharedWith || [],
   payment_history: sub.paymentHistory || {},
@@ -572,6 +578,7 @@ const mapIncomeToRow = (income: Income, userId: string): IncomeRow => ({
 
 const mapExpenseRow = (row: ExpenseRow): Expense => ({
   id: row.id,
+  tags: row.tags == null ? undefined : normalizeTags(row.tags),
   name: row.name,
   amount: Number(row.amount),
   currency: row.currency,
@@ -594,6 +601,7 @@ const mapExpenseToRow = (expense: Expense, userId: string): ExpenseRow => ({
   category: expense.category,
   color: expense.color,
   notes: expense.notes || null,
+  ...(expense.tags === undefined ? {} : { tags: normalizeTags(expense.tags) }),
   linked_card_id: expense.linkedCardId || null,
   linked_card_name: expense.linkedCardName || null,
   cashback_category_id: expense.linkedCardId ? expense.cashbackCategoryId || null : null,
@@ -818,6 +826,7 @@ const mapInvestmentValuationToRow = (valuation: InvestmentValuation, userId: str
 
 const mapInvestmentTransactionRow = (row: InvestmentTransactionRow): InvestmentTransaction => ({
   id: row.id,
+  tags: row.tags == null ? undefined : normalizeTags(row.tags),
   investmentId: row.investment_id,
   transactionType: row.transaction_type,
   tradeDate: row.trade_date,
@@ -1178,7 +1187,8 @@ export const saveSubscriptions = async (subs: Subscription[]) => {
 
   if (subs.length === 0) return;
 
-  const rows = subs.map(sub => mapSubscriptionToRow(sub, userId));
+  const includeTags = subs.some(sub => sub.tags !== undefined);
+  const rows = subs.map(sub => ({ ...mapSubscriptionToRow(sub, userId), ...(includeTags ? { tags: normalizeTags(sub.tags) } : {}) }));
   const { error } = await supabase.from('subscriptions').upsert(rows, { onConflict: 'id' });
   if (error && ['PGRST204', '42703'].includes(error.code) && error.message.includes('service_id')) {
     // Older databases retain the stable catalog reference in their existing logo column.
@@ -1226,7 +1236,9 @@ export const saveExpenses = async (expenses: Expense[], changed: Expense[] = exp
   if (changed.length === 0) return true;
 
   for (let from = 0; from < changed.length; from += EXPENSE_UPSERT_CHUNK) {
-    const rows = changed.slice(from, from + EXPENSE_UPSERT_CHUNK).map(expense => mapExpenseToRow(expense, userId));
+    const chunk = changed.slice(from, from + EXPENSE_UPSERT_CHUNK);
+    const includeTags = chunk.some(expense => expense.tags !== undefined);
+    const rows = chunk.map(expense => ({ ...mapExpenseToRow(expense, userId), ...(includeTags ? { tags: normalizeTags(expense.tags) } : {}) }));
     let saveResult = await supabase.from('expenses').upsert(rows, { onConflict: 'id' });
     if (isMissingColumnError(saveResult.error, 'cashback_category_id')) {
       // supabase_cashback_schema.sql hasn't been run yet; keep saving everything else.
@@ -1314,6 +1326,7 @@ export const saveInvestmentTransactions = async (transactions: InvestmentTransac
 
   if (transactions.length === 0) return null;
 
+  const includeTags = transactions.some(transaction => transaction.tags !== undefined);
   const rows = transactions.map(transaction => ({
     id: transaction.id,
     user_id: userId,
@@ -1325,6 +1338,7 @@ export const saveInvestmentTransactions = async (transactions: InvestmentTransac
     fees: transaction.fees,
     currency: transaction.currency,
     notes: transaction.notes || null,
+    ...(includeTags ? { tags: normalizeTags(transaction.tags) } : {}),
     source: transaction.source || null,
     external_id: transaction.externalId || null,
     realized_pnl: transaction.realizedPnl ?? null,
@@ -2075,3 +2089,28 @@ export const clearStoredAppData = async () => {
 };
 
 export const calculateNextPaymentDate = calculateNextPayment;
+
+// Only update tag metadata: editing search labels must never replay a trade or change amounts.
+export const saveRecordTags = async (kind: SearchKind, id: string, values: string[]): Promise<void> => {
+  const tags = normalizeTags(values);
+  const target = {
+    expense: { table: 'expenses', key: EXPENSES_STORAGE_KEY },
+    subscription: { table: 'subscriptions', key: SUBSCRIPTIONS_STORAGE_KEY },
+    transaction: { table: 'investment_transactions', key: INVESTMENT_TRANSACTIONS_STORAGE_KEY },
+  }[kind];
+  if (supabase) {
+    const userId = await getSupabaseUserId();
+    if (!userId) throw new Error('Please sign in again to save tags.');
+    const { data, error } = await supabase.from(target.table).update({ tags }).eq('id', id).eq('user_id', userId).select('id').maybeSingle();
+    if (error) {
+      if (isMissingColumnError(error, 'tags')) throw new Error('Tag syncing needs the database update. Run supabase_global_search_tags.sql in Supabase, then try again.');
+      throw new Error(error.message || 'Could not save tags. Please try again.');
+    }
+    if (!data) throw new Error('This record is no longer available. Refresh and try again.');
+    return;
+  }
+  const records = readLocalJson<Array<{ id: string; tags?: string[] }>>(target.key, []);
+  if (!records.some(record => record.id === id)) throw new Error('This record is no longer available.');
+  // Deliberately let storage errors reach the editor so it never reports an unsaved change as saved.
+  localStorage.setItem(target.key, JSON.stringify(records.map(record => record.id === id ? { ...record, tags } : record)));
+};

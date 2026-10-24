@@ -29,6 +29,7 @@ export type IncomeMode = 'Recurring' | 'One-time';
 export type InvestmentKind = 'Crypto' | 'Stocks' | 'Pokemon Cards' | 'Poker (MTT)' | 'Cash' | 'Other';
 
 export interface Expense {
+  tags?: string[];
   id: string;
   name: string;
   amount: number;
@@ -144,6 +145,7 @@ export interface CardBenefit {
 }
 
 export interface Subscription {
+  tags?: string[];
   id: string;
   name: string;
   price: number;
@@ -236,6 +238,7 @@ export interface InvestmentValuation {
 export type InvestmentTransactionType = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Transfer In' | 'Transfer Out' | 'Split';
 
 export interface InvestmentTransaction {
+  tags?: string[];
   id: string;
   investmentId: string;
   transactionType: InvestmentTransactionType;

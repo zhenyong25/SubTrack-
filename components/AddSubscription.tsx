@@ -142,6 +142,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
     try {
       await onSave({
         name: name.trim(),
+        tags: initialData?.tags,
         serviceId: serviceId || findExactService(name, catalog.filter(s => s.is_active))?.id,
         logoUrl,
         price: parseFloat(price) || 0,
