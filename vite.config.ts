@@ -189,7 +189,7 @@ export default defineConfig(({ mode }) => {
           injectRegister: false,
           includeAssets: ['favicon.svg'],
           manifest: {
-            name: 'SubTrack AI',
+            name: 'SubTrack',
             short_name: 'SubTrack',
             description: 'Track subscriptions, expenses, income, and cards in one place.',
             start_url: '/',
