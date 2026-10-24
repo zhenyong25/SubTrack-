@@ -1,4 +1,5 @@
 import { SAVINGS_STORAGE_KEY } from './savingsGoalMath';
+import { REMINDER_STORAGE_PREFIX } from './reminderPreferenceService';
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
@@ -2197,6 +2198,8 @@ export const markStatementTransactionDismissed = async (
 };
 
 export const clearStoredAppData = async () => {
+  const reminderKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith(REMINDER_STORAGE_PREFIX)));
+  reminderKeys.forEach(key => localStorage.removeItem(key));
   localStorage.removeItem(SAVINGS_STORAGE_KEY);
   localStorage.removeItem(PROFILE_STORAGE_KEY);
   localStorage.removeItem(SUBSCRIPTIONS_STORAGE_KEY);

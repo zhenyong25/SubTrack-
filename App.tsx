@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { PiggyBank, Bell, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
+import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -20,9 +20,10 @@ import InvestmentTab from './components/InvestmentTab';
 import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
 import CashFlowTab from './components/CashFlowTab';
 import DebtsTab from './components/DebtsTab';
+import SmartReminders from './components/SmartReminders';
 import { applyInvestmentTransaction, isPortfolioHolding } from './services/investmentService';
 import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
-import { calculateNextPayment, getExpenseCategoryColor, isUpcoming, getUrgencyLevel } from './services/storageService';
+import { calculateNextPayment, getExpenseCategoryColor } from './services/storageService';
 import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
@@ -79,12 +80,13 @@ function App() {
   const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
   // A card whose debt the Debts tab should open (or start) next, set from the card's page.
   const [debtFocusCardId, setDebtFocusCardId] = useState<string | null>(null);
+  const [debtFocusLoanId, setDebtFocusLoanId] = useState<string | null>(null);
+  const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
   const [cards, setCards] = useState<PaymentCard[]>([]);
   const [cardPointTransactions, setCardPointTransactions] = useState<CardPointTransaction[]>([]);
   const [cardBenefits, setCardBenefits] = useState<CardBenefit[]>([]);
   const [cashbackPrograms, setCashbackPrograms] = useState<CashbackProgram[]>([]);
   const [accountStatements, setAccountStatements] = useState<AccountStatement[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [authChecking, setAuthChecking] = useState(isSupabaseConfigured());
@@ -104,7 +106,6 @@ function App() {
   });
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const notificationRef = useRef<HTMLDivElement>(null);
 
   const searchableRecords = useMemo(() => buildSearchRecords({
     expenses, subscriptions, transactions: investmentTransactions, holdings: investments, accounts: investmentAccounts, cards,
@@ -173,17 +174,9 @@ function App() {
 
     void bootstrapAuth();
 
-    // Click outside handler for notifications
-    const handleClickOutside = (event: MouseEvent) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
     return () => {
       alive = false;
       authSubscription?.unsubscribe();
-      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -1103,12 +1096,6 @@ function App() {
       setAddingCard(null);
   };
 
-  const getUpcomingNotifications = () => {
-      return subscriptions
-          .filter(s => s.status === 'Active' && isUpcoming(s.nextPaymentDate, userProfile.notificationDays))
-          .sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
-  };
-
   if (isAdding) {
     return (
       <AddSubscription 
@@ -1153,7 +1140,6 @@ function App() {
 
   const selectedSub = subscriptions.find(s => s.id === selectedSubId);
   const viewingCard = cards.find(c => c.id === viewingCardId);
-  const upcomingNotifications = getUpcomingNotifications();
 
   if (authChecking || (isSupabaseConfigured() && session && isLoading)) {
     return (
@@ -1195,62 +1181,18 @@ function App() {
                SubTrack
             </h1>
         </div>
-        <div className="flex items-center space-x-3 relative" ref={notificationRef}>
+        <div className="flex items-center space-x-3 relative">
             <button type="button" onClick={() => setIsSearchOpen(true)} aria-label="Open global search" title="Search (Ctrl / Command + K)" className="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-2 text-secondary transition-colors hover:border-primary/40 hover:text-primary lg:w-64">
               <Search size={18} className="shrink-0" />
               <span className="hidden text-xs md:inline">Search anything</span>
               <kbd className="ml-auto hidden rounded border border-border px-1.5 py-0.5 text-[10px] lg:inline-flex">Ctrl K</kbd>
             </button>
-            <button 
-            onClick={() => setShowNotifications(!showNotifications)}
-            className={`p-2 rounded-full transition-colors relative ${showNotifications || upcomingNotifications.length > 0 ? 'text-primary' : 'text-secondary hover:text-textMain'}`}
-            title="Notifications"
-            >
-            <Bell size={20} />
-            {upcomingNotifications.length > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-background"></span>
-            )}
-            </button>
-
-            {/* Notification Dropdown */}
-            {showNotifications && (
-                <div className="absolute top-12 right-0 w-72 bg-surface border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-scale-in">
-                    <div className="bg-background px-4 py-3 border-b border-border flex justify-between items-center">
-                        <span className="text-sm font-bold text-textMain">Upcoming Bills</span>
-                        <span className="text-[10px] text-secondary bg-background border border-border px-2 py-0.5 rounded-full">{upcomingNotifications.length}</span>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                        {upcomingNotifications.length > 0 ? (
-                            upcomingNotifications.map(sub => {
-                                const urgency = getUrgencyLevel(sub.nextPaymentDate);
-                                return (
-                                    <div key={sub.id} className="p-3 border-b border-border/50 hover:bg-background/50 transition-colors flex items-center space-x-3">
-                                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: urgency === 'critical' ? '#ef4444' : '#f59e0b' }}></div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-bold text-textMain truncate">{sub.name}</p>
-                                            <p className="text-xs text-secondary">Due {new Date(sub.nextPaymentDate).toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm font-bold">{sub.price.toFixed(2)}</p>
-                                            <p className="text-[10px] text-secondary">{sub.currency}</p>
-                                        </div>
-                                    </div>
-                                )
-                            })
-                        ) : (
-                            <div className="p-6 text-center text-secondary">
-                                <CheckCircle size={24} className="mx-auto mb-2 opacity-50" />
-                                <p className="text-xs">All bills paid for now!</p>
-                            </div>
-                        )}
-                    </div>
-                    {upcomingNotifications.length > 0 && (
-                        <div className="p-2 bg-background border-t border-border text-center">
-                            <p className="text-[10px] text-secondary">Alerts set to {userProfile.notificationDays} days before due.</p>
-                        </div>
-                    )}
-                </div>
-            )}
+            <SmartReminders key={session?.user.id || 'local'} scope={session?.user.id || 'local'} subscriptions={subscriptions} loans={loans} payments={loanPayments} days={userProfile.notificationDays} onOpen={reminder => {
+              setViewingCardId(null); setSelectedSubId(null);
+              if (reminder.kind === 'goal') { setFocusGoalId(reminder.sourceId); setActiveTab(Tab.Goals); }
+              else if (reminder.kind === 'debt') { setDebtFocusLoanId(reminder.sourceId); setActiveTab(Tab.Debts); }
+              else { setSelectedSubId(reminder.sourceId); setActiveTab(Tab.Dashboard); }
+            }} onSettings={() => { setViewingCardId(null); setSelectedSubId(null); setActiveTab(Tab.Settings); }} />
         </div>
       </header>
 
@@ -1350,6 +1292,8 @@ function App() {
                 cards={cards}
                 cardStatements={accountStatements.filter(statement => statement.accountKind === 'Card')}
                 focusCardId={debtFocusCardId}
+                focusLoanId={debtFocusLoanId}
+                onLoanFocusHandled={() => setDebtFocusLoanId(null)}
                 onFocusHandled={() => setDebtFocusCardId(null)}
             />
         )}
@@ -1381,7 +1325,7 @@ function App() {
             />
         )}
 
-        {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} />}
+        {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} focusGoalId={focusGoalId} onFocusHandled={() => setFocusGoalId(null)} />}
 
         {activeTab === Tab.Settings && (
             <Settings 
