@@ -66,3 +66,15 @@ Run `npm run test:search` to check search matching and tag persistence.
 The **Goals** tab tracks savings targets, monthly funding plans, contributions, withdrawals, and recurring sinking funds. Local storage works immediately. For cloud storage, run [supabase_savings_goals_schema.sql](supabase_savings_goals_schema.sql) in Supabase and reload the app.
 
 See [Savings goals setup and behavior](docs/savings-goals.md). Run `npm run test:goals` to check calculations and persistence.
+
+## Cash-flow forecasting
+
+Open **Net worth** for a 30-, 60-, or 90-day cash forecast, savings allocations, shortfall warnings, and temporary spending/savings scenarios. No additional migration is needed. See [forecast behavior and the ordered finance roadmap](docs/finance-roadmap.md). Run `npm run test:planning` to verify forecast calculations.
+
+The **Safe to spend** panel reserves upcoming commitments and savings from selected accounts' current cash, with an optional buffer and daily allowance. Future income and forecast scenarios do not inflate this balance. Expand the account selector and commitment breakdown to review the calculation.
+
+## Financial review
+
+Open **Net worth → Financial review** for monthly spending comparisons, income and savings-rate estimates, debt reduction, and recorded net-worth changes. Review category changes, six-month charts, and opening/closing snapshot coverage. No additional SQL is required.
+
+See [Financial review calculations and limits](docs/financial-review.md). Run `npm run test:review` to verify the report calculations.

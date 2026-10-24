@@ -316,6 +316,8 @@
   .expense-days-month { columns: 2; column-gap: 12px; }
   .expense-days-month[class] > * { break-inside: avoid; margin-top: 0 !important; margin-bottom: 12px; }
 
+  .cashflow-layout > .cashflow-forecast { grid-column: 1 / -1; }
+  .cashflow-layout > :is(.cashflow-view-switch, .financial-review) { grid-column: 1 / -1; }
   .cashflow-layout > .cashflow-summary { grid-column: span 4; }
   .cashflow-layout > .cashflow-trend { grid-column: span 8; }
   .cashflow-layout > .cashflow-accounts { grid-column: span 8; align-self: start; }
