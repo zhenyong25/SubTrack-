@@ -73,6 +73,12 @@ Open **Net worth** for a 30-, 60-, or 90-day cash forecast, savings allocations,
 
 The **Safe to spend** panel reserves upcoming commitments and savings from selected accounts' current cash, with an optional buffer and daily allowance. Future income and forecast scenarios do not inflate this balance. Expand the account selector and commitment breakdown to review the calculation.
 
+## Statement CSV import
+
+Open **Expenses → Import statement CSV** to map bank/card CSV columns, preview rows, check duplicates and existing records, and confirm selected expenses or one-time income. Credits and possible duplicates are skipped by default. No new migration or AI key is needed; existing card PDF reconciliation remains available.
+
+See [CSV import setup and behavior](docs/csv-statement-import.md) and the [fictional sample CSV](samples/statement-import-example.csv). Run `npm run test:import` to verify parsing, reconciliation, and persistence.
+
 ## Financial review
 
 Open **Net worth → Financial review** for monthly spending comparisons, income and savings-rate estimates, debt reduction, and recorded net-worth changes. Review category changes, six-month charts, and opening/closing snapshot coverage. No additional SQL is required.

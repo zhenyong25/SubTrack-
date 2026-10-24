@@ -22,6 +22,7 @@ import BudgetPanel from './BudgetPanel';
 import { expenseMatchesSearch, splitSearchTerms } from '../services/expenseSearch';
 
 interface ExpenseTabProps {
+  importPanel?: React.ReactNode;
   expenses: Expense[];
   subscriptions: Subscription[];
   budgetPlans: BudgetPlan[];
@@ -255,7 +256,7 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
   );
 };
 
-const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
+const ExpenseTab: React.FC<ExpenseTabProps> = ({ importPanel, expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -562,6 +563,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
 
   return (
     <div className="desktop-layout expense-layout flex flex-col gap-6 pb-24 animate-fade-in">
+      {importPanel}
       <div className="expense-hero bg-gradient-to-r from-rose-500 to-orange-500 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
