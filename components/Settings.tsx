@@ -198,14 +198,14 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                          <div className="flex items-center space-x-3">
                             <input 
                                 type="range" 
-                                min="1" max="7" 
+                                min="1" max="30" 
                                 value={notificationDays} 
                                 onChange={(e) => setNotificationDays(parseInt(e.target.value))}
                                 className="w-full accent-primary"
                             />
                             <span className="text-sm font-bold w-6">{notificationDays}</span>
                          </div>
-                         <p className="text-[10px] text-secondary">Alert me when a bill is due in {notificationDays} days.</p>
+                         <p className="text-[10px] text-secondary">Show bills, trial expiries, debt payments, and savings deadlines due within {notificationDays} days in Smart reminders. Overdue debts and unfunded goals remain visible. Snooze and dismiss choices stay on this device.</p>
                     </div>
 
                     <div className="flex justify-between items-center py-3 border-t border-border mt-2">
