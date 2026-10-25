@@ -264,9 +264,25 @@ export interface PokerMttTournament {
   tournamentName: string;
   placement?: number;
   entries: number;
-  buyInUsd: number;
-  cashoutUsd: number;
+  buyInUsd: number; // total for all entries (buy-in per entry x entries)
+  cashoutUsd: number; // the end reward; above zero means in the money
   bountyUsd: number;
+  isBounty?: boolean; // a bounty (knockout) event, so bounties are expected even without a cash
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// One poker cash-game session: everything bought in for (rebuys included) and what you left with.
+export interface PokerCashSession {
+  id: string;
+  investmentId: string;
+  sessionDate: string;
+  game?: string; // e.g. "NLH 1/2" or "PLO 0.5/1"
+  venue?: string;
+  buyInUsd: number;
+  cashOutUsd: number;
+  durationHours?: number;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -279,7 +295,9 @@ export interface PokerMttBankrollTransaction {
   investmentId: string;
   eventDate: string;
   eventType: PokerMttBankrollEventType;
-  amountUsd: number;
+  amountUsd: number; // the USD credited/debited - every bankroll figure uses this
+  currency?: string; // what the money was sent in (absent = USD), e.g. an SGD bank transfer
+  amount?: number; // the amount in that currency
   notes?: string;
   createdAt?: string;
   updatedAt?: string;

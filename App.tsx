@@ -23,9 +23,9 @@ import CashFlowTab from './components/CashFlowTab';
 import DebtsTab from './components/DebtsTab';
 import SmartReminders from './components/SmartReminders';
 import { applyInvestmentTransaction, isPortfolioHolding } from './services/investmentService';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, PokerCashSession, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
 import { calculateNextPayment, getExpenseCategoryColor } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, deletePokerCashSession, deletePokerMttBankrollTransaction, deletePokerMttTournament, savePokerCashSessions, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 import GlobalSearch from './components/GlobalSearch';
@@ -74,6 +74,7 @@ function App() {
   const [investmentAccounts, setInvestmentAccounts] = useState<InvestmentAccount[]>([]);
   const [pokerMttTournaments, setPokerMttTournaments] = useState<PokerMttTournament[]>([]);
   const [pokerMttBankrollTransactions, setPokerMttBankrollTransactions] = useState<PokerMttBankrollTransaction[]>([]);
+  const [pokerCashSessions, setPokerCashSessions] = useState<PokerCashSession[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cashBalanceEntries, setCashBalanceEntries] = useState<CashBalanceEntry[]>([]);
   const [retirementFunds, setRetirementFunds] = useState<RetirementFund[]>([]);
@@ -200,6 +201,7 @@ function App() {
         setInvestmentAccounts([]);
         setPokerMttTournaments([]);
         setPokerMttBankrollTransactions([]);
+        setPokerCashSessions([]);
         setCashAccounts([]);
         setCashBalanceEntries([]);
         setRetirementFunds([]);
@@ -257,6 +259,7 @@ function App() {
         setInvestmentAccounts(loaded.investmentAccounts);
         setPokerMttTournaments(loaded.pokerMttTournaments);
         setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
+        setPokerCashSessions(loaded.pokerCashSessions);
         setCashAccounts(loaded.cashAccounts);
         setCashBalanceEntries(loaded.cashBalanceEntries);
         setRetirementFunds(loaded.retirementFunds);
@@ -821,6 +824,89 @@ function App() {
     void saveLoanPayments(updated).then(reportSyncFailure);
   };
 
+  // Poker results all hang off one "Poker (MTT)" holding (the database ties every row to an
+  // investment). It's made the first time anything is logged, and saved before the row that
+  // references it.
+  const ensurePokerHoldingId = async (): Promise<string> => {
+    const existing = investments.find(holding => holding.kind === 'Poker (MTT)' && holding.isActive)
+      || investments.find(holding => holding.kind === 'Poker (MTT)');
+    if (existing) return existing.id;
+    const holding: InvestmentHolding = {
+      id: crypto.randomUUID(),
+      name: 'Poker bankroll',
+      kind: 'Poker (MTT)',
+      units: 1,
+      averageCost: 0,
+      currentPrice: 0,
+      currency: 'USD',
+      color: '#ec4899',
+      isActive: true,
+    };
+    const updatedHoldings = [...investments, holding];
+    setInvestments(updatedHoldings);
+    const failure = await saveInvestments(updatedHoldings);
+    if (failure) reportSyncFailure(failure);
+    return holding.id;
+  };
+
+  const withPokerHolding = async <T extends { investmentId: string }>(item: T): Promise<T> =>
+    item.investmentId ? item : { ...item, investmentId: await ensurePokerHoldingId() };
+
+  const handleSavePokerTournament = async (input: PokerMttTournament) => {
+    const tournament = await withPokerHolding(input);
+    const exists = pokerMttTournaments.some(item => item.id === tournament.id);
+    const updated = exists ? pokerMttTournaments.map(item => (item.id === tournament.id ? tournament : item)) : [...pokerMttTournaments, tournament];
+    setPokerMttTournaments(updated);
+    const failure = await savePokerMttTournaments(updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast(`${exists ? 'Updated' : 'Logged'} ${tournament.tournamentName}`);
+  };
+
+  const handleDeletePokerTournament = async (tournamentId: string) => {
+    const updated = pokerMttTournaments.filter(item => item.id !== tournamentId);
+    setPokerMttTournaments(updated);
+    const failure = await deletePokerMttTournament(tournamentId, updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast('Tournament deleted.');
+  };
+
+  const handleSavePokerSession = async (input: PokerCashSession) => {
+    const session = await withPokerHolding(input);
+    const exists = pokerCashSessions.some(item => item.id === session.id);
+    const updated = exists ? pokerCashSessions.map(item => (item.id === session.id ? session : item)) : [...pokerCashSessions, session];
+    setPokerCashSessions(updated);
+    const failure = await savePokerCashSessions(updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast(exists ? 'Session updated.' : 'Session logged.');
+  };
+
+  const handleDeletePokerSession = async (sessionId: string) => {
+    const updated = pokerCashSessions.filter(item => item.id !== sessionId);
+    setPokerCashSessions(updated);
+    const failure = await deletePokerCashSession(sessionId, updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast('Session deleted.');
+  };
+
+  const handleSavePokerBankrollEvent = async (input: PokerMttBankrollTransaction) => {
+    const event = await withPokerHolding(input);
+    const updated = [...pokerMttBankrollTransactions, event];
+    setPokerMttBankrollTransactions(updated);
+    const failure = await savePokerMttBankrollTransactions(updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast(`${event.eventType} logged.`);
+  };
+
+  const handleDeletePokerBankrollEvent = async (eventId: string) => {
+    try {
+      await deletePokerMttBankrollTransaction(eventId);
+      setPokerMttBankrollTransactions(current => current.filter(item => item.id !== eventId));
+      showToast('Bankroll entry deleted.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not delete this bankroll entry.');
+    }
+  };
+
   const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
     const updatedHoldings = [...investments, holding];
     setInvestments(updatedHoldings);
@@ -920,6 +1006,7 @@ function App() {
           setInvestmentAccounts([]);
           setPokerMttTournaments([]);
           setPokerMttBankrollTransactions([]);
+          setPokerCashSessions([]);
           setRetirementFunds([]);
           setRetirementEntries([]);
           setLoans([]);
@@ -1274,6 +1361,17 @@ function App() {
                 onDeleteHolding={handleDeleteInvestmentHolding}
                 onSaveValuation={handleSaveInvestmentValuation}
                 onDeleteValuation={handleDeleteInvestmentValuation}
+                poker={{
+                    tournaments: pokerMttTournaments,
+                    sessions: pokerCashSessions,
+                    bankroll: pokerMttBankrollTransactions,
+                    onSaveTournament: handleSavePokerTournament,
+                    onDeleteTournament: handleDeletePokerTournament,
+                    onSaveSession: handleSavePokerSession,
+                    onDeleteSession: handleDeletePokerSession,
+                    onSaveBankrollEvent: handleSavePokerBankrollEvent,
+                    onDeleteBankrollEvent: handleDeletePokerBankrollEvent,
+                }}
             />
         )}
 
