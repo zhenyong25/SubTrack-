@@ -14,6 +14,7 @@ create table if not exists public.cash_accounts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
+  account_number text,
   institution text not null default 'Other',
   account_type public.cash_account_type not null default 'Bank',
   country text not null default '',
@@ -24,6 +25,8 @@ create table if not exists public.cash_accounts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.cash_accounts add column if not exists account_number text;
 
 create table if not exists public.cash_balance_entries (
   id uuid primary key default gen_random_uuid(),

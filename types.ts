@@ -290,6 +290,7 @@ export type CashAccountType = 'Bank' | 'EWallet' | 'MultiCurrencyCard' | 'Cash' 
 export interface CashAccount {
   id: string;
   name: string;
+  accountNumber?: string;
   institution: string;
   accountType: CashAccountType;
   country: string;
