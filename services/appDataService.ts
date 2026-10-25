@@ -2387,6 +2387,7 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(RETIREMENT_ENTRIES_STORAGE_KEY);
   localStorage.removeItem(LOANS_STORAGE_KEY);
   localStorage.removeItem(LOAN_PAYMENTS_STORAGE_KEY);
+  localStorage.removeItem('subtrack_receivables_v1');
 
   if (!supabase) return;
   const userId = await getSupabaseUserId();
@@ -2413,6 +2414,7 @@ export const clearStoredAppData = async () => {
     supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('retirement_funds').delete().eq('user_id', userId),
     supabase.from('loans').delete().eq('user_id', userId),
+    supabase.from('receivables').delete().eq('user_id', userId),
     supabase.from('investment_accounts').delete().eq('user_id', userId),
     supabase.from('payment_cards').delete().eq('user_id', userId),
     supabase.from('card_point_transactions').delete().eq('user_id', userId),

@@ -374,6 +374,16 @@ export interface RetirementBalanceEntry {
 
 export type LoanKind = 'Mortgage' | 'Car' | 'Personal' | 'Student' | 'Credit card' | 'Instalment plan' | 'Family & friends' | 'Other';
 
+export interface Receivable {
+  id: string; borrower: string; description: string; currency: string;
+  principal: number; agreedInterest: number; lentDate: string; dueDate?: string;
+  repaymentPlan: 'One-off' | 'Instalments'; instalment?: number; contact?: string; notes?: string;
+}
+export interface ReceivableEntry {
+  id: string; receivableId: string; kind: 'Repayment' | 'Write-off'; entryDate: string;
+  principal: number; interest: number; notes?: string;
+}
+
 // Reducing: interest is charged on what's still owed (mortgages, most personal loans, cards).
 // Flat: interest is fixed upfront on the original amount for the whole term (car loans, many
 // instalment plans), so the real cost is much higher than the quoted rate suggests.

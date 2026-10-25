@@ -5,6 +5,7 @@ import type { AccountStatement, Loan, LoanEntryType, LoanInterestMethod, LoanKin
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { findBank } from '../services/bankLogoService';
 import BankLogo from './BankLogo';
+import ReceivablesPanel from './ReceivablesPanel';
 import { dateKeyToUtc } from '../services/portfolioAnalyticsService';
 import {
   dueStatus,
@@ -260,6 +261,8 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
 // ---------------------------------------------------------------------------------------------
 
 const DebtsTab: React.FC<DebtsTabProps> = ({ baseCurrency, loans, payments, onSaveLoan, onDeleteLoan, onAddPayment, onDeletePayment, cards, cardStatements, focusCardId, onFocusHandled, focusLoanId, onLoanFocusHandled }) => {
+  const [direction, setDirection] = useState<'owe' | 'collect' | 'all'>('all');
+  React.useEffect(() => { if (focusCardId || focusLoanId) setDirection('owe'); }, [focusCardId, focusLoanId]);
   const [loanForm, setLoanForm] = useState<LoanFormState | null>(null);
   const [paymentForm, setPaymentForm] = useState<{ loanId: string; entryType: LoanEntryType; date: string; amount: string; notes: string } | null>(null);
   const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
@@ -698,7 +701,9 @@ const DebtsTab: React.FC<DebtsTabProps> = ({ baseCurrency, loans, payments, onSa
   const paymentLoan = paymentForm ? views.find(view => view.loan.id === paymentForm.loanId) : undefined;
 
   return (
-    <div className="desktop-layout debts-layout pb-24 animate-fade-in space-y-6">
+    <div className="space-y-4">
+      <div role="group" aria-label="Debt direction" className="flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1">{([{ id: 'all', label: 'All' }, { id: 'owe', label: 'I owe' }, { id: 'collect', label: 'Owed to me' }] as const).map(option => <button key={option.id} type="button" aria-pressed={direction === option.id} onClick={() => setDirection(option.id)} className={`rounded-lg px-4 py-2 text-xs font-bold ${direction === option.id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>{option.label}</button>)}</div>
+      {direction !== 'collect' && <div className={`desktop-layout debts-layout ${direction === 'owe' ? 'pb-24' : ''} animate-fade-in space-y-6`}>
       <section className="debts-summary bg-surface rounded-2xl border border-border p-4 shadow-sm" aria-labelledby="debts-heading">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -1048,6 +1053,8 @@ const DebtsTab: React.FC<DebtsTabProps> = ({ baseCurrency, loans, payments, onSa
           </button>
         </Modal>
       )}
+    </div>}
+      {direction !== 'owe' && <ReceivablesPanel baseCurrency={baseCurrency} />}
     </div>
   );
 };

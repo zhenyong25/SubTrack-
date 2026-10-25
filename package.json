@@ -17,6 +17,7 @@
     "test:loans": "node scripts/test-loans.mjs",
     "test:trading": "node scripts/test-trading.mjs",
     "test:earnings": "node scripts/test-earnings.mjs",
+    "test:receivables": "node scripts/test-receivables.mjs",
     "test:goals": "node scripts/test-savings-goals.mjs",
     "test:planning": "node scripts/test-finance-planning.mjs",
     "test:import": "node scripts/test-statement-import.mjs",
