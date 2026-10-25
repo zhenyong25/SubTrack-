@@ -218,23 +218,11 @@ function App() {
 
       try {
         const loaded = await loadAppData();
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
         const updated = loaded.subscriptions.map(sub => {
           let next = sub.nextPaymentDate;
-          let status = sub.status || 'Active';
-          let cancellationDate = sub.cancellationDate;
-          const nextDate = new Date(next || sub.firstPaymentDate);
-
-          if (
-            status === 'Active' &&
-            sub.billingCycle === BillingCycle.FreeTrial &&
-            !Number.isNaN(nextDate.getTime()) &&
-            nextDate < todayStart
-          ) {
-            status = 'Past';
-            cancellationDate = cancellationDate || next || sub.firstPaymentDate;
-          }
+          const status = sub.status || 'Active';
+          const cancellationDate = sub.cancellationDate;
+          // Expiry does not prove cancellation; leave trials available for review.
 
           if (new Date(next) < new Date() && status === 'Active') {
             if (sub.billingCycle !== BillingCycle.FreeTrial) {

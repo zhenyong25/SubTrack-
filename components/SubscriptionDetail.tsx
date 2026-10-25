@@ -139,7 +139,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
           className="px-4 pb-4 border-b border-border flex items-center justify-between bg-surface/50 backdrop-blur shrink-0"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
         >
-            <button onClick={onClose} className="p-2 -ml-2 text-secondary hover:text-textMain">
+            <button type="button" aria-label="Close subscription details" onClick={onClose} className="p-2 -ml-2 text-secondary hover:text-textMain">
                 <ArrowLeft size={24} />
             </button>
             <div className="flex items-center space-x-2">
