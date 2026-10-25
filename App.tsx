@@ -1433,6 +1433,7 @@ function App() {
                 onDeleteBalanceEntry={handleDeleteCashBalanceEntry}
                 investments={portfolioHoldings}
                 investmentValuations={investmentValuations}
+                cryptoSources={cryptoSources}
                 retirementFunds={retirementFunds}
                 retirementEntries={retirementEntries}
                 onSaveRetirementFund={handleSaveRetirementFund}
