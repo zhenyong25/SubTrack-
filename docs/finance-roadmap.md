@@ -6,8 +6,8 @@ Implement in order, one feature at a time:
 2. Safe-to-spend balance — implemented above the forecast on the Net worth page.
 3. Statement import and reconciliation — implemented under Expenses, alongside existing card PDF reconciliation.
 4. Financial review dashboard — implemented in Net worth → Financial review.
-5. Smart reminders — next: unify bills, trials, debt repayments, and goal deadlines.
-6. Shared expenses and reimbursements — balances owed by person and repayments that are not salary.
+5. Smart reminders — implemented in the header bell, with type filters, snooze/dismiss, and record navigation.
+6. Shared expenses and reimbursements — next: balances owed by person and repayments that are not salary.
 
 ## Cash-flow forecast
 
