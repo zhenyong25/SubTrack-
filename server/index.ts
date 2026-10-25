@@ -6,6 +6,7 @@
 // through this Worker also means HF_TOKEN never has to be bundled into client-side JS.
 
 import { handleExchangeBalances } from './cryptoExchanges';
+import { handleEarningsCalendar } from './earningsCalendar';
 import { handleSolanaRpc } from './solanaRpc';
 
 export interface Env {
@@ -182,6 +183,10 @@ export default {
 
     if (url.pathname === '/api/stock-history' && request.method === 'GET') {
       return handleStockHistory(url);
+    }
+
+    if (url.pathname === '/api/earnings-calendar') {
+      return handleEarningsCalendar(request);
     }
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),
