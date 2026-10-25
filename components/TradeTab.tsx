@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, Crosshair, Loader2, Radar, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BookOpen, CalendarDays, Crosshair, Loader2, Radar, ShieldCheck } from 'lucide-react';
 import { DEFAULT_RULES, type JournalTrade, type TradeRules } from '../services/tradingMath';
 import { deleteJournalTrade, loadTradeData, saveJournalTrade, saveTradeRules } from '../services/tradeStoreService';
 import TradePlanPanel from './TradePlanPanel';
 import TradeScannerPanel from './TradeScannerPanel';
 import TradeJournalPanel from './TradeJournalPanel';
+import TradeEarningsPanel from './TradeEarningsPanel';
 import { Field, INPUT_CLASS, Panel } from './tradeUi';
 
-type TradeView = 'plan' | 'scanner' | 'journal' | 'rules';
+type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings';
 
 const VIEWS: Array<{ id: TradeView; label: string; icon: React.ElementType }> = [
   { id: 'plan', label: 'Plan', icon: Crosshair },
   { id: 'scanner', label: 'Scanner', icon: Radar },
   { id: 'journal', label: 'Journal', icon: BookOpen },
   { id: 'rules', label: 'Rules', icon: ShieldCheck },
+  { id: 'earnings', label: 'Earnings', icon: CalendarDays },
 ];
 
 interface TradeTabProps {
@@ -97,6 +99,7 @@ const TradeTab: React.FC<TradeTabProps> = ({ holdingSymbols, onNotify }) => {
       {view === 'scanner' && <TradeScannerPanel rules={rules} holdingSymbols={holdingSymbols} onSaveRules={saveRules} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
       {view === 'journal' && <TradeJournalPanel rules={rules} journal={journal} onSave={saveTrade} onDelete={deleteTrade} />}
       {view === 'rules' && <RulesPanel rules={rules} onSave={next => { saveRules(next); onNotify('Trading rules saved'); }} />}
+      {view === 'earnings' && <TradeEarningsPanel rules={rules} holdingSymbols={holdingSymbols} onSaveRules={next => { saveRules(next); onNotify('Added to your watchlist'); }} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
 
       <p className="text-[10px] text-secondary">
         For practice and education, not financial advice - most day traders lose money. Prices are delayed and unofficial (Yahoo Finance). Rules adapted from the open-source day-trader-skill.

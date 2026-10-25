@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { handleExchangeBalances } from './server/cryptoExchanges';
 import { handleSolanaRpc } from './server/solanaRpc';
+import { handleEarningsCalendar } from './server/earningsCalendar';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -15,19 +16,20 @@ export default defineConfig(({ mode }) => {
       plugins: [
         react(),
         {
-          // Mirrors server/index.ts's crypto routes for local `vite dev`: the same handlers,
-          // given a standard Request built from Node's request.
+          // Mirrors server/index.ts's crypto and earnings routes for local `vite dev`: the same
+          // handlers, given a standard Request built from Node's request.
           name: 'crypto-routes',
           configureServer(server) {
             const routes: Record<string, (request: Request) => Promise<Response>> = {
               '/api/crypto/exchange': handleExchangeBalances,
               '/api/crypto/solana': request => handleSolanaRpc(request, env.SOLANA_RPC_URL),
+              '/api/earnings-calendar': handleEarningsCalendar,
             };
             Object.entries(routes).forEach(([route, handle]) => {
               server.middlewares.use(route, async (req, res) => {
                 const chunks: Buffer[] = [];
                 for await (const chunk of req) chunks.push(chunk as Buffer);
-                const response = await handle(new Request(`http://localhost${route}`, {
+                const response = await handle(new Request(`http://localhost${route}${new URL(req.url || '', 'http://localhost').search}`, {
                   method: req.method,
                   headers: { 'Content-Type': 'application/json' },
                   body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks).toString('utf8'),
