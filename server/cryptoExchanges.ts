@@ -194,16 +194,31 @@ const okx = async ({ apiKey, apiSecret, passphrase }: ExchangeCredentials): Prom
 export const bybitSignature = async (timestamp: string, apiKey: string, recvWindow: string, query: string, secret: string) =>
   hex(await hmac('SHA-256', secret, `${timestamp}${apiKey}${recvWindow}${query}`));
 
+// Like Binance, Bybit's CDN blocks some server locations; api.bytick.com is its official alternative.
+const BYBIT_HOSTS = ['api.bybit.com', 'api.bytick.com'];
+const isBlocked = (error: unknown) => isGeoBlock(error) || (error instanceof Error && /^403: .*(cloudfront|block access from your country)/is.test(error.message));
+
 const bybit = async ({ apiKey, apiSecret }: ExchangeCredentials): Promise<ExchangeResult> => {
   const signed = async (path: string, query: string) => {
-    const timestamp = String(Date.now());
-    const recvWindow = '10000';
-    const sign = await bybitSignature(timestamp, apiKey, recvWindow, query, apiSecret);
-    const data = await call(`https://api.bybit.com${path}?${query}`, { headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-SIGN': sign, 'X-BAPI-TIMESTAMP': timestamp, 'X-BAPI-RECV-WINDOW': recvWindow } });
-    if (data?.retCode !== 0) throw new Error(data?.retMsg || 'Bybit refused the request');
-    return data.result;
+    let lastError: unknown;
+    for (const host of BYBIT_HOSTS) {
+      const timestamp = String(Date.now());
+      const recvWindow = '10000';
+      const sign = await bybitSignature(timestamp, apiKey, recvWindow, query, apiSecret);
+      try {
+        const data = await call(`https://${host}${path}?${query}`, { headers: { 'X-BAPI-API-KEY': apiKey, 'X-BAPI-SIGN': sign, 'X-BAPI-TIMESTAMP': timestamp, 'X-BAPI-RECV-WINDOW': recvWindow } });
+        if (data?.retCode !== 0) throw new Error(data?.retMsg || 'Bybit refused the request');
+        return data.result;
+      } catch (error) {
+        if (!isBlocked(error)) throw error;
+        lastError = error;
+      }
+    }
+    throw new Error(lastError ? 'Bybit refuses requests from this server\'s location - balances can sync from the app running locally' : 'Bybit unavailable');
   };
-  const tickers = await call('https://api.bybit.com/v5/market/tickers?category=spot').catch(() => null);
+  const tickers = await call('https://api.bybit.com/v5/market/tickers?category=spot')
+    .catch(() => call('https://api.bytick.com/v5/market/tickers?category=spot'))
+    .catch(() => null);
   const quote = new Map<string, { price: number; change: number }>();
   (tickers?.result?.list || []).forEach((t: { symbol: string; lastPrice: string; price24hPcnt: string }) => {
     const match = t.symbol.match(/^(.+?)(USDT|USDC)$/);
