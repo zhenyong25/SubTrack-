@@ -93,13 +93,30 @@ const parts = async (tasks: [string, () => Promise<ExchangeBalance[]>][]): Promi
 
 export const binanceSignature = async (query: string, secret: string) => hex(await hmac('SHA-256', secret, query));
 
+// Binance's CDN geo-blocks some server locations (an HTML 403/451 page instead of its JSON API),
+// so its official alternative hosts are tried in turn. Market data comes from its public mirror.
+const BINANCE_HOSTS = ['api.binance.com', 'api-gcp.binance.com', 'api1.binance.com', 'api2.binance.com', 'api3.binance.com', 'api4.binance.com'];
+const isGeoBlock = (error: unknown) => error instanceof Error && /^(403|451): (<|\s*$)|restricted location|unavailable from a restricted/i.test(error.message);
+
 const binance = async ({ apiKey, apiSecret }: ExchangeCredentials): Promise<ExchangeResult> => {
   const signed = async (method: 'GET' | 'POST', path: string, params: Record<string, string> = {}) => {
-    const query = new URLSearchParams({ ...params, recvWindow: '10000', timestamp: String(Date.now()) }).toString();
-    const signature = await binanceSignature(query, apiSecret);
-    return call(`https://api.binance.com${path}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': apiKey } });
+    let lastError: unknown;
+    for (const host of BINANCE_HOSTS) {
+      // A fresh timestamp and signature per attempt, so a retry can't fall outside recvWindow.
+      const query = new URLSearchParams({ ...params, recvWindow: '10000', timestamp: String(Date.now()) }).toString();
+      const signature = await binanceSignature(query, apiSecret);
+      try {
+        return await call(`https://${host}${path}?${query}&signature=${signature}`, { method, headers: { 'X-MBX-APIKEY': apiKey } });
+      } catch (error) {
+        if (!isGeoBlock(error)) throw error;
+        lastError = error;
+      }
+    }
+    throw new Error(lastError ? 'Binance refuses requests from this server\'s location - balances can sync from the app running locally' : 'Binance unavailable');
   };
-  const tickers: { symbol: string; lastPrice: string; priceChangePercent: string }[] = await call('https://api.binance.com/api/v3/ticker/24hr?type=MINI').catch(() => []);
+  const tickers: { symbol: string; lastPrice: string; priceChangePercent: string }[] = await call('https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI')
+    .catch(() => call('https://api.binance.com/api/v3/ticker/24hr?type=MINI'))
+    .catch(() => []);
   const quote = new Map<string, { price: number; change: number }>();
   (Array.isArray(tickers) ? tickers : []).forEach(t => {
     const match = t.symbol.match(/^(.+?)(USDT|FDUSD|USDC)$/);
@@ -278,7 +295,10 @@ export const coinbaseJwt = async (keyName: string, secret: string, method: strin
 };
 
 const coinbase = async ({ apiKey, apiSecret }: ExchangeCredentials): Promise<ExchangeResult> => {
-  await coinbaseKey(apiSecret); // fail fast on a malformed key
+  // Fail fast, and clearly, on a key that isn't in a format Coinbase issues.
+  await coinbaseKey(apiSecret).catch(() => {
+    throw new Error('that private key could not be read - paste the whole key exactly as Coinbase showed it (for EC keys, including the BEGIN/END lines)');
+  });
   const host = 'api.coinbase.com';
   const signed = async (path: string) =>
     call(`https://${host}${path}`, { headers: { Authorization: `Bearer ${await coinbaseJwt(apiKey, apiSecret, 'GET', host, path)}` } });

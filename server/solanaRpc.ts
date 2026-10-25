@@ -1,8 +1,8 @@
-// Read-only relay to Solana's public RPC for the crypto wallet scan. The official endpoint refuses
-// requests that carry a browser Origin header (403), but answers the same request server-side.
-// Only the balance lookups the scan needs are forwarded.
+// Read-only relay to public Solana RPC nodes for the crypto wallet scan. The official endpoint
+// refuses requests that carry a browser Origin header (403), and blocks some server providers too,
+// so several public nodes are tried in turn. Only the balance lookups the scan needs are forwarded.
 
-const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPCS = ['https://api.mainnet-beta.solana.com', 'https://solana-rpc.publicnode.com', 'https://solana-mainnet.public.blastapi.io'];
 const ALLOWED_METHODS = new Set(['getBalance', 'getTokenAccountsByOwner', 'getMultipleAccounts']);
 
 export const handleSolanaRpc = async (request: Request): Promise<Response> => {
@@ -14,10 +14,20 @@ export const handleSolanaRpc = async (request: Request): Promise<Response> => {
   if (!body || Array.isArray(body) || !ALLOWED_METHODS.has(body.method || '')) {
     return Response.json({ error: { message: 'Method not allowed.' } }, { status: 400 });
   }
-  try {
-    const upstream = await fetch(SOLANA_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, signal: AbortSignal.timeout(15000) });
-    return new Response(upstream.body, { status: upstream.status, headers: { 'Content-Type': upstream.headers.get('Content-Type') || 'application/json' } });
-  } catch (error) {
-    return Response.json({ error: { message: error instanceof Error ? error.message : 'Solana RPC unreachable' } }, { status: 502 });
+  let lastError = 'Solana RPC unreachable';
+  for (const endpoint of SOLANA_RPCS) {
+    try {
+      const upstream = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, signal: AbortSignal.timeout(15000) });
+      const result = await upstream.text();
+      // A node that refuses us (403/429, or a JSON-RPC error like "IP blocked") - try the next one.
+      if (!upstream.ok || /"error"\s*:\s*\{[^}]*"code"\s*:\s*(403|429|-32029)/.test(result)) {
+        lastError = `${new URL(endpoint).host} answered ${upstream.status}`;
+        continue;
+      }
+      return new Response(result, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+    }
   }
+  return Response.json({ error: { message: lastError } }, { status: 502 });
 };
