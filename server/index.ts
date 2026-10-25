@@ -10,6 +10,7 @@ import { handleSolanaRpc } from './solanaRpc';
 
 export interface Env {
   HF_TOKEN: string;
+  SOLANA_RPC_URL?: string; // optional private Solana RPC (e.g. Helius) - set with: wrangler secret put SOLANA_RPC_URL
   ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
 
@@ -190,7 +191,7 @@ export default {
     }
 
     if (url.pathname === '/api/crypto/solana') {
-      return handleSolanaRpc(request);
+      return handleSolanaRpc(request, env.SOLANA_RPC_URL);
     }
 
     return env.ASSETS.fetch(request);

@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
           configureServer(server) {
             const routes: Record<string, (request: Request) => Promise<Response>> = {
               '/api/crypto/exchange': handleExchangeBalances,
-              '/api/crypto/solana': handleSolanaRpc,
+              '/api/crypto/solana': request => handleSolanaRpc(request, env.SOLANA_RPC_URL),
             };
             Object.entries(routes).forEach(([route, handle]) => {
               server.middlewares.use(route, async (req, res) => {
