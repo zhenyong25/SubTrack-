@@ -19,6 +19,8 @@ import StatementsList from './StatementsList';
 import RetirementFundsPanel from './RetirementFundsPanel';
 import CashForecastPanel, { type CashForecastProps } from './CashForecastPanel';
 import FinancialReviewPanel from './FinancialReviewPanel';
+import BankLogo from './BankLogo';
+import { findBank } from '../services/bankLogoService';
 import { balancesAsOf, RETIREMENT_SCHEME_COLORS, sumBalances } from '../services/retirementService';
 import { colorForInvestmentKind, compareValuations, getPositionMetrics } from '../services/investmentService';
 
@@ -47,7 +49,7 @@ interface CashFlowTabProps {
   onDeleteStatement: (statement: AccountStatement) => void | Promise<void>;
 }
 
-const INSTITUTIONS = ['Maybank', 'CIMB', 'OCBC', 'DBS', 'UOB', 'HSBC', 'Standard Chartered', 'Trust Bank', 'GXS Bank', 'YouTrip', 'Revolut', 'Wise', 'Other'];
+const INSTITUTIONS = ['Maybank', 'CIMB', 'OCBC', 'DBS', 'UOB', 'HSBC', 'Standard Chartered', 'Trust Bank', 'GXS Bank', 'MariBank', 'YouTrip', 'Revolut', 'Wise', 'Alipay', "Touch 'n Go", 'GrabPay', 'ShopeePay', 'Boost', 'Other'];
 
 const ACCOUNT_TYPES: Array<{ type: CashAccountType; label: string }> = [
   { type: 'Bank', label: 'Bank Account' },
@@ -111,6 +113,7 @@ const toDateInputValue = (date: Date = new Date()) => {
 type AccountFormState = {
   id: string | null;
   name: string;
+  accountNumber: string;
   institution: string;
   accountType: CashAccountType;
   country: string;
@@ -122,6 +125,7 @@ type AccountFormState = {
 const createEmptyAccountForm = (): AccountFormState => ({
   id: null,
   name: '',
+  accountNumber: '',
   institution: INSTITUTIONS[0],
   accountType: 'Bank',
   country: '',
@@ -572,6 +576,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     setAccountForm({
       id: account.id,
       name: account.name,
+      accountNumber: account.accountNumber || '',
       institution: account.institution,
       accountType: account.accountType,
       country: account.country,
@@ -587,9 +592,10 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     onSaveAccount({
       id: accountForm.id || crypto.randomUUID(),
       name: accountForm.name.trim(),
+      accountNumber: accountForm.accountNumber?.trim() || undefined,
       institution: accountForm.institution,
       accountType: accountForm.accountType,
-      country: accountForm.country.trim(),
+      country: accountForm.country?.trim() || '',
       currency: accountForm.currency,
       color: accountForm.color,
       notes: accountForm.notes.trim() || undefined,
@@ -880,12 +886,12 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                     aria-pressed={isSelected}
                     aria-label={`${isSelected ? 'Hide' : 'Show'} ${account.name} trend on the chart`}
                   >
-                    <div
+                    <BankLogo bank={findBank(account.name, account.institution)} className="h-10 w-10" fallback={<div
                       className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0"
                       style={{ backgroundColor: account.color }}
                     >
                       <AccountIcon size={18} />
-                    </div>
+                    </div>} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <p className="text-sm font-semibold text-textMain truncate">{account.name}</p>
@@ -897,6 +903,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                         {account.institution}
                         {account.country ? ` · ${account.country}` : ''}
                       </p>
+                      {account.accountNumber && <span className="mt-1 inline-block max-w-full rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-medium tabular-nums text-secondary break-all">Account: {account.accountNumber}</span>}
                     </div>
                     <div className="text-right shrink-0">
                       {latest ? (
@@ -1031,6 +1038,19 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
                   value={accountForm.name}
                   onChange={e => setAccountForm(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. Maybank Savings"
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:border-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="cash-account-number" className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Account number (optional)</label>
+                <input
+                  id="cash-account-number"
+                  type="text"
+                  autoComplete="off"
+                  value={accountForm.accountNumber}
+                  onChange={e => setAccountForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                  placeholder="e.g. 001-234567-8"
                   className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:border-primary outline-none"
                 />
               </div>

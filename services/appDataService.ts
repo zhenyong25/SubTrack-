@@ -392,6 +392,7 @@ type CashAccountRow = {
   id: string;
   user_id: string;
   name: string;
+  account_number?: string | null;
   institution: string;
   account_type: CashAccountType;
   country: string;
@@ -977,6 +978,7 @@ const mapPokerMttBankrollTransactionRow = (row: PokerMttBankrollTransactionRow):
 const mapCashAccountRow = (row: CashAccountRow): CashAccount => ({
   id: row.id,
   name: row.name,
+  accountNumber: row.account_number || undefined,
   institution: row.institution,
   accountType: row.account_type,
   country: row.country,
@@ -992,6 +994,7 @@ const mapCashAccountToRow = (account: CashAccount, userId: string) => ({
   id: account.id,
   user_id: userId,
   name: account.name,
+  account_number: account.accountNumber?.trim() || null,
   institution: account.institution,
   account_type: account.accountType,
   country: account.country,

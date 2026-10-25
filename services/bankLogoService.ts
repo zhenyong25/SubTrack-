@@ -11,6 +11,16 @@ export interface Bank {
 // lender, name or linked card name. More specific patterns come first (e.g. "Hong Leong" before
 // anything that might share a word with it).
 const BANKS: Array<Bank & { pattern: RegExp }> = [
+  { name: 'DBS PayLah!', domain: 'dbs.com.sg', pattern: /\bpaylah\b/i },
+  { name: 'YouTrip', domain: 'you.co', pattern: /\byou\s?trip\b/i },
+  { name: 'Alipay', domain: 'alipay.com', pattern: /\balipay\b|支付宝/i },
+  { name: "Touch 'n Go", domain: 'tngdigital.com.my', pattern: /\btouch\s*['’]?\s*n\s*['’]?\s*go\b|\btng\b/i },
+  { name: 'Wise', domain: 'wise.com', pattern: /\bwise\b|\btransferwise\b/i },
+  { name: 'Revolut', domain: 'revolut.com', pattern: /\brevolut\b/i },
+  { name: 'GrabPay', domain: 'grab.com', pattern: /\bgrab\s?pay\b/i },
+  { name: 'ShopeePay', domain: 'shopeepay.com.my', pattern: /\bshopee\s?pay\b/i },
+  { name: 'Boost', domain: 'myboost.co', pattern: /\bboost\b/i },
+  { name: 'MAE', domain: 'maybank.com', pattern: /\bmae\b/i },
   { name: 'DBS', domain: 'dbs.com.sg', pattern: /\bdbs\b|\bposb\b/i },
   { name: 'OCBC', domain: 'ocbc.com', pattern: /\bocbc\b/i },
   { name: 'UOB', domain: 'uob.com.sg', pattern: /\buob\b|united overseas bank/i },
@@ -27,6 +37,7 @@ const BANKS: Array<Bank & { pattern: RegExp }> = [
   { name: 'Bank Islam', domain: 'bankislam.com', pattern: /bank islam/i },
   { name: 'Trust Bank', domain: 'trustbank.sg', pattern: /trust bank/i },
   { name: 'GXS Bank', domain: 'gxs.com.sg', pattern: /\bgxs\b/i },
+  { name: 'MariBank', domain: 'maribank.sg', pattern: /\bmari\s?bank\b/i },
   { name: 'Bank of China', domain: 'bankofchina.com', pattern: /bank of china|\bboc\b/i },
 ];
 
