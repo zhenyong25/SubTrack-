@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Shield,
   Settings2,
+  Spade,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -27,9 +28,13 @@ import BrokerageLogo from './BrokerageLogo';
 import { recordedHoldingValueAt } from '../services/portfolioHistoryService';
 import TickerDetail from './TickerDetail';
 import PortfolioInsights, { type InsightPosition } from './PortfolioInsights';
+import PokerPanel, { type PokerPanelProps } from './PokerPanel';
+import { bankrollStats } from '../services/pokerService';
 
 type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX';
-type InvestmentCategory = 'All' | InvestmentKind;
+// Poker is its own dashboard (bankroll, tournaments, cash games) rather than a holdings list.
+type InvestmentCategory = 'All' | InvestmentKind | 'Poker';
+const isHoldingKind = (category: InvestmentCategory): category is Exclude<InvestmentKind, 'Poker (MTT)'> => category !== 'All' && category !== 'Poker';
 
 interface InvestmentTabProps {
   baseCurrency: string;
@@ -46,12 +51,13 @@ interface InvestmentTabProps {
   onDeleteHolding: (holdingId: string) => void;
   onSaveValuation: (valuation: InvestmentValuation) => void;
   onDeleteValuation: (valuationId: string) => void;
+  poker: PokerPanelProps;
 }
 
 // Cash and Other are hidden for now (not removed from the underlying InvestmentKind type,
 // so any existing holding of that kind still displays fine under "All" - just not selectable
 // as a filter tab or an option when adding a new holding).
-const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards'];
+const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards', 'Poker'];
 // Kinds a Yahoo Finance ticker lookup makes sense for, and where going Long vs Short is a
 // meaningful distinction (Pokemon Cards aren't traded either way).
 const QUOTABLE_KINDS: InvestmentKind[] = ['Stocks', 'Crypto'];
@@ -155,6 +161,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   onDeleteHolding,
   onSaveValuation,
   onDeleteValuation,
+  poker,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<InvestmentCategory>('All');
 
@@ -771,8 +778,12 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     if (!existing) setAccountColor(ACCOUNT_COLORS[(accounts.length + 1) % ACCOUNT_COLORS.length]);
   };
 
+  const isPoker = selectedCategory === 'Poker';
+  const pokerAccent = colorForInvestmentKind('Poker (MTT)');
+  const pokerBankroll = useMemo(() => bankrollStats(poker.bankroll, poker.tournaments, poker.sessions), [poker.bankroll, poker.tournaments, poker.sessions]);
+
   const categorySummary = useMemo(() => {
-    return CATEGORIES.filter(category => category !== 'All').map(category => {
+    return CATEGORIES.filter(isHoldingKind).map(category => {
       const items = accountInvestments.filter(investment => investment.kind === category);
       const basis = items.reduce((sum, investment) => sum + getBaseMetrics(investment).basis, 0);
       const value = items.reduce((sum, investment) => sum + getBaseMetrics(investment).currentValue, 0);
@@ -1062,7 +1073,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Select a Category</h3>
             <p className="text-xs text-secondary mt-1">Choose a portfolio to view and add entries.</p>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-secondary text-xs">
+          <div className={`${isPoker ? 'hidden' : 'hidden sm:flex'} items-center gap-2 text-secondary text-xs`}>
             <ChevronDown size={14} />
             {chartData.label}
           </div>
@@ -1072,7 +1083,9 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           {CATEGORIES.map(category => {
             const count = category === 'All'
               ? accountInvestments.length
-              : accountInvestments.filter(investment => investment.kind === category).length;
+              : category === 'Poker'
+                ? poker.tournaments.length + poker.sessions.length
+                : accountInvestments.filter(investment => investment.kind === category).length;
 
             return (
               <button
@@ -1088,6 +1101,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           })}
         </div>
 
+        {!isPoker && (
         <div className="mt-4 border-t border-border pt-3">
           <div className="flex items-center justify-between gap-3 mb-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-secondary">Account</p>
@@ -1131,9 +1145,13 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             <p className="text-xs text-secondary">Create accounts (e.g. "IBKR Margin", "Futu Cash") to tag holdings and see each account's value separately.</p>
           )}
         </div>
+        )}
       </div>
 
 
+      {isPoker && <PokerPanel {...poker} baseCurrency={baseCurrency} />}
+
+      {!isPoker && (<>
       <div className="investment-chart rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
         <div className="absolute inset-0 opacity-60 pointer-events-none bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.06),_transparent_30%)] dark:bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.12),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.08),_transparent_30%)]" />
         <div className="absolute -right-6 -top-8 w-32 h-32 rounded-full bg-cyan-400/10 blur-2xl" />
@@ -1401,6 +1419,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           <Plus size={24} />
         </button>
       </div>
+      </>)}
 
 
       {valuationTarget && (
@@ -1841,7 +1860,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           <p className="hidden text-xs text-secondary sm:block">Select a category to focus the dashboard</p>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {categorySummary.map(summary => {
             const isSelected = selectedCategory === summary.category;
             const accent = colorForInvestmentKind(summary.category);
@@ -1877,9 +1896,32 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('Poker')}
+            aria-pressed={isPoker}
+            className={`rounded-2xl border p-4 text-left transition-colors ${
+              isPoker ? 'border-primary bg-background ring-1 ring-primary' : 'border-border bg-background hover:border-secondary'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ color: pokerAccent, backgroundColor: `${pokerAccent}1f` }}>
+                  <Spade size={15} />
+                </span>
+                <span className="truncate text-xs font-bold uppercase tracking-wide text-textMain">Poker</span>
+              </span>
+              <span className="shrink-0 text-[11px] text-secondary">{poker.tournaments.length} MTT · {poker.sessions.length} cash</span>
+            </div>
+            <p className="mt-3 text-lg font-extrabold tabular-nums text-textMain sm:text-xl">{formatMoney(pokerBankroll.bankroll, 'USD')}</p>
+            <p className={`mt-1 text-[11px] font-semibold ${toneFor(pokerBankroll.totalProfit) === 'text-textMain' ? 'text-secondary' : toneFor(pokerBankroll.totalProfit)}`}>
+              {pokerBankroll.returnOnDeposits === undefined ? 'Bankroll' : `${pokerBankroll.returnOnDeposits > 0 ? '+' : ''}${(pokerBankroll.returnOnDeposits * 100).toFixed(1)}% return on deposits`}
+            </p>
+          </button>
         </div>
       </section>
 
+      {!isPoker && (<>
       <section className="investment-summary bg-surface rounded-2xl border border-border p-4 shadow-sm" aria-labelledby="selected-portfolio-heading">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Performance snapshot</p>
@@ -2124,6 +2166,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 };

@@ -345,6 +345,28 @@
   .expense-days-month { columns: 3; }
 }
 
+.poker-two-column { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.poker-full-width { grid-column: 1 / -1; }
+.poker-analysis, .poker-log { min-width: 0; }
+.poker-results-card {
+  background: var(--color-background, #0f172a);
+  border: 1px solid #64748b;
+  border-top: 3px solid #ec4899;
+}
+.poker-result-link {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--poker-accent) 14%, transparent), transparent), var(--color-background, #0f172a);
+  border: 1px solid color-mix(in srgb, var(--poker-accent) 55%, #64748b);
+  border-left: 4px solid var(--poker-accent);
+}
+.poker-result-link:hover {
+  border-color: var(--poker-accent);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--poker-accent) 15%, transparent);
+}
+@media (min-width: 1024px) {
+  .poker-two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .poker-log-list { max-height: 680px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+}
+
 /* Preserve usable chart and panel widths on smaller laptops. */
 @media (min-width: 1024px) and (max-width: 1279px) {
   .dashboard-layout > :is(.dashboard-year, .dashboard-categories, .dashboard-subscriptions, .dashboard-cards),

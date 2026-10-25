@@ -138,6 +138,10 @@ See [Financial review calculations and limits](docs/financial-review.md). Run `n
 
 The header bell combines bills, trials, debts, and savings deadlines with filters, snooze/dismiss, restore, and direct record navigation. Reminder choices stay with this account on this device. These are in-app reminders; daily expense push notifications remain separate. See [Smart reminder behavior](docs/smart-reminders.md). Run `npm run test:reminders` to verify dates and preference storage.
 
+## Poker dashboard
+
+Under **Investments → Poker**, desktop views use two columns for analytics and logs; mobile views remain stacked. Tournament and cash-game filters update statistics and charts together. Bankroll has balance/cash-flow chart toggles and keeps its opening balance when filtering dates. See [Poker dashboard behavior](docs/poker-dashboard.md). Run `npm run test:poker` to verify calculations and filters.
+
 ## Debts and loans
 
 The **Debts** tab tracks mortgages, car loans, personal loans and credit cards: balances, interest (reducing-balance or flat rate, with the effective rate), instalments, due dates and payoff dates. Credit cards are tracked statement by statement and can be linked to a card in the **Cards** tab. Local storage works immediately; for cloud storage, run [supabase_loans_schema.sql](supabase_loans_schema.sql) in Supabase (safe to run again after updates). Run `npm run test:loans` to verify the calculations.

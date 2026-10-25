@@ -2,7 +2,7 @@ import { SAVINGS_STORAGE_KEY } from './savingsGoalMath';
 import { REMINDER_STORAGE_PREFIX } from './reminderPreferenceService';
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
+import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerCashSession, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -19,6 +19,7 @@ const INVESTMENT_TRANSACTIONS_STORAGE_KEY = 'subtrack_investment_transactions_v1
 const INVESTMENT_ACCOUNTS_STORAGE_KEY = 'subtrack_investment_accounts_v1';
 const POKER_MTT_TOURNAMENTS_STORAGE_KEY = 'subtrack_poker_mtt_tournaments_v1';
 const POKER_MTT_BANKROLL_STORAGE_KEY = 'subtrack_poker_mtt_bankroll_v1';
+const POKER_CASH_SESSIONS_STORAGE_KEY = 'subtrack_poker_cash_sessions_v1';
 const CASH_ACCOUNTS_STORAGE_KEY = 'subtrack_cash_accounts_v1';
 const CASH_BALANCE_ENTRIES_STORAGE_KEY = 'subtrack_cash_balance_entries_v1';
 const INVESTMENT_VALUATIONS_STORAGE_KEY = 'subtrack_investment_valuations_v1';
@@ -88,6 +89,7 @@ export interface LoadedAppData {
   loanPayments: LoanPayment[];
   pokerMttTournaments: PokerMttTournament[];
   pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
+  pokerCashSessions: PokerCashSession[];
   cashAccounts: CashAccount[];
   cashBalanceEntries: CashBalanceEntry[];
   retirementFunds: RetirementFund[];
@@ -371,6 +373,22 @@ type PokerMttTournamentRow = {
   buy_in_usd: number;
   cashout_usd: number;
   bounty_usd: number;
+  is_bounty?: boolean | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PokerCashSessionRow = {
+  id: string;
+  user_id: string;
+  investment_id: string;
+  session_date: string;
+  game: string | null;
+  venue: string | null;
+  buy_in_usd: number;
+  cash_out_usd: number;
+  duration_hours: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -383,6 +401,8 @@ type PokerMttBankrollTransactionRow = {
   event_date: string;
   event_type: 'Deposit' | 'Withdrawal' | 'Adjustment';
   amount_usd: number;
+  currency?: string | null;
+  amount?: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -959,9 +979,37 @@ const mapPokerMttTournamentRow = (row: PokerMttTournamentRow): PokerMttTournamen
   buyInUsd: Number(row.buy_in_usd),
   cashoutUsd: Number(row.cashout_usd),
   bountyUsd: Number(row.bounty_usd),
+  isBounty: row.is_bounty ?? undefined,
   notes: row.notes || undefined,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+});
+
+const mapPokerCashSessionRow = (row: PokerCashSessionRow): PokerCashSession => ({
+  id: row.id,
+  investmentId: row.investment_id,
+  sessionDate: dateOnly(row.session_date),
+  game: row.game || undefined,
+  venue: row.venue || undefined,
+  buyInUsd: Number(row.buy_in_usd),
+  cashOutUsd: Number(row.cash_out_usd),
+  durationHours: row.duration_hours == null ? undefined : Number(row.duration_hours),
+  notes: row.notes || undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapPokerCashSessionToRow = (session: PokerCashSession, userId: string) => ({
+  id: session.id,
+  user_id: userId,
+  investment_id: session.investmentId,
+  session_date: dateOnly(session.sessionDate),
+  game: session.game || null,
+  venue: session.venue || null,
+  buy_in_usd: session.buyInUsd,
+  cash_out_usd: session.cashOutUsd,
+  duration_hours: session.durationHours ?? null,
+  notes: session.notes || null,
 });
 
 const mapPokerMttBankrollTransactionRow = (row: PokerMttBankrollTransactionRow): PokerMttBankrollTransaction => ({
@@ -970,6 +1018,8 @@ const mapPokerMttBankrollTransactionRow = (row: PokerMttBankrollTransactionRow):
   eventDate: row.event_date,
   eventType: row.event_type,
   amountUsd: Number(row.amount_usd),
+  currency: row.currency && row.currency !== 'USD' ? row.currency : undefined,
+  amount: row.currency && row.currency !== 'USD' && row.amount != null ? Number(row.amount) : undefined,
   notes: row.notes || undefined,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -1104,6 +1154,7 @@ const loadLocalData = (): LoadedAppData => {
   const investmentTransactions = readLocalJson<InvestmentTransaction[]>(INVESTMENT_TRANSACTIONS_STORAGE_KEY, []);
   const pokerMttTournaments = readLocalJson<PokerMttTournament[]>(POKER_MTT_TOURNAMENTS_STORAGE_KEY, []);
   const pokerMttBankrollTransactions = readLocalJson<PokerMttBankrollTransaction[]>(POKER_MTT_BANKROLL_STORAGE_KEY, []);
+  const pokerCashSessions = readLocalJson<PokerCashSession[]>(POKER_CASH_SESSIONS_STORAGE_KEY, []);
   const cashAccounts = readLocalJson<CashAccount[]>(CASH_ACCOUNTS_STORAGE_KEY, []);
   const cashBalanceEntries = readLocalJson<CashBalanceEntry[]>(CASH_BALANCE_ENTRIES_STORAGE_KEY, []);
   const retirementFunds = readLocalJson<RetirementFund[]>(RETIREMENT_FUNDS_STORAGE_KEY, []);
@@ -1127,6 +1178,7 @@ const loadLocalData = (): LoadedAppData => {
     loanPayments: readLocalJson<LoanPayment[]>(LOAN_PAYMENTS_STORAGE_KEY, []),
     pokerMttTournaments,
     pokerMttBankrollTransactions,
+    pokerCashSessions,
     cashAccounts,
     cashBalanceEntries,
     retirementFunds,
@@ -1214,6 +1266,12 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     : (investmentAccountsResult.data as InvestmentAccountRow[] | null | undefined)?.map(mapInvestmentAccountRow) ?? [];
   const pokerMttTournaments = (pokerTournamentsResult.data as PokerMttTournamentRow[] | null | undefined)?.map(mapPokerMttTournamentRow) ?? [];
   const pokerMttBankrollTransactions = (pokerBankrollResult.data as PokerMttBankrollTransactionRow[] | null | undefined)?.map(mapPokerMttBankrollTransactionRow) ?? [];
+  // Cash sessions have their own table (supabase_poker_schema.sql); until it exists, keep the
+  // sessions saved on this device rather than showing none.
+  const pokerCashResult = await selectAllRows('poker_cash_sessions', userId, 'session_date', true);
+  const pokerCashSessions = pokerCashResult.error
+    ? readLocalJson<PokerCashSession[]>(POKER_CASH_SESSIONS_STORAGE_KEY, [])
+    : (pokerCashResult.data as PokerCashSessionRow[] | null | undefined)?.map(mapPokerCashSessionRow) ?? [];
   const cashAccounts = (cashAccountsResult.data as CashAccountRow[] | null | undefined)?.map(mapCashAccountRow) ?? [];
   const cashBalanceEntries = (cashBalanceEntriesResult.data as CashBalanceEntryRow[] | null | undefined)?.map(mapCashBalanceEntryRow) ?? [];
   // If the retirement tables don't exist yet (SQL not run) the queries error - keep whatever was
@@ -1274,6 +1332,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     loanPayments,
     pokerMttTournaments,
     pokerMttBankrollTransactions,
+    pokerCashSessions,
     cashAccounts,
     cashBalanceEntries,
     retirementFunds,
@@ -1483,24 +1542,13 @@ export const saveInvestmentTransactions = async (transactions: InvestmentTransac
   return error ? error.message : null;
 };
 
-export const savePokerMttTournaments = async (tournaments: PokerMttTournament[]) => {
+export const savePokerMttTournaments = async (tournaments: PokerMttTournament[]): Promise<string | null> => {
   writeLocalJson(POKER_MTT_TOURNAMENTS_STORAGE_KEY, tournaments);
 
-  if (!supabase) return;
+  if (!supabase) return null;
   const userId = await getSupabaseUserId();
-  if (!userId) return;
-
-  if (tournaments.length === 0) return;
-
-  const existingResult = await supabase.from('poker_mtt_tournaments').select('id').eq('user_id', userId);
-  if (!existingResult.error) {
-    const nextIds = new Set(tournaments.map(tournament => tournament.id));
-    const existingIds = (existingResult.data ?? []).map(row => row.id);
-    const staleIds = existingIds.filter(id => !nextIds.has(id));
-    if (staleIds.length > 0) {
-      await supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId).in('id', staleIds);
-    }
-  }
+  if (!userId) return null;
+  if (tournaments.length === 0) return null;
 
   const rows = tournaments.map(tournament => ({
     id: tournament.id,
@@ -1513,10 +1561,27 @@ export const savePokerMttTournaments = async (tournaments: PokerMttTournament[])
     buy_in_usd: tournament.buyInUsd,
     cashout_usd: tournament.cashoutUsd,
     bounty_usd: tournament.bountyUsd,
+    is_bounty: tournament.isBounty ?? false,
     notes: tournament.notes || null,
   }));
 
-  await supabase.from('poker_mtt_tournaments').upsert(rows, { onConflict: 'id' });
+  let { error } = await supabase.from('poker_mtt_tournaments').upsert(rows, { onConflict: 'id' });
+  if (error && isMissingColumnError(error, 'is_bounty')) {
+    // Older schema: keep the results, drop only the bounty-event flag.
+    ({ error } = await supabase.from('poker_mtt_tournaments').upsert(rows.map(({ is_bounty: _skip, ...row }) => row), { onConflict: 'id' }));
+    if (!error) return 'saved, but the bounty-event flag needs the database update - run supabase_poker_schema.sql in Supabase';
+  }
+  if (error) console.error('Saving poker tournaments failed', error);
+  return error ? error.message : null;
+};
+
+export const deletePokerMttTournament = async (tournamentId: string, remaining: PokerMttTournament[]): Promise<string | null> => {
+  writeLocalJson(POKER_MTT_TOURNAMENTS_STORAGE_KEY, remaining);
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+  const { error } = await supabase.from('poker_mtt_tournaments').delete().eq('id', tournamentId).eq('user_id', userId);
+  return error ? error.message : null;
 };
 
 export const deletePokerMttBankrollTransaction = async (eventId: string) => {
@@ -1536,24 +1601,13 @@ export const deletePokerMttBankrollTransaction = async (eventId: string) => {
   writeLocalJson(POKER_MTT_BANKROLL_STORAGE_KEY, events.filter(event => event.id !== eventId));
 };
 
-export const savePokerMttBankrollTransactions = async (events: PokerMttBankrollTransaction[]) => {
+export const savePokerMttBankrollTransactions = async (events: PokerMttBankrollTransaction[]): Promise<string | null> => {
   writeLocalJson(POKER_MTT_BANKROLL_STORAGE_KEY, events);
 
-  if (!supabase) return;
+  if (!supabase) return null;
   const userId = await getSupabaseUserId();
-  if (!userId) return;
-
-  if (events.length === 0) return;
-
-  const existingResult = await supabase.from('poker_mtt_bankroll_transactions').select('id').eq('user_id', userId);
-  if (!existingResult.error) {
-    const nextIds = new Set(events.map(event => event.id));
-    const existingIds = (existingResult.data ?? []).map(row => row.id);
-    const staleIds = existingIds.filter(id => !nextIds.has(id));
-    if (staleIds.length > 0) {
-      await supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId).in('id', staleIds);
-    }
-  }
+  if (!userId) return null;
+  if (events.length === 0) return null;
 
   const rows = events.map(event => ({
     id: event.id,
@@ -1562,10 +1616,41 @@ export const savePokerMttBankrollTransactions = async (events: PokerMttBankrollT
     event_date: dateOnly(event.eventDate),
     event_type: event.eventType,
     amount_usd: event.amountUsd,
+    currency: event.currency || 'USD',
+    amount: event.amount ?? event.amountUsd,
     notes: event.notes || null,
   }));
 
-  await supabase.from('poker_mtt_bankroll_transactions').upsert(rows, { onConflict: 'id' });
+  let { error } = await supabase.from('poker_mtt_bankroll_transactions').upsert(rows, { onConflict: 'id' });
+  if (error && (isMissingColumnError(error, 'currency') || isMissingColumnError(error, 'amount'))) {
+    // Older schema: the USD amounts (all the maths needs) still save; only the original currency is lost.
+    ({ error } = await supabase.from('poker_mtt_bankroll_transactions').upsert(rows.map(({ currency: _c, amount: _a, ...row }) => row), { onConflict: 'id' }));
+    if (!error) return 'saved in USD, but the deposit currency needs the database update - run supabase_poker_schema.sql in Supabase';
+  }
+  if (error) console.error('Saving poker bankroll failed', error);
+  return error ? error.message : null;
+};
+
+// Cash-game sessions, in their own table (supabase_poker_schema.sql).
+export const savePokerCashSessions = async (sessions: PokerCashSession[]): Promise<string | null> => {
+  writeLocalJson(POKER_CASH_SESSIONS_STORAGE_KEY, sessions);
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+  if (sessions.length === 0) return null;
+  const { error } = await supabase.from('poker_cash_sessions').upsert(sessions.map(session => mapPokerCashSessionToRow(session, userId)), { onConflict: 'id' });
+  if (error) console.error('Saving poker cash sessions failed', error);
+  if (error && ['42P01', 'PGRST205'].includes(error.code || '')) return 'saved on this device - cash games need the database update: run supabase_poker_schema.sql in Supabase';
+  return error ? error.message : null;
+};
+
+export const deletePokerCashSession = async (sessionId: string, remaining: PokerCashSession[]): Promise<string | null> => {
+  writeLocalJson(POKER_CASH_SESSIONS_STORAGE_KEY, remaining);
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+  const { error } = await supabase.from('poker_cash_sessions').delete().eq('id', sessionId).eq('user_id', userId);
+  return error ? error.message : null;
 };
 
 // Returns the database's error message when the remote write fails (the data is still kept
@@ -2218,6 +2303,7 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(INVESTMENT_ACCOUNTS_STORAGE_KEY);
   localStorage.removeItem(POKER_MTT_TOURNAMENTS_STORAGE_KEY);
   localStorage.removeItem(POKER_MTT_BANKROLL_STORAGE_KEY);
+  localStorage.removeItem(POKER_CASH_SESSIONS_STORAGE_KEY);
   localStorage.removeItem(CASH_ACCOUNTS_STORAGE_KEY);
   localStorage.removeItem(CASH_BALANCE_ENTRIES_STORAGE_KEY);
   localStorage.removeItem(INVESTMENT_VALUATIONS_STORAGE_KEY);
@@ -2245,6 +2331,7 @@ export const clearStoredAppData = async () => {
     supabase.from('investment_transactions').delete().eq('user_id', userId),
     supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId),
     supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId),
+    supabase.from('poker_cash_sessions').delete().eq('user_id', userId),
     supabase.from('cash_accounts').delete().eq('user_id', userId),
     supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('retirement_funds').delete().eq('user_id', userId),
