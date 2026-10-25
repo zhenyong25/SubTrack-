@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { CURRENCIES } from '../types';
-import type { InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentPositionSide, InvestmentTransaction, InvestmentTransactionType, InvestmentValuation } from '../types';
+import type { CryptoSource, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentPositionSide, InvestmentTransaction, InvestmentTransactionType, InvestmentValuation } from '../types';
 import { fetchStockIntradayHistory, type StockIntradayHistory, fetchStockQuote, isHongKongSymbol, normalizeTickerSymbol } from '../services/stockQuoteService';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import { applyInvestmentTransaction, colorForInvestmentKind, compareValuations, getPositionMetrics, transactionTypeLabel, type PositionMetrics } from '../services/investmentService';
@@ -29,6 +29,10 @@ import { recordedHoldingValueAt } from '../services/portfolioHistoryService';
 import TickerDetail from './TickerDetail';
 import PortfolioInsights, { type InsightPosition } from './PortfolioInsights';
 import PokerPanel, { type PokerPanelProps } from './PokerPanel';
+import CryptoPanel from './CryptoPanel';
+import CryptoSourceLogo from './CryptoSourceLogo';
+import { useCryptoPortfolio } from './useCryptoPortfolio';
+import { summarize, type PricedBalance } from '../services/cryptoPortfolio';
 import { bankrollStats } from '../services/pokerService';
 
 type RangeMode = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX';
@@ -52,6 +56,11 @@ interface InvestmentTabProps {
   onSaveValuation: (valuation: InvestmentValuation) => void;
   onDeleteValuation: (valuationId: string) => void;
   poker: PokerPanelProps;
+  crypto: {
+    sources: CryptoSource[];
+    onSaveSource: (source: CryptoSource) => void;
+    onDeleteSource: (sourceId: string) => void;
+  };
 }
 
 // Cash and Other are hidden for now (not removed from the underlying InvestmentKind type,
@@ -162,6 +171,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   onSaveValuation,
   onDeleteValuation,
   poker,
+  crypto,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<InvestmentCategory>('All');
 
@@ -246,6 +256,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const [newHoldingPositionSide, setNewHoldingPositionSide] = useState<InvestmentPositionSide>('Long');
   const [newHoldingAccountId, setNewHoldingAccountId] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<AccountFilter>('all');
+  const [selectedCryptoSource, setSelectedCryptoSource] = useState('all');
+  const [cryptoAddRequest, setCryptoAddRequest] = useState(0);
   const [isAccountManagerOpen, setIsAccountManagerOpen] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [accountName, setAccountName] = useState('');
@@ -779,6 +791,31 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   };
 
   const isPoker = selectedCategory === 'Poker';
+  const isCrypto = selectedCategory === 'Crypto';
+  React.useEffect(() => { if (!isCrypto) setCryptoAddRequest(0); }, [isCrypto]);
+  // Manually added crypto holdings join the wallets in the live crypto view (valued in USD).
+  const manualCrypto = useMemo<PricedBalance[]>(() => investments
+    .filter(holding => holding.kind === 'Crypto' && holding.isActive && holding.units > 0 && (holding.positionSide || 'Long') === 'Long')
+    .map(holding => {
+      const valueUsd = convertCurrency(holding.units * holding.currentPrice, holding.currency, 'USD');
+      return {
+        sourceId: 'manual',
+        symbol: (holding.symbol || holding.name).toUpperCase().replace(/[-/]?(USDT|USD)$/, '') || holding.name,
+        name: holding.name,
+        amount: holding.units,
+        priceUsd: valueUsd / holding.units,
+        valueUsd,
+      };
+    }), [investments]);
+  const cryptoPortfolio = useCryptoPortfolio(crypto.sources, manualCrypto);
+  React.useEffect(() => {
+    if (selectedCryptoSource !== 'all' && selectedCryptoSource !== 'manual' && !crypto.sources.some(source => source.id === selectedCryptoSource)) setSelectedCryptoSource('all');
+  }, [crypto.sources, selectedCryptoSource]);
+  const scopedCryptoPortfolio = useMemo(() => {
+    if (selectedCryptoSource === 'all') return cryptoPortfolio;
+    const priced = cryptoPortfolio.priced.filter(balance => balance.sourceId === selectedCryptoSource);
+    return { ...cryptoPortfolio, priced, summary: summarize(priced), scanning: Boolean(cryptoPortfolio.scans[selectedCryptoSource]?.scanning) };
+  }, [cryptoPortfolio, selectedCryptoSource]);
   const pokerAccent = colorForInvestmentKind('Poker (MTT)');
   const pokerBankroll = useMemo(() => bankrollStats(poker.bankroll, poker.tournaments, poker.sessions), [poker.bankroll, poker.tournaments, poker.sessions]);
 
@@ -1081,7 +1118,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map(category => {
-            const count = category === 'All'
+            const count = category === 'Crypto' ? crypto.sources.length : category === 'All'
               ? accountInvestments.length
               : category === 'Poker'
                 ? poker.tournaments.length + poker.sessions.length
@@ -1107,14 +1144,21 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             <p className="text-[10px] font-bold uppercase tracking-wide text-secondary">Account</p>
             <button
               type="button"
-              onClick={openAccountManager}
+              onClick={() => isCrypto ? setCryptoAddRequest(value => value + 1) : openAccountManager()}
               className="flex items-center gap-1 text-xs font-bold text-primary hover:opacity-80"
             >
               {accounts.length > 0 ? <Settings2 size={12} /> : <Plus size={12} />}
-              {accounts.length > 0 ? 'Manage accounts' : 'Add a broker / margin account'}
+              {isCrypto ? 'Add wallet / exchange' : accounts.length > 0 ? 'Manage accounts' : 'Add a broker / margin account'}
             </button>
           </div>
-          {accounts.length > 0 ? (
+          {isCrypto ? (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Crypto accounts">
+              {[{ id: 'all', label: `All (${crypto.sources.length})` }, ...crypto.sources.map(source => ({ id: source.id, label: `${source.label} · ${source.kind === 'exchange' ? 'Exchange' : 'Wallet'}` })), ...(manualCrypto.length ? [{ id: 'manual', label: `Manual (${manualCrypto.length})` }] : [])].map(option => (
+                <button key={option.id} type="button" aria-pressed={selectedCryptoSource === option.id} onClick={() => setSelectedCryptoSource(option.id)} className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-bold transition-colors ${selectedCryptoSource === option.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-background text-secondary border-border hover:text-textMain hover:border-primary/40'}`}>{crypto.sources.some(source => source.id === option.id) && <CryptoSourceLogo exchange={crypto.sources.find(source => source.id === option.id)?.exchange} chain={crypto.sources.find(source => source.id === option.id)?.chains?.length === 1 ? crypto.sources.find(source => source.id === option.id)?.chains?.[0] : undefined} />}{option.label}</button>
+              ))}
+              {!crypto.sources.length && <p className="self-center text-xs text-secondary">Add a wallet or exchange to track crypto accounts.</p>}
+            </div>
+          ) : accounts.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {[
                 { id: 'all', label: 'All', color: undefined as string | undefined, count: investments.length },
@@ -1150,8 +1194,19 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
 
       {isPoker && <PokerPanel {...poker} baseCurrency={baseCurrency} />}
+      {isCrypto && (
+        <CryptoPanel
+          sources={crypto.sources}
+          selectedSource={selectedCryptoSource}
+          addRequest={cryptoAddRequest}
+          portfolio={scopedCryptoPortfolio}
+          baseCurrency={baseCurrency}
+          onSaveSource={crypto.onSaveSource}
+          onDeleteSource={crypto.onDeleteSource}
+        />
+      )}
 
-      {!isPoker && (<>
+      {!isPoker && !isCrypto && (<>
       <div className="investment-chart rounded-[1.5rem] p-5 shadow-2xl border overflow-hidden relative bg-slate-50 text-slate-950 border-slate-200 dark:bg-[#111111] dark:text-white dark:border-white/10">
         <div className="absolute inset-0 opacity-60 pointer-events-none bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.06),_transparent_30%)] dark:bg-[radial-gradient(circle_at_top_right,_rgba(6,182,212,0.12),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(34,211,238,0.08),_transparent_30%)]" />
         <div className="absolute -right-6 -top-8 w-32 h-32 rounded-full bg-cyan-400/10 blur-2xl" />
@@ -1404,7 +1459,9 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         )}
       </div>
+      </>)}
 
+      {!isPoker && (<>
       <div className="fixed bottom-24 right-5 z-40">
         <button
           type="button"
@@ -1887,12 +1944,23 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                     </span>
                     <span className="truncate text-xs font-bold uppercase tracking-wide text-textMain">{summary.category}</span>
                   </span>
-                  <span className="shrink-0 text-[11px] text-secondary">{summary.count} holding{summary.count === 1 ? '' : 's'}</span>
+                  <span className="shrink-0 text-[11px] text-secondary">{summary.category === 'Crypto' && crypto.sources.length > 0 ? `${crypto.sources.length} source${crypto.sources.length === 1 ? '' : 's'}${summary.count ? ` · ${summary.count} manual` : ''}` : `${summary.count} holding${summary.count === 1 ? '' : 's'}`}</span>
                 </div>
-                <p className="mt-3 text-lg font-extrabold tabular-nums text-textMain sm:text-xl">{formatMoney(summary.value, baseCurrency)}</p>
-                <p className={`mt-1 text-[11px] font-semibold ${summary.gain > 0 ? 'text-emerald-500' : summary.gain < 0 ? 'text-red-500' : 'text-secondary'}`}>
-                  {summary.gain > 0 ? '+' : ''}{summary.gainPct.toFixed(1)}% {summary.category === 'Pokemon Cards' ? 'change' : 'gain'}
-                </p>
+                {summary.category === 'Crypto' && (crypto.sources.length > 0 || cryptoPortfolio.summary.totalUsd > 0) ? (
+                  <>
+                    <p className="mt-3 text-lg font-extrabold tabular-nums text-textMain sm:text-xl">{formatMoney(convertCurrency(cryptoPortfolio.summary.totalUsd, 'USD', baseCurrency), baseCurrency)}</p>
+                    <p className={`mt-1 text-[11px] font-semibold ${toneFor(cryptoPortfolio.summary.change24hUsd) === 'text-textMain' ? 'text-secondary' : toneFor(cryptoPortfolio.summary.change24hUsd)}`}>
+                      {cryptoPortfolio.summary.change24hPct === undefined ? 'Live' : `${cryptoPortfolio.summary.change24hPct > 0 ? '+' : ''}${cryptoPortfolio.summary.change24hPct.toFixed(1)}% today · live`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-3 text-lg font-extrabold tabular-nums text-textMain sm:text-xl">{formatMoney(summary.value, baseCurrency)}</p>
+                    <p className={`mt-1 text-[11px] font-semibold ${summary.gain > 0 ? 'text-emerald-500' : summary.gain < 0 ? 'text-red-500' : 'text-secondary'}`}>
+                      {summary.gain > 0 ? '+' : ''}{summary.gainPct.toFixed(1)}% {summary.category === 'Pokemon Cards' ? 'change' : 'gain'}
+                    </p>
+                  </>
+                )}
               </button>
             );
           })}
@@ -1921,7 +1989,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         </div>
       </section>
 
-      {!isPoker && (<>
+      {!isPoker && !isCrypto && (<>
       <section className="investment-summary bg-surface rounded-2xl border border-border p-4 shadow-sm" aria-labelledby="selected-portfolio-heading">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Performance snapshot</p>
@@ -1975,12 +2043,14 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         valuationsByHolding={valuationsByHolding}
         accounts={accounts}
       />
+      </>)}
 
+      {!isPoker && (<>
       <div className="investment-holdings bg-surface rounded-2xl border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Category Details</h3>
-            <p className="text-xs text-secondary mt-1">Holdings inside {selectedCategory === 'All' ? 'your portfolio' : selectedCategory}.</p>
+            <p className="text-xs text-secondary mt-1">{isCrypto ? 'Crypto you added by hand. Wallets are tracked live above.' : `Holdings inside ${selectedCategory === 'All' ? 'your portfolio' : selectedCategory}.`}</p>
           </div>
           <div className="flex items-center gap-2 text-secondary text-xs">
             <BarChart3 size={18} className="text-primary" />

@@ -23,9 +23,9 @@ import CashFlowTab from './components/CashFlowTab';
 import DebtsTab from './components/DebtsTab';
 import SmartReminders from './components/SmartReminders';
 import { applyInvestmentTransaction, isPortfolioHolding } from './services/investmentService';
-import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, PokerCashSession, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
+import { Subscription, BillingCycle, UserProfile, PaymentCard, Income, Expense, BudgetPlan, CardBenefit, CashbackProgram, InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation, CardPointTransaction, PokerMttTournament, PokerMttBankrollTransaction, PokerCashSession, CryptoSource, CashAccount, CashBalanceEntry, RetirementFund, RetirementBalanceEntry, AccountStatement, AccountStatementKind, Loan, LoanPayment } from './types';
 import { calculateNextPayment, getExpenseCategoryColor } from './services/storageService';
-import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, deletePokerCashSession, deletePokerMttBankrollTransaction, deletePokerMttTournament, savePokerCashSessions, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
+import { clearStoredAppData, createDefaultProfile, deleteCashbackProgram, deleteExpenseRecord, getLastSaveError, getSupabaseClient, getSupabaseSession, isSupabaseConfigured, loadAppData, saveBudgetPlans, saveCardPointTransactions, saveCards, saveCashAccounts, saveCashBalanceEntries, saveCashbackProgram, saveExpenses, saveIncomes, saveInvestmentAccounts, saveInvestmentTransactions, saveInvestmentValuations, saveInvestments, saveLoanPayments, saveLoans, deleteCryptoSource, deletePokerCashSession, deletePokerMttBankrollTransaction, deletePokerMttTournament, saveCryptoSources, savePokerCashSessions, savePokerMttBankrollTransactions, savePokerMttTournaments, saveProfile, saveRetirementEntries, saveRetirementFunds, saveSubscriptions, signOut as supabaseSignOut } from './services/appDataService';
 import { getCardBenefitsForCard } from './services/cardBenefitsService';
 import AppLogo from './components/AppLogo';
 import GlobalSearch from './components/GlobalSearch';
@@ -75,6 +75,7 @@ function App() {
   const [pokerMttTournaments, setPokerMttTournaments] = useState<PokerMttTournament[]>([]);
   const [pokerMttBankrollTransactions, setPokerMttBankrollTransactions] = useState<PokerMttBankrollTransaction[]>([]);
   const [pokerCashSessions, setPokerCashSessions] = useState<PokerCashSession[]>([]);
+  const [cryptoSources, setCryptoSources] = useState<CryptoSource[]>([]);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cashBalanceEntries, setCashBalanceEntries] = useState<CashBalanceEntry[]>([]);
   const [retirementFunds, setRetirementFunds] = useState<RetirementFund[]>([]);
@@ -202,6 +203,7 @@ function App() {
         setPokerMttTournaments([]);
         setPokerMttBankrollTransactions([]);
         setPokerCashSessions([]);
+        setCryptoSources([]);
         setCashAccounts([]);
         setCashBalanceEntries([]);
         setRetirementFunds([]);
@@ -260,6 +262,7 @@ function App() {
         setPokerMttTournaments(loaded.pokerMttTournaments);
         setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
         setPokerCashSessions(loaded.pokerCashSessions);
+        setCryptoSources(loaded.cryptoSources);
         setCashAccounts(loaded.cashAccounts);
         setCashBalanceEntries(loaded.cashBalanceEntries);
         setRetirementFunds(loaded.retirementFunds);
@@ -907,6 +910,24 @@ function App() {
     }
   };
 
+  const handleSaveCryptoSource = async (input: CryptoSource) => {
+    const source = { ...input, createdAt: input.createdAt || new Date().toISOString() };
+    const exists = cryptoSources.some(item => item.id === source.id);
+    const updated = exists ? cryptoSources.map(item => (item.id === source.id ? source : item)) : [...cryptoSources, source];
+    setCryptoSources(updated);
+    const failure = await saveCryptoSources(updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast(exists ? `Updated ${source.label}` : `Added ${source.label} - scanning…`);
+  };
+
+  const handleDeleteCryptoSource = async (sourceId: string) => {
+    const updated = cryptoSources.filter(item => item.id !== sourceId);
+    setCryptoSources(updated);
+    const failure = await deleteCryptoSource(sourceId, updated);
+    if (failure) reportSyncFailure(failure);
+    else showToast('Wallet removed.');
+  };
+
   const handleAddInvestmentHolding = async (holding: InvestmentHolding) => {
     const updatedHoldings = [...investments, holding];
     setInvestments(updatedHoldings);
@@ -1007,6 +1028,7 @@ function App() {
           setPokerMttTournaments([]);
           setPokerMttBankrollTransactions([]);
           setPokerCashSessions([]);
+          setCryptoSources([]);
           setRetirementFunds([]);
           setRetirementEntries([]);
           setLoans([]);
@@ -1371,6 +1393,11 @@ function App() {
                     onDeleteSession: handleDeletePokerSession,
                     onSaveBankrollEvent: handleSavePokerBankrollEvent,
                     onDeleteBankrollEvent: handleDeletePokerBankrollEvent,
+                }}
+                crypto={{
+                    sources: cryptoSources,
+                    onSaveSource: handleSaveCryptoSource,
+                    onDeleteSource: handleDeleteCryptoSource,
                 }}
             />
         )}

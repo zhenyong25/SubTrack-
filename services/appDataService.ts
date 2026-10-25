@@ -2,7 +2,7 @@ import { SAVINGS_STORAGE_KEY } from './savingsGoalMath';
 import { REMINDER_STORAGE_PREFIX } from './reminderPreferenceService';
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, PokerCashSession, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
+import { AccountStatement, AccountStatementKind, BillingCycle, BudgetPlan, CardBenefit, CardPointTransaction, CardPointsActivityType, CardRewardType, CashbackCategory, CashbackProgram, CashbackTier, CashAccount, CashAccountType, CashBalanceEntry, Expense, Friend, Income, IncomeCycle, InvestmentAccount, InvestmentAccountType, InvestmentHolding, InvestmentKind, InvestmentTransaction, InvestmentValuation, ParsedStatementTransaction, PaymentCard, PaymentCardKind, CryptoChain, CryptoExchange, CryptoSource, PokerCashSession, PokerMttBankrollTransaction, PokerMttTournament, RetirementBalanceEntry, RetirementFund, RetirementScheme, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, StatementTransaction, StatementTransactionDirection, Subscription, UserProfile } from '../types';
 import { calculateNextPayment } from './storageService';
 
 const PROFILE_STORAGE_KEY = 'subtrack_profile';
@@ -20,6 +20,7 @@ const INVESTMENT_ACCOUNTS_STORAGE_KEY = 'subtrack_investment_accounts_v1';
 const POKER_MTT_TOURNAMENTS_STORAGE_KEY = 'subtrack_poker_mtt_tournaments_v1';
 const POKER_MTT_BANKROLL_STORAGE_KEY = 'subtrack_poker_mtt_bankroll_v1';
 const POKER_CASH_SESSIONS_STORAGE_KEY = 'subtrack_poker_cash_sessions_v1';
+const CRYPTO_SOURCES_STORAGE_KEY = 'subtrack_crypto_sources_v1';
 const CASH_ACCOUNTS_STORAGE_KEY = 'subtrack_cash_accounts_v1';
 const CASH_BALANCE_ENTRIES_STORAGE_KEY = 'subtrack_cash_balance_entries_v1';
 const INVESTMENT_VALUATIONS_STORAGE_KEY = 'subtrack_investment_valuations_v1';
@@ -90,6 +91,7 @@ export interface LoadedAppData {
   pokerMttTournaments: PokerMttTournament[];
   pokerMttBankrollTransactions: PokerMttBankrollTransaction[];
   pokerCashSessions: PokerCashSession[];
+  cryptoSources: CryptoSource[];
   cashAccounts: CashAccount[];
   cashBalanceEntries: CashBalanceEntry[];
   retirementFunds: RetirementFund[];
@@ -375,6 +377,20 @@ type PokerMttTournamentRow = {
   bounty_usd: number;
   is_bounty?: boolean | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CryptoSourceRow = {
+  id: string;
+  user_id: string;
+  kind: 'wallet' | 'exchange';
+  label: string;
+  address: string | null;
+  chains: string[] | null;
+  exchange: string | null;
+  custom_tokens: { chain: string; contract: string }[] | null;
+  color: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1012,6 +1028,32 @@ const mapPokerCashSessionToRow = (session: PokerCashSession, userId: string) => 
   notes: session.notes || null,
 });
 
+const mapCryptoSourceRow = (row: CryptoSourceRow): CryptoSource => ({
+  id: row.id,
+  kind: row.kind,
+  label: row.label,
+  address: row.address || undefined,
+  chains: (row.chains || undefined) as CryptoChain[] | undefined,
+  exchange: (row.exchange || undefined) as CryptoExchange | undefined,
+  customTokens: (row.custom_tokens || undefined) as CryptoSource['customTokens'],
+  color: row.color || undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+// Only what identifies the source - exchange API keys are never part of this row.
+const mapCryptoSourceToRow = (source: CryptoSource, userId: string) => ({
+  id: source.id,
+  user_id: userId,
+  kind: source.kind,
+  label: source.label,
+  address: source.address || null,
+  chains: source.chains || null,
+  exchange: source.exchange || null,
+  custom_tokens: source.customTokens || null,
+  color: source.color || null,
+});
+
 const mapPokerMttBankrollTransactionRow = (row: PokerMttBankrollTransactionRow): PokerMttBankrollTransaction => ({
   id: row.id,
   investmentId: row.investment_id,
@@ -1155,6 +1197,7 @@ const loadLocalData = (): LoadedAppData => {
   const pokerMttTournaments = readLocalJson<PokerMttTournament[]>(POKER_MTT_TOURNAMENTS_STORAGE_KEY, []);
   const pokerMttBankrollTransactions = readLocalJson<PokerMttBankrollTransaction[]>(POKER_MTT_BANKROLL_STORAGE_KEY, []);
   const pokerCashSessions = readLocalJson<PokerCashSession[]>(POKER_CASH_SESSIONS_STORAGE_KEY, []);
+  const cryptoSources = readLocalJson<CryptoSource[]>(CRYPTO_SOURCES_STORAGE_KEY, []);
   const cashAccounts = readLocalJson<CashAccount[]>(CASH_ACCOUNTS_STORAGE_KEY, []);
   const cashBalanceEntries = readLocalJson<CashBalanceEntry[]>(CASH_BALANCE_ENTRIES_STORAGE_KEY, []);
   const retirementFunds = readLocalJson<RetirementFund[]>(RETIREMENT_FUNDS_STORAGE_KEY, []);
@@ -1179,6 +1222,7 @@ const loadLocalData = (): LoadedAppData => {
     pokerMttTournaments,
     pokerMttBankrollTransactions,
     pokerCashSessions,
+    cryptoSources,
     cashAccounts,
     cashBalanceEntries,
     retirementFunds,
@@ -1272,6 +1316,12 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
   const pokerCashSessions = pokerCashResult.error
     ? readLocalJson<PokerCashSession[]>(POKER_CASH_SESSIONS_STORAGE_KEY, [])
     : (pokerCashResult.data as PokerCashSessionRow[] | null | undefined)?.map(mapPokerCashSessionRow) ?? [];
+  // Crypto wallets/exchanges have their own table (supabase_crypto_schema.sql); until it exists,
+  // keep the ones saved on this device.
+  const cryptoResult = await selectAllRows('crypto_sources', userId, 'created_at', true);
+  const cryptoSources = cryptoResult.error
+    ? readLocalJson<CryptoSource[]>(CRYPTO_SOURCES_STORAGE_KEY, [])
+    : (cryptoResult.data as CryptoSourceRow[] | null | undefined)?.map(mapCryptoSourceRow) ?? [];
   const cashAccounts = (cashAccountsResult.data as CashAccountRow[] | null | undefined)?.map(mapCashAccountRow) ?? [];
   const cashBalanceEntries = (cashBalanceEntriesResult.data as CashBalanceEntryRow[] | null | undefined)?.map(mapCashBalanceEntryRow) ?? [];
   // If the retirement tables don't exist yet (SQL not run) the queries error - keep whatever was
@@ -1333,6 +1383,7 @@ export const loadAppData = async (): Promise<LoadedAppData> => {
     pokerMttTournaments,
     pokerMttBankrollTransactions,
     pokerCashSessions,
+    cryptoSources,
     cashAccounts,
     cashBalanceEntries,
     retirementFunds,
@@ -1650,6 +1701,30 @@ export const deletePokerCashSession = async (sessionId: string, remaining: Poker
   const userId = await getSupabaseUserId();
   if (!userId) return null;
   const { error } = await supabase.from('poker_cash_sessions').delete().eq('id', sessionId).eq('user_id', userId);
+  return error ? error.message : null;
+};
+
+const CRYPTO_TABLE_MISSING = 'saved on this device - syncing wallets needs the database update: run supabase_crypto_schema.sql in Supabase';
+
+export const saveCryptoSources = async (sources: CryptoSource[]): Promise<string | null> => {
+  writeLocalJson(CRYPTO_SOURCES_STORAGE_KEY, sources);
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+  if (sources.length === 0) return null;
+  const { error } = await supabase.from('crypto_sources').upsert(sources.map(source => mapCryptoSourceToRow(source, userId)), { onConflict: 'id' });
+  if (error) console.error('Saving crypto sources failed', error);
+  if (error && ['42P01', 'PGRST205'].includes(error.code || '')) return CRYPTO_TABLE_MISSING;
+  return error ? error.message : null;
+};
+
+export const deleteCryptoSource = async (sourceId: string, remaining: CryptoSource[]): Promise<string | null> => {
+  writeLocalJson(CRYPTO_SOURCES_STORAGE_KEY, remaining);
+  if (!supabase) return null;
+  const userId = await getSupabaseUserId();
+  if (!userId) return null;
+  const { error } = await supabase.from('crypto_sources').delete().eq('id', sourceId).eq('user_id', userId);
+  if (error && ['42P01', 'PGRST205'].includes(error.code || '')) return null; // nothing synced to delete
   return error ? error.message : null;
 };
 
@@ -2304,6 +2379,7 @@ export const clearStoredAppData = async () => {
   localStorage.removeItem(POKER_MTT_TOURNAMENTS_STORAGE_KEY);
   localStorage.removeItem(POKER_MTT_BANKROLL_STORAGE_KEY);
   localStorage.removeItem(POKER_CASH_SESSIONS_STORAGE_KEY);
+  localStorage.removeItem(CRYPTO_SOURCES_STORAGE_KEY);
   localStorage.removeItem(CASH_ACCOUNTS_STORAGE_KEY);
   localStorage.removeItem(CASH_BALANCE_ENTRIES_STORAGE_KEY);
   localStorage.removeItem(INVESTMENT_VALUATIONS_STORAGE_KEY);
@@ -2332,6 +2408,7 @@ export const clearStoredAppData = async () => {
     supabase.from('poker_mtt_tournaments').delete().eq('user_id', userId),
     supabase.from('poker_mtt_bankroll_transactions').delete().eq('user_id', userId),
     supabase.from('poker_cash_sessions').delete().eq('user_id', userId),
+    supabase.from('crypto_sources').delete().eq('user_id', userId),
     supabase.from('cash_accounts').delete().eq('user_id', userId),
     supabase.from('cash_balance_entries').delete().eq('user_id', userId),
     supabase.from('retirement_funds').delete().eq('user_id', userId),

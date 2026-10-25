@@ -5,6 +5,9 @@
 // third-party CORS for a router primarily meant for server/SDK use isn't a guarantee). Proxying
 // through this Worker also means HF_TOKEN never has to be bundled into client-side JS.
 
+import { handleExchangeBalances } from './cryptoExchanges';
+import { handleSolanaRpc } from './solanaRpc';
+
 export interface Env {
   HF_TOKEN: string;
   ASSETS: { fetch: (request: Request) => Promise<Response> };
@@ -178,6 +181,16 @@ export default {
 
     if (url.pathname === '/api/stock-history' && request.method === 'GET') {
       return handleStockHistory(url);
+    }
+
+    // Crypto: exchange balances via a read-only key sent with each request (never stored),
+    // and a read-only Solana RPC relay - see the two modules for why they're server-side.
+    if (url.pathname === '/api/crypto/exchange') {
+      return handleExchangeBalances(request);
+    }
+
+    if (url.pathname === '/api/crypto/solana') {
+      return handleSolanaRpc(request);
     }
 
     return env.ASSETS.fetch(request);

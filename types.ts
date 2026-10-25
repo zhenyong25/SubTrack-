@@ -303,6 +303,24 @@ export interface PokerMttBankrollTransaction {
   updatedAt?: string;
 }
 
+// Crypto tracked from where it's held: public wallet addresses (scanned on-chain) and
+// exchange accounts (read-only API keys, which stay on the device - never in this record).
+export type CryptoChain = 'bitcoin' | 'ethereum' | 'base' | 'arbitrum' | 'optimism' | 'polygon' | 'bsc' | 'solana' | 'tron';
+export type CryptoExchange = 'binance' | 'coinbase' | 'okx' | 'bybit' | 'kraken';
+
+export interface CryptoSource {
+  id: string;
+  kind: 'wallet' | 'exchange';
+  label: string;
+  address?: string; // wallet
+  chains?: CryptoChain[]; // wallet: networks to scan (one EVM address can be on several)
+  exchange?: CryptoExchange; // exchange
+  customTokens?: { chain: CryptoChain; contract: string }[]; // extra tokens to read on EVM networks
+  color?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type CashAccountType = 'Bank' | 'EWallet' | 'MultiCurrencyCard' | 'Cash' | 'Other';
 
 export interface CashAccount {
