@@ -13,7 +13,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { AccountStatement, AccountStatementKind, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES, InvestmentHolding, InvestmentKind, InvestmentValuation, PaymentCard, RetirementBalanceEntry, RetirementFund } from '../types';
+import { AccountStatement, AccountStatementKind, CryptoSource, CashAccount, CashAccountType, CashBalanceEntry, CURRENCIES, InvestmentHolding, InvestmentKind, InvestmentValuation, PaymentCard, RetirementBalanceEntry, RetirementFund } from '../types';
 import { convertCurrency, getCurrencySymbol } from '../services/storageService';
 import StatementsList from './StatementsList';
 import RetirementFundsPanel from './RetirementFundsPanel';
@@ -23,6 +23,7 @@ import BankLogo from './BankLogo';
 import { findBank } from '../services/bankLogoService';
 import { balancesAsOf, RETIREMENT_SCHEME_COLORS, sumBalances } from '../services/retirementService';
 import { colorForInvestmentKind, compareValuations, getPositionMetrics } from '../services/investmentService';
+import { useCryptoPortfolio } from './useCryptoPortfolio';
 
 interface CashFlowTabProps {
   cards: PaymentCard[];
@@ -36,6 +37,7 @@ interface CashFlowTabProps {
   onDeleteBalanceEntry: (entryId: string) => void;
   investments: InvestmentHolding[];
   investmentValuations: InvestmentValuation[];
+  cryptoSources: CryptoSource[]; // wallets and exchanges, valued live
   retirementFunds: RetirementFund[];
   retirementEntries: RetirementBalanceEntry[];
   onSaveRetirementFund: (fund: RetirementFund) => void;
@@ -200,6 +202,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDeleteBalanceEntry,
   investments,
   investmentValuations,
+  cryptoSources,
   retirementFunds,
   retirementEntries,
   onSaveRetirementFund,
@@ -325,6 +328,16 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     return getPositionMetrics(holding).currentValue;
   };
 
+  const NO_MANUAL = useMemo(() => [], []);
+  const liveCrypto = useCryptoPortfolio(cryptoSources, NO_MANUAL);
+  const liveCryptoUsd = liveCrypto.summary.totalUsd;
+  // Only known from when each wallet/exchange was added - there's no logged history before that,
+  // so the trend doesn't invent one.
+  const liveCryptoSince = useMemo(() => {
+    const dates = cryptoSources.map(source => (source.createdAt || '').slice(0, 10)).filter(Boolean).sort();
+    return dates[0] || toDateInputValue(new Date());
+  }, [cryptoSources]);
+
   const holdingsByKind = useMemo(() => {
     const map = new Map<InvestmentKind, InvestmentHolding[]>();
     investments.forEach(holding => {
@@ -370,7 +383,14 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
         return any ? total : null;
       },
     })),
-  ], [activeAccounts, activeFunds, holdingsByKind, valuationsByHolding, balancesByAccount, retirementEntriesByFund, displayCurrency]);
+    ...(cryptoSources.length > 0 ? [{
+      id: 'crypto:live',
+      name: 'Crypto wallets',
+      color: colorForInvestmentKind('Crypto'),
+      currency: 'USD',
+      balanceAsOf: (date: Date) => (toDateInputValue(date) >= liveCryptoSince ? liveCryptoUsd : null),
+    }] : []),
+  ], [activeAccounts, activeFunds, holdingsByKind, valuationsByHolding, balancesByAccount, retirementEntriesByFund, displayCurrency, cryptoSources.length, liveCryptoSince, liveCryptoUsd]);
 
   const trendSeriesById = useMemo(() => new Map(trendSeries.map(series => [series.id, series])), [trendSeries]);
 
@@ -447,6 +467,13 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
       }
     });
 
+    if (liveCryptoUsd > 0) {
+      const value = convertCurrency(liveCryptoUsd, 'USD', displayCurrency);
+      if (breakdownMode === 'type') add('portfolio:Crypto', INVESTMENT_KIND_LABELS.Crypto, colorForInvestmentKind('Crypto'), value);
+      else if (breakdownMode === 'liquidity') add('invested', 'Investments', INVESTED_COLOR, value);
+      else add('USD', 'USD', '', value);
+    }
+
     if (breakdownMode === 'currency') {
       investments.forEach(holding => {
         add(holding.currency, holding.currency, '', convertCurrency(getPositionMetrics(holding).currentValue, holding.currency, displayCurrency));
@@ -458,11 +485,18 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
       rows.forEach((row, index) => { row.color = CURRENCY_COLORS[index % CURRENCY_COLORS.length]; });
     }
     return rows;
-  }, [activeAccounts, activeFunds, investments, holdingsByKind, balancesByAccount, retirementEntriesByFund, displayCurrency, breakdownMode]);
+  }, [activeAccounts, activeFunds, investments, holdingsByKind, balancesByAccount, retirementEntriesByFund, displayCurrency, breakdownMode, liveCryptoUsd]);
 
   const breakdownPositiveTotal = breakdownRows.reduce((sum, row) => sum + Math.max(row.value, 0), 0);
 
-  const netWorthDelta = netWorthNow - netWorthOneMonthAgo;
+  // Crypto wallets added within the last month have no value "a month ago", so counting them would
+  // show the whole wallet as growth. Leave them out of the comparison until they've been tracked a month.
+  const cryptoTooNew = useMemo(() => {
+    const monthAgo = new Date();
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+    return cryptoSources.length > 0 && liveCryptoSince > toDateInputValue(monthAgo);
+  }, [cryptoSources.length, liveCryptoSince]);
+  const netWorthDelta = netWorthNow - (cryptoTooNew ? convertCurrency(liveCryptoUsd, 'USD', displayCurrency) : 0) - netWorthOneMonthAgo;
   const netWorthDeltaPct = netWorthOneMonthAgo !== 0 ? (netWorthDelta / Math.abs(netWorthOneMonthAgo)) * 100 : null;
 
   const chartSeries = selectedSeries ? [selectedSeries] : trendSeries;
@@ -626,7 +660,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
 
   return (
     <div className="desktop-layout cashflow-layout space-y-4 pb-4">
-      <div className="cashflow-view-switch flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1" role="group" aria-label="Net worth view">{(['overview', 'forecast', 'review'] as const).map(view => <button key={view} type="button" aria-pressed={pageView === view} onClick={() => setPageView(view)} className={`rounded-lg px-4 py-2 text-xs font-semibold ${pageView === view ? 'bg-primary text-white' : 'text-secondary'}`}>{view === 'overview' ? 'Overview' : view === 'forecast' ? 'Forecast' : 'Financial review'}</button>)}</div>
+      <div className="cashflow-view-switch flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1" role="group" aria-label="Net worth view">{(['overview', 'forecast', 'review'] as const).map(view => <button key={view} type="button" aria-pressed={pageView === view} onClick={() => setPageView(view)} className={`rounded-lg px-4 py-2 text-xs font-semibold ${pageView === view ? 'bg-primary text-white' : 'text-secondary'}`}>{view === 'overview' ? 'Overview' : view === 'forecast' ? 'Forecast' : 'Financial review'}{view !== 'overview' && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-px align-middle text-[9px] font-black uppercase tracking-wide text-white">Beta</span>}</button>)}</div>
       {pageView === 'review' ? <FinancialReviewPanel {...forecast} accounts={accounts} balances={balanceEntries} holdings={investments} valuations={investmentValuations} funds={retirementFunds} retirement={retirementEntries} cards={cards} cardCurrency={baseCurrency} currency={displayCurrency} onCurrencyChange={setDisplayCurrency} /> : pageView === 'forecast' ? <CashForecastPanel {...forecast} accounts={accounts} balances={balanceEntries} currency={displayCurrency} /> : <>
       <section className="cashflow-summary bg-surface rounded-2xl border border-border shadow-sm p-5">
         <div className="flex items-start justify-between gap-3">
@@ -649,13 +683,14 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
             {netWorthDelta >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
             {formatAmount(Math.abs(netWorthDelta))} {displayCurrency}
             {netWorthDeltaPct != null && ` (${netWorthDeltaPct >= 0 ? '+' : ''}${netWorthDeltaPct.toFixed(1)}%)`}
-            <span className="text-secondary font-normal">vs last month</span>
+            <span className="text-secondary font-normal">vs last month{cryptoTooNew ? ' (excl. crypto wallets added this month)' : ''}</span>
           </div>
         )}
         <p className="mt-2 text-[10px] text-secondary">
           Across {activeAccounts.length} account{activeAccounts.length === 1 ? '' : 's'}
           {activeFunds.length > 0 && `, ${activeFunds.length} retirement fund${activeFunds.length === 1 ? '' : 's'}`}
           {investments.length > 0 && `, ${investments.length} portfolio holding${investments.length === 1 ? '' : 's'}`}
+          {cryptoSources.length > 0 && `, ${cryptoSources.length} crypto wallet${cryptoSources.length === 1 ? '' : 's'}/exchange${cryptoSources.length === 1 ? '' : 's'} (live prices)`}
           , converted to {displayCurrency} using the latest logged balance or value for each.
         </p>
 
