@@ -158,9 +158,10 @@ const scanEvm = async (chain: CryptoChain, address: string, extraTokens: string[
 
 // -------------------------------------------------------------------------------------- Solana
 
-// The official endpoint refuses requests from browsers (403), so it's reached through the app's
-// own server (server/solanaRpc.ts); publicnode is the direct fallback.
-const SOLANA_RPCS = ['/api/crypto/solana', 'https://solana-rpc.publicnode.com'];
+// publicnode answers browsers directly. The official endpoint refuses browser requests (403) and
+// some server providers, so it's only reached through the app's own server (server/solanaRpc.ts)
+// as a fallback - from your own machine in local dev that relay works for every lookup.
+const SOLANA_RPCS = ['https://solana-rpc.publicnode.com', '/api/crypto/solana'];
 const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
 
 const solanaCall = async (method: string, params: unknown[], signal?: AbortSignal) => {
