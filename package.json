@@ -22,6 +22,7 @@
     "test:review": "node scripts/test-financial-review.mjs",
     "test:reminders": "node scripts/test-smart-reminders.mjs",
     "test:poker": "node scripts/test-poker.mjs",
+    "test:crypto": "node scripts/test-crypto.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
