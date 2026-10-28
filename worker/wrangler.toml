@@ -3,9 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# Every 8 hours (00:00/08:00/16:00 UTC = 08:00/16:00/00:00 Singapore Time, UTC+8, no DST)
+# Every 8 hours (00:00/08:00/16:00 UTC = 08:00/16:00/00:00 Singapore Time, UTC+8, no DST): the
+# "forgot to log" reminder, plus the 08:00 SGT digest of bills, debts and earnings.
+# Every 15 minutes: price alerts. src/index.ts tells the two apart by the cron string.
 [triggers]
-crons = ["0 */8 * * *"]
+crons = ["0 */8 * * *", "*/15 * * * *"]
 
 # Set via `wrangler secret put <NAME>` — never commit real values:
 #   SUPABASE_URL
