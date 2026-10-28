@@ -28,3 +28,13 @@ test('missing history or currency mismatch holds the recorded value', () => {
   assert.equal(recordedHoldingValueAt(holding, records, undefined, at('2026-01-02')).value, 1000);
   assert.equal(recordedHoldingValueAt(holding, records, { ...market, currency: 'SGD' }, at('2026-01-02')).value, 1000);
 });
+
+test('holdings without valuations follow market history in any account', () => {
+  const stock = { ...holding, units: 10, currentPrice: 130, averageCost: 100, acquiredDate: '2026-01-01', accountId: 'moomoo-my' };
+  assert.equal(recordedHoldingValueAt(stock, [], market, at('2025-01-01')).value, 0);
+  assert.equal(recordedHoldingValueAt(stock, [], market, at('2026-01-02')).value, 1100);
+  assert.equal(recordedHoldingValueAt(stock, [], market, at('2026-01-04')).value, 1250);
+  assert.equal(recordedHoldingValueAt({ ...stock, accountId: undefined }, [], market, at('2026-01-04')).value, 1250);
+  assert.equal(recordedHoldingValueAt(stock, [], undefined, at('2026-01-04')).value, 1300);
+  assert.equal(recordedHoldingValueAt({ ...stock, positionSide: 'Short' }, [], market, at('2026-01-04')).value, 750);
+});

@@ -24,8 +24,10 @@ import { findBank } from '../services/bankLogoService';
 import { balancesAsOf, RETIREMENT_SCHEME_COLORS, sumBalances } from '../services/retirementService';
 import { colorForInvestmentKind, compareValuations, getPositionMetrics } from '../services/investmentService';
 import { useCryptoPortfolio } from './useCryptoPortfolio';
+import { useLivePrices } from './useLivePrices';
 
 interface CashFlowTabProps {
+  initialView?: 'overview' | 'forecast' | 'review';
   cards: PaymentCard[];
   forecast: Omit<CashForecastProps, 'accounts' | 'balances' | 'currency'>;
   baseCurrency: string;
@@ -37,6 +39,7 @@ interface CashFlowTabProps {
   onDeleteBalanceEntry: (entryId: string) => void;
   investments: InvestmentHolding[];
   investmentValuations: InvestmentValuation[];
+  onUpdateHolding: (holding: InvestmentHolding, silent?: boolean) => void; // live stock/crypto prices
   cryptoSources: CryptoSource[]; // wallets and exchanges, valued live
   retirementFunds: RetirementFund[];
   retirementEntries: RetirementBalanceEntry[];
@@ -191,6 +194,7 @@ const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
 const formatAmount = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const CashFlowTab: React.FC<CashFlowTabProps> = ({
+  initialView = 'overview',
   cards,
   forecast,
   baseCurrency,
@@ -202,6 +206,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDeleteBalanceEntry,
   investments,
   investmentValuations,
+  onUpdateHolding,
   cryptoSources,
   retirementFunds,
   retirementEntries,
@@ -215,7 +220,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
   onDownloadStatement,
   onDeleteStatement,
 }) => {
-  const [pageView, setPageView] = useState<'overview' | 'forecast' | 'review'>('overview');
+  const [pageView, setPageView] = useState<'overview' | 'forecast' | 'review'>(initialView);
   const [rangeMode, setRangeMode] = useState<RangeMode>('Monthly');
   const [windowOffset, setWindowOffset] = useState(0);
   const [expandedStatementsAccountId, setExpandedStatementsAccountId] = useState<string | null>(null);
@@ -312,11 +317,12 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
 
   // With logged valuations, use the latest one on/before the date (nothing before the first).
   // Without any, the holding is only known at its current value, so show that from its
-  // acquired date onwards rather than inventing a past.
+  // acquired date onwards rather than inventing a past. Today is always the current value -
+  // live prices move it, and logging a newest value sets it too.
   const getHoldingValueAsOf = (holding: InvestmentHolding, asOfDate: Date): number | null => {
     const asOf = toDateInputValue(asOfDate);
     const valuations = valuationsByHolding.get(holding.id);
-    if (valuations && valuations.length > 0) {
+    if (valuations && valuations.length > 0 && asOf < toDateInputValue(new Date())) {
       let result: number | null = null;
       for (const valuation of valuations) {
         if (valuation.valuationDate.split('T')[0] <= asOf) result = Number(valuation.marketValue);
@@ -328,6 +334,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
     return getPositionMetrics(holding).currentValue;
   };
 
+  useLivePrices(investments, onUpdateHolding);
   const NO_MANUAL = useMemo(() => [], []);
   const liveCrypto = useCryptoPortfolio(cryptoSources, NO_MANUAL);
   const liveCryptoUsd = liveCrypto.summary.totalUsd;
