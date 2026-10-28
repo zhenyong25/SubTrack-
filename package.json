@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "test:search": "node scripts/test-global-search.mjs",
     "test:portfolio": "node scripts/test-portfolio-analytics.mjs",
+    "test:pokemon": "node scripts/test-pokemon.mjs",
     "test:loans": "node scripts/test-loans.mjs",
     "test:trading": "node scripts/test-trading.mjs",
     "test:earnings": "node scripts/test-earnings.mjs",

@@ -6,6 +6,7 @@ import { handleExchangeBalances } from './server/cryptoExchanges';
 import { handleSolanaRpc } from './server/solanaRpc';
 import { handleEarningsCalendar } from './server/earningsCalendar';
 import { handleStockInsights } from './server/stockInsights';
+import { handlePokemonMarket } from './server/pokemonMarket';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -26,6 +27,7 @@ export default defineConfig(({ mode }) => {
               '/api/crypto/solana': request => handleSolanaRpc(request, env.SOLANA_RPC_URL),
               '/api/earnings-calendar': handleEarningsCalendar,
               '/api/stock-insights': handleStockInsights,
+              '/api/pokemon/market': handlePokemonMarket,
             };
             Object.entries(routes).forEach(([route, handle]) => {
               server.middlewares.use(route, async (req, res) => {
