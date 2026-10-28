@@ -32,6 +32,7 @@ import PokerPanel, { type PokerPanelProps } from './PokerPanel';
 import CryptoPanel from './CryptoPanel';
 import CryptoSourceLogo from './CryptoSourceLogo';
 import { useCryptoPortfolio } from './useCryptoPortfolio';
+import { QUOTABLE_KINDS, useLivePrices } from './useLivePrices';
 import { summarize, type PricedBalance } from '../services/cryptoPortfolio';
 import { bankrollStats } from '../services/pokerService';
 
@@ -68,8 +69,7 @@ interface InvestmentTabProps {
 // as a filter tab or an option when adding a new holding).
 const CATEGORIES: InvestmentCategory[] = ['All', 'Crypto', 'Stocks', 'Pokemon Cards', 'Poker'];
 // Kinds a Yahoo Finance ticker lookup makes sense for, and where going Long vs Short is a
-// meaningful distinction (Pokemon Cards aren't traded either way).
-const QUOTABLE_KINDS: InvestmentKind[] = ['Stocks', 'Crypto'];
+// meaningful distinction (Pokemon Cards aren't traded either way): QUOTABLE_KINDS, from useLivePrices.
 const RANGES: RangeMode[] = ['1D', '7D', '1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', 'MAX'];
 const TRANSACTION_TYPES: InvestmentTransactionType[] = ['Buy', 'Sell', 'Dividend', 'Fee', 'Transfer In', 'Transfer Out', 'Split'];
 type EntryMode = 'holding' | 'transaction';
@@ -270,7 +270,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const [quoteError, setQuoteError] = useState('');
   const [quoteNote, setQuoteNote] = useState('');
   const [refreshingHoldingId, setRefreshingHoldingId] = useState<string | null>(null);
-  const [priceRefreshedAt, setPriceRefreshedAt] = useState<number | null>(null);
+  const priceRefreshedAt = useLivePrices(investments, onUpdateHolding);
   const [, forceRelativeTimeTick] = useState(0);
   const [tickerDetailHoldingId, setTickerDetailHoldingId] = useState<string | null>(null);
 
@@ -299,79 +299,6 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       setEntryPrice(selectedInvestment.currentPrice ? selectedInvestment.currentPrice.toFixed(2) : '');
     }
   }, [entryInvestmentId, investments]);
-
-  // Always reads the latest holdings inside the poll loop below without needing to restart
-  // the interval every time a price updates `investments` (which would happen on every
-  // single tick otherwise, since the effect would see a "changed" dependency each time).
-  const investmentsRef = React.useRef(investments);
-  React.useEffect(() => {
-    investmentsRef.current = investments;
-  }, [investments]);
-
-  // Polls Stocks/Crypto prices every POLL_INTERVAL_MS while this tab is open and the browser
-  // tab is actually visible (paused via the Page Visibility API otherwise, and resumed with an
-  // immediate refresh on refocus, rather than left running in a background tab indefinitely).
-  // There's no free push/streaming feed for this, so "live" here means frequent polling of the
-  // same REST endpoint the manual refresh uses - refreshed one holding at a time rather than in
-  // parallel, since concurrent calls to onUpdateHolding could otherwise race (see its own
-  // comment in App.tsx for why that matters).
-  React.useEffect(() => {
-    const POLL_INTERVAL_MS = 20 * 1000;
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let isRefreshing = false;
-
-    const runRefreshCycle = async () => {
-      if (isRefreshing || document.visibilityState !== 'visible') return;
-      const quotable = investmentsRef.current.filter(
-        (investment): investment is InvestmentHolding & { symbol: string } =>
-          QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol),
-      );
-      if (quotable.length === 0) return;
-
-      isRefreshing = true;
-      for (const holding of quotable) {
-        if (cancelled) break;
-        try {
-          const quote = await fetchStockQuote(holding.symbol);
-          if (!cancelled) {
-            const quoteCurrency = quote.currency && CURRENCIES.includes(quote.currency) ? quote.currency : holding.currency;
-            onUpdateHolding({ ...holding, currentPrice: quote.price, currency: quoteCurrency }, true);
-          }
-        } catch {
-          // Best-effort background refresh - one bad symbol shouldn't stop the rest.
-        }
-      }
-      isRefreshing = false;
-      if (!cancelled) setPriceRefreshedAt(Date.now());
-    };
-
-    const scheduleNext = () => {
-      timeoutId = setTimeout(() => {
-        runRefreshCycle().finally(() => {
-          if (!cancelled) scheduleNext();
-        });
-      }, POLL_INTERVAL_MS);
-    };
-
-    runRefreshCycle().finally(() => {
-      if (!cancelled) scheduleNext();
-    });
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') runRefreshCycle();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-    // Deliberately runs once per mount and reads holdings via investmentsRef instead of
-    // reacting to `investments` directly - see the ref effect just above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const hasQuotableHoldings = useMemo(
     () => investments.some(investment => QUOTABLE_KINDS.includes(investment.kind) && Boolean(investment.symbol)),
@@ -840,7 +767,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     const selectedIds = new Set(selectedInvestments.map(item => item.id));
     const records = valuations.filter(item => selectedIds.has(item.investmentId) && new Date(item.valuationDate).getTime() <= now.getTime()).slice().sort(compareValuations);
     const requestedStart = rangeMode === 'MAX'
-      ? new Date(records[0]?.valuationDate || now)
+      ? new Date(Math.min(now.getTime(), ...records.map(item => Date.parse(item.valuationDate)), ...selectedInvestments.flatMap(item => item.acquiredDate ? [Date.parse(item.acquiredDate)] : marketHistory[item.id]?.candles.map(candle => candle.timestamp) || [])))
       : rangeMode.endsWith('Y') ? addYears(now, -Number.parseInt(rangeMode))
       : new Date(now.getTime() - rangeConfig[rangeMode].points * 86400000);
     const start = requestedStart.getTime();
@@ -1368,7 +1295,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </text>
               </svg>
             </div>
-            {!portfolioHidden && chartData.hasRecords && (
+            {!portfolioHidden && selectedInvestments.length > 0 && (
               <p className="mt-2 text-sm font-semibold text-cyan-600 dark:text-cyan-300" aria-live="polite">
                 {hoveredPoint !== null && svgChart.points[hoveredPoint]
                   ? svgChart.points[hoveredPoint].name + ' | ' + formatMoney(svgChart.points[hoveredPoint].value, baseCurrency)
@@ -1377,7 +1304,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
             )}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-white/50">
               <p>
-                {historyLoading ? 'Loading market price history...' : chartData.hasRecords ? 'Zero before the first record. Market prices track movement between recorded values; current FX rates apply.' + (historyFailures ? ` ${historyFailures} holding(s) unavailable; recorded values carried forward.` : '') : 'No recorded valuations yet. Portfolio history is zero until your first record.'}
+                {historyLoading ? 'Loading market price history...' : 'Saved valuations anchor recorded holdings. Other holdings use market prices and current quantities from their acquisition date, where known; current prices fill missing history. Current FX rates apply.' + (historyFailures ? ` Market history unavailable for ${historyFailures} holding(s).` : '')}
               </p>
               <p>{selectedInvestments.length} holdings</p>
               {chartZoom > 1 && <p className="w-full sm:w-auto">Swipe sideways to inspect the enlarged chart.</p>}
@@ -1460,6 +1387,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         )}
       </div>
       </>)}
+
 
       {!isPoker && (<>
       <div className="fixed bottom-24 right-5 z-40">
