@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins, CandlestickChart } from 'lucide-react';
 import { cloudSync } from './services/cloudSyncService';
+import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins, CandlestickChart, Building2 } from 'lucide-react';
+import FinanceWorld from './components/FinanceWorld';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -43,6 +44,7 @@ enum Tab {
   CashFlow = 'CashFlow',
   Debts = 'Debts',
   Goals = 'Goals',
+  World = 'World',
   Settings = 'Settings'
 }
 
@@ -56,6 +58,7 @@ function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const closeGlobalSearch = useCallback(() => setIsSearchOpen(false), []);
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Dashboard);
+  const [worldReviewRequested, setWorldReviewRequested] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingIncome, setIsAddingIncome] = useState(false);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
@@ -1425,6 +1428,7 @@ function App() {
 
         {activeTab === Tab.CashFlow && (
             <CashFlowTab
+                initialView={worldReviewRequested ? 'review' : 'overview'}
                 cards={cards}
                 forecast={{ incomes, subscriptions, expenses, loans, payments: loanPayments }}
                 baseCurrency={userProfile.currency}
@@ -1453,6 +1457,7 @@ function App() {
         )}
 
         {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} focusGoalId={focusGoalId} onFocusHandled={() => setFocusGoalId(null)} />}
+        {activeTab === Tab.World && <FinanceWorld key={session?.user.id || 'local'} owner={session?.user.id || 'local'} expenses={expenses} incomes={incomes} subscriptions={subscriptions} loans={loans} loanPayments={loanPayments} onOpen={destination => { setWorldReviewRequested(destination === 'review'); setActiveTab(destination === 'goals' ? Tab.Goals : destination === 'expenses' ? Tab.Expenses : destination === 'income' ? Tab.Income : destination === 'debts' ? Tab.Debts : destination === 'subscriptions' ? Tab.Dashboard : Tab.CashFlow); }} />}
 
         {activeTab === Tab.Settings && (
             <Settings 
@@ -1559,7 +1564,7 @@ function App() {
         <button
           aria-label="Net worth"
           aria-current={activeTab === Tab.CashFlow ? 'page' : undefined}
-          onClick={() => setActiveTab(Tab.CashFlow)}
+          onClick={() => { setWorldReviewRequested(false); setActiveTab(Tab.CashFlow); }}
           className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.CashFlow ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.CashFlow ? 'bg-primary/10' : 'bg-transparent'}`}>
@@ -1586,6 +1591,15 @@ function App() {
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Goals ? 'bg-primary/10' : 'bg-transparent'}`}><PiggyBank size={20} /></div>
           <span className="desktop-nav-label">Goals</span>
+        </button>
+        <button
+          aria-label="My City"
+          aria-current={activeTab === Tab.World ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.World)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.World ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.World ? 'bg-primary/10' : 'bg-transparent'}`}><Building2 size={20} /></div>
+          <span className="desktop-nav-label">My City</span>
         </button>
         <button
           aria-label="Settings"

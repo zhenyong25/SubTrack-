@@ -2362,6 +2362,8 @@ export const markStatementTransactionDismissed = async (
 };
 
 export const clearStoredAppData = async () => {
+  const worldKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('subtrack_world_v1:') || key?.startsWith('subtrack_city_v1:')));
+  worldKeys.forEach(key => localStorage.removeItem(key));
   const reminderKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith(REMINDER_STORAGE_PREFIX)));
   reminderKeys.forEach(key => localStorage.removeItem(key));
   localStorage.removeItem(SAVINGS_STORAGE_KEY);
@@ -2416,6 +2418,7 @@ export const clearStoredAppData = async () => {
     supabase.from('retirement_funds').delete().eq('user_id', userId),
     supabase.from('loans').delete().eq('user_id', userId),
     supabase.from('receivables').delete().eq('user_id', userId),
+    supabase.from('city_saves').delete().eq('user_id', userId),
     supabase.from('investment_accounts').delete().eq('user_id', userId),
     supabase.from('payment_cards').delete().eq('user_id', userId),
     supabase.from('card_point_transactions').delete().eq('user_id', userId),
