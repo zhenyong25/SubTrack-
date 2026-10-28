@@ -30,6 +30,7 @@ import TickerDetail from './TickerDetail';
 import PortfolioInsights, { type InsightPosition } from './PortfolioInsights';
 import PokerPanel, { type PokerPanelProps } from './PokerPanel';
 import CryptoPanel from './CryptoPanel';
+import PokemonCardPanel from './PokemonCardPanel';
 import CryptoSourceLogo from './CryptoSourceLogo';
 import { useCryptoPortfolio } from './useCryptoPortfolio';
 import { QUOTABLE_KINDS, useLivePrices } from './useLivePrices';
@@ -1388,6 +1389,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       </div>
       </>)}
 
+      {selectedCategory === 'Pokemon Cards' && <PokemonCardPanel baseCurrency={baseCurrency} />}
 
       {!isPoker && (<>
       <div className="fixed bottom-24 right-5 z-40">

@@ -9,6 +9,7 @@ import { handleExchangeBalances } from './cryptoExchanges';
 import { handleEarningsCalendar } from './earningsCalendar';
 import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
+import { handlePokemonMarket } from './pokemonMarket';
 
 export interface Env {
   HF_TOKEN: string;
@@ -203,6 +204,7 @@ export default {
     if (url.pathname === '/api/stock-insights') {
       return handleStockInsights(request);
     }
+    if (url.pathname === '/api/pokemon/market') return handlePokemonMarket(request);
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),
     // and a read-only Solana RPC relay - see the two modules for why they're server-side.
