@@ -6,13 +6,15 @@ import TradePlanPanel from './TradePlanPanel';
 import TradeScannerPanel from './TradeScannerPanel';
 import TradeJournalPanel from './TradeJournalPanel';
 import TradeEarningsPanel from './TradeEarningsPanel';
+import TradeOptionsPanel from './TradeOptionsPanel';
 import { Field, INPUT_CLASS, Panel } from './tradeUi';
 
-type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings';
+type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings' | 'options';
 
 const VIEWS: Array<{ id: TradeView; label: string; icon: React.ElementType }> = [
   { id: 'plan', label: 'Plan', icon: Crosshair },
   { id: 'scanner', label: 'Scanner', icon: Radar },
+  { id: 'options', label: 'Options', icon: BookOpen },
   { id: 'journal', label: 'Journal', icon: BookOpen },
   { id: 'rules', label: 'Rules', icon: ShieldCheck },
   { id: 'earnings', label: 'Earnings', icon: CalendarDays },
@@ -96,6 +98,7 @@ const TradeTab: React.FC<TradeTabProps> = ({ holdingSymbols, onNotify }) => {
       )}
 
       {view === 'plan' && <TradePlanPanel rules={rules} journal={journal} symbol={planSymbol} onSymbolChange={setPlanSymbol} onLogTrade={saveTrade} />}
+      {view === 'options' && <TradeOptionsPanel rules={rules} onNotify={onNotify} />}
       {view === 'scanner' && <TradeScannerPanel rules={rules} holdingSymbols={holdingSymbols} onSaveRules={saveRules} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
       {view === 'journal' && <TradeJournalPanel rules={rules} journal={journal} onSave={saveTrade} onDelete={deleteTrade} />}
       {view === 'rules' && <RulesPanel rules={rules} onSave={next => { saveRules(next); onNotify('Trading rules saved'); }} />}
