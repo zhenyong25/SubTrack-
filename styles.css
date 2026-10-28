@@ -1,4 +1,16 @@
 @tailwind base;
+
+/* The Town Hall interior is rendered in WebGL; these rules only size its workspace. */
+.accountant-office-dialog { width: min(1440px, calc(100vw - 24px)); max-height: 96dvh; }
+.accountant-interior-canvas { width: 100%; height: clamp(360px, 62dvh, 720px); }
+@media (min-width: 1100px) {
+  .accountant-office-layout { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); }
+  .accountant-office-report { max-height: 78dvh; overflow-y: auto; padding-right: 4px; }
+}
+@media (max-width: 600px) {
+  .accountant-office-dialog { width: calc(100vw - 12px); }
+  .accountant-interior-canvas { height: 420px; }
+}
 @tailwind components;
 @tailwind utilities;
 
@@ -346,6 +358,38 @@
 }
 
 .poker-two-column { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.world-layout { max-width: none; min-width: 0; }
+@media (max-width: 1023px) {
+  .app-navigation { max-width: calc(100vw - 20px); overflow-x: auto; scrollbar-width: thin; }
+  .app-navigation > button { flex-shrink: 0; }
+}
+.world-island { display: block; max-height: 580px; }
+.island-canvas { height: clamp(380px, 48vw, 630px); width: 100%; }
+.city-canvas { height: clamp(480px, 56vw, 780px); width: 100%; }
+.city-canvas canvas { display: block; width: 100%; height: 100%; outline: none; cursor: grab; }
+.city-canvas canvas:active { cursor: grabbing; }
+.island-canvas canvas { display: block; width: 100%; height: 100%; outline: none; }
+.island-canvas canvas:focus-visible { outline: 3px solid #f2ca76; outline-offset: -4px; }
+.island-pad-button { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: #132a40dd; color: white; border: 1px solid #ffffff30; touch-action: none; user-select: none; }
+.island-pad-button:hover, .island-pad-button:active { background: #258c80; }
+.island-pad-button:focus-visible { outline: 2px solid #f2ca76; outline-offset: 2px; }
+@media (max-width: 600px) {
+  .island-canvas { height: 470px; }
+  .island-station-menu { bottom: 94px; width: calc(100% - 24px); justify-content: center; }
+  .island-game > div:first-of-type + div { max-width: calc(100% - 132px); }
+}
+.world-landmark { cursor: pointer; outline: none; }
+.world-landmark:hover ellipse, .world-landmark:focus-visible ellipse { stroke: #fff3b5; stroke-width: 4px; }
+.world-cloud { animation: world-drift 14s ease-in-out infinite alternate; }
+.world-fireflies { animation: world-glow 3s ease-in-out infinite alternate; }
+.world-boat { animation: world-bob 5s ease-in-out infinite alternate; }
+@keyframes world-drift { to { transform: translateX(18px); } }
+@keyframes world-glow { to { opacity: .3; } }
+@keyframes world-bob { to { transform: translate(588px, 348px); } }
+@media (prefers-reduced-motion: reduce) {
+  .world-cloud, .world-fireflies, .world-boat { animation: none; }
+  .world-layout * { transition: none !important; }
+}
 .poker-full-width { grid-column: 1 / -1; }
 .poker-analysis, .poker-log { min-width: 0; }
 .poker-results-card {
