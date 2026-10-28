@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins, CandlestickChart } from 'lucide-react';
+import { cloudSync } from './services/cloudSyncService';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import AddSubscription from './components/AddSubscription';
@@ -167,9 +168,11 @@ function App() {
       if (!alive) return;
 
       setSession(currentSession);
+      cloudSync.setAccount(currentSession?.user.id || null);
       setAuthChecking(false);
 
       const { data } = client.auth.onAuthStateChange((_event, nextSession) => {
+        cloudSync.setAccount(nextSession?.user.id || null);
         setSession(nextSession);
         setAuthChecking(false);
       });
