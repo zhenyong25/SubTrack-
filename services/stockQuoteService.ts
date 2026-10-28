@@ -23,6 +23,11 @@ export interface StockIntradayHistory {
   marketState?: string | null;
   exchange?: string | null;
   exchangeTimezone?: string | null;
+  fiftyTwoWeekHigh?: number | null;
+  fiftyTwoWeekLow?: number | null;
+  dayHigh?: number | null;
+  dayLow?: number | null;
+  dayVolume?: number | null;
   candles: StockCandle[];
 }
 

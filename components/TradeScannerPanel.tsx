@@ -3,6 +3,7 @@ import { Loader2, Plus, Radar, X } from 'lucide-react';
 import { fetchStockIntradayHistory, normalizeTickerSymbol } from '../services/stockQuoteService';
 import { SETUP_LABELS, dailySetups, minutesOf, orbState, toSessions, type DailySetup, type OrbState, type TradeRules } from '../services/tradingMath';
 import { INPUT_CLASS, Panel, hhmm, nyNow } from './tradeUi';
+import InvestmentLogo from './InvestmentLogo';
 
 interface TradeScannerPanelProps {
   rules: TradeRules;
@@ -105,6 +106,7 @@ const TradeScannerPanel: React.FC<TradeScannerPanelProps> = ({ rules, holdingSym
           const fromWatchlist = rules.watchlist.map(normalizeTickerSymbol).includes(symbol);
           return (
             <span key={symbol} className="flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-bold text-textMain">
+              <InvestmentLogo investment={{ kind: 'Stocks', symbol, name: symbol, color: '#3b82f6' }} className="h-5 w-5 shrink-0 rounded-full !p-0.5 !text-[8px]" />
               {symbol}
               {fromWatchlist
                 ? <button type="button" onClick={() => removeSymbol(symbol)} aria-label={`Remove ${symbol}`} className="text-secondary hover:text-red-500"><X size={12} /></button>
@@ -133,8 +135,13 @@ const TradeScannerPanel: React.FC<TradeScannerPanelProps> = ({ rules, holdingSym
               {sorted.map(row => (
                 <tr key={row.symbol}>
                   <td className="px-3 py-2">
+                    <span className="flex items-center gap-2">
+                    <InvestmentLogo investment={{ kind: 'Stocks', symbol: row.symbol, name: row.name || row.symbol, color: '#3b82f6' }} className="h-7 w-7 shrink-0 rounded-lg !p-1 !text-[10px]" />
+                    <span>
                     <span className="font-bold text-textMain">{row.symbol}</span>
                     {row.name && <span className="ml-1.5 text-[11px] text-secondary">{row.name.length > 22 ? `${row.name.slice(0, 22)}…` : row.name}</span>}
+                    </span>
+                    </span>
                   </td>
                   {row.error ? (
                     <td colSpan={6} className="px-3 py-2 text-red-500">{row.error}</td>

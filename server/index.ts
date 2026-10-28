@@ -7,6 +7,7 @@
 
 import { handleExchangeBalances } from './cryptoExchanges';
 import { handleEarningsCalendar } from './earningsCalendar';
+import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
 
 export interface Env {
@@ -35,6 +36,11 @@ interface YahooChartMeta {
   exchangeName?: string;
   fullExchangeName?: string;
   exchangeTimezoneName?: string;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  regularMarketDayHigh?: number;
+  regularMarketDayLow?: number;
+  regularMarketVolume?: number;
 }
 
 interface YahooChartQuote {
@@ -148,6 +154,11 @@ async function handleStockHistory(url: URL): Promise<Response> {
     marketState: result.meta?.marketState || null,
     exchange: result.meta?.fullExchangeName || result.meta?.exchangeName || null,
     exchangeTimezone: result.meta?.exchangeTimezoneName || null,
+    fiftyTwoWeekHigh: result.meta?.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow: result.meta?.fiftyTwoWeekLow ?? null,
+    dayHigh: result.meta?.regularMarketDayHigh ?? null,
+    dayLow: result.meta?.regularMarketDayLow ?? null,
+    dayVolume: result.meta?.regularMarketVolume ?? null,
     candles,
   });
 }
@@ -187,6 +198,10 @@ export default {
 
     if (url.pathname === '/api/earnings-calendar') {
       return handleEarningsCalendar(request);
+    }
+
+    if (url.pathname === '/api/stock-insights') {
+      return handleStockInsights(request);
     }
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),

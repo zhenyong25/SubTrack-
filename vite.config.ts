@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { handleExchangeBalances } from './server/cryptoExchanges';
 import { handleSolanaRpc } from './server/solanaRpc';
 import { handleEarningsCalendar } from './server/earningsCalendar';
+import { handleStockInsights } from './server/stockInsights';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -24,6 +25,7 @@ export default defineConfig(({ mode }) => {
               '/api/crypto/exchange': handleExchangeBalances,
               '/api/crypto/solana': request => handleSolanaRpc(request, env.SOLANA_RPC_URL),
               '/api/earnings-calendar': handleEarningsCalendar,
+              '/api/stock-insights': handleStockInsights,
             };
             Object.entries(routes).forEach(([route, handle]) => {
               server.middlewares.use(route, async (req, res) => {
@@ -198,6 +200,11 @@ export default defineConfig(({ mode }) => {
                   marketState: result.meta?.marketState || null,
                   exchange: result.meta?.fullExchangeName || result.meta?.exchangeName || null,
                   exchangeTimezone: result.meta?.exchangeTimezoneName || null,
+                  fiftyTwoWeekHigh: result.meta?.fiftyTwoWeekHigh ?? null,
+                  fiftyTwoWeekLow: result.meta?.fiftyTwoWeekLow ?? null,
+                  dayHigh: result.meta?.regularMarketDayHigh ?? null,
+                  dayLow: result.meta?.regularMarketDayLow ?? null,
+                  dayVolume: result.meta?.regularMarketVolume ?? null,
                   candles,
                 }));
               } catch (error) {

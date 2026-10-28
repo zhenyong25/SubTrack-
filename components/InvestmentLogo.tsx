@@ -3,7 +3,7 @@ import type { InvestmentHolding } from '../types';
 import { getInvestmentLogoUrls } from '../services/investmentLogoService';
 
 interface InvestmentLogoProps {
-  investment: InvestmentHolding;
+  investment: Pick<InvestmentHolding, 'kind' | 'symbol' | 'name' | 'color'>;
   className?: string;
 }
 

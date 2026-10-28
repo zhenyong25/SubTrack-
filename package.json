@@ -18,6 +18,7 @@
     "test:trading": "node scripts/test-trading.mjs",
     "test:earnings": "node scripts/test-earnings.mjs",
     "test:receivables": "node scripts/test-receivables.mjs",
+    "test:ticker": "node scripts/test-ticker-stats.mjs",
     "test:notifications": "node scripts/test-notifications.mjs",
     "test:goals": "node scripts/test-savings-goals.mjs",
     "test:planning": "node scripts/test-finance-planning.mjs",
