@@ -1,4 +1,5 @@
 import { SAVINGS_STORAGE_KEY } from './savingsGoalMath';
+import { cloudSync } from './cloudSyncService';
 import { REMINDER_STORAGE_PREFIX } from './reminderPreferenceService';
 import { normalizeTags, type SearchKind } from './globalSearchService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -42,7 +43,7 @@ const STATEMENTS_BUCKET = 'account-statements';
 
 const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 const supabase: SupabaseClient | null = hasSupabaseConfig
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  ? createClient(supabaseUrl!, supabaseAnonKey!, { global: { fetch: cloudSync.fetch } })
   : null;
 
 export const isSupabaseConfigured = () => Boolean(supabase);

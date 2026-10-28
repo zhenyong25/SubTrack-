@@ -5,6 +5,7 @@ import { exportSubscriptionsToCSV, getCurrencySymbol } from '../services/storage
 import { saveFriends } from '../services/appDataService';
 import CardLogo from './CardLogo';
 import NotificationSettings from './NotificationSettings';
+import CloudSyncStatus from './CloudSyncStatus';
 
 interface SettingsProps {
     currentProfile: UserProfile;
@@ -102,6 +103,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
 
     return (
         <div className="desktop-layout settings-layout pb-24 animate-fade-in space-y-6">
+            <CloudSyncStatus />
             
             {/* Account / Login Section */}
             <div className="settings-account bg-surface rounded-xl p-5 border border-border shadow-sm">
