@@ -97,7 +97,7 @@ export const weekDays = (weekStart: string): string[] => {
   });
 };
 
-const fetchDay = async (date: string): Promise<EarningsEvent[]> => {
+export const fetchDay = async (date: string): Promise<EarningsEvent[]> => {
   const upstream = await fetch(`${NASDAQ_EARNINGS_ENDPOINT}?date=${date}`, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(15000) });
   if (!upstream.ok) throw new Error(`Nasdaq answered ${upstream.status}`);
   const data = await upstream.json() as { data?: { rows?: NasdaqRow[] | null } };
