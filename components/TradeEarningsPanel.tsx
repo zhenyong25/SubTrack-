@@ -161,7 +161,7 @@ const TradeEarningsPanel: React.FC<TradeEarningsPanelProps> = ({ rules, holdingS
                           const isSelected = selected?.symbol === event.symbol && selected.date === event.date;
                           return (
                             <button key={event.symbol} type="button" onClick={() => setSelected(isSelected ? null : event)} title={`${event.name} · ${formatMarketCap(event.marketCap)}`}
-                              className={`relative flex min-w-0 flex-col items-center gap-1 rounded-xl border bg-surface px-1 py-1.5 hover:border-primary ${isSelected ? 'border-primary ring-1 ring-primary' : mine.has(event.symbol) ? 'border-primary/60' : 'border-border'}`}>
+                              className={`relative flex min-w-0 flex-col items-center gap-1 rounded-xl border bg-surface px-1 py-1.5 hover:border-primary ${isSelected ? 'border-primary ring-2 ring-primary' : mine.has(event.symbol) ? 'border-primary' : 'border-border'}`}>
                               <TickerLogo symbol={event.symbol} />
                               <span className="w-full truncate text-center text-[10px] font-bold text-textMain">{event.symbol}</span>
                               {result !== 'pending' && <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${RESULT_TONES[result]}`} aria-label={result} />}
@@ -206,7 +206,7 @@ const EarningsDetail: React.FC<{ event: EarningsEvent; watched: boolean; held: b
     }]),
   ];
   return (
-    <div className="mt-4 rounded-2xl border border-primary/40 bg-background p-4">
+    <div className="mt-4 rounded-2xl border border-primary bg-background p-4">
       <div className="flex items-start gap-3">
         <TickerLogo symbol={event.symbol} className="h-11 w-11" />
         <div className="min-w-0 flex-1">
