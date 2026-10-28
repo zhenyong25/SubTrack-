@@ -7,6 +7,7 @@ const BATCH = 60; // keys per request, keeps URLs a sensible length
 
 export interface CoinPrice {
   price: number;
+  timestamp?: number;
   symbol?: string;
   decimals?: number;
   confidence?: number;

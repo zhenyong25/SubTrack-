@@ -10,12 +10,17 @@ import { isWalletName, resolveWalletName } from '../services/cryptoNames';
 import { fallbackRate, fetchUsdRate, type FxRate } from '../services/fxService';
 import type { CryptoPortfolio } from './useCryptoPortfolio';
 import CryptoSourceLogo from './CryptoSourceLogo';
+import CryptoAirdropInsights from './CryptoAirdropInsights';
+import CryptoAssetChart from './CryptoAssetChart';
+import { cryptoMarkets, type CryptoMarket } from '../services/cryptoMarketService';
 
 // Crypto dashboard for the Investments tab: every wallet and exchange in one live view.
 
 interface CryptoPanelProps {
   sources: CryptoSource[];
   selectedSource?: string;
+  onSelectSource?: (id: string) => void;
+  allPortfolio?: CryptoPortfolio;
   addRequest?: number;
   portfolio: CryptoPortfolio;
   baseCurrency: string;
@@ -87,7 +92,7 @@ const Bars: React.FC<{ rows: { key: string; label: React.ReactNode; value: numbe
   </div>
 );
 
-const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selectedSource = 'all', addRequest = 0, portfolio, baseCurrency, onSaveSource, onDeleteSource }) => {
+const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selectedSource = 'all', onSelectSource, portfolio, allPortfolio = portfolio, addRequest = 0, baseCurrency, onSaveSource, onDeleteSource }) => {
   const sources = useMemo(() => selectedSource === 'all' ? allSources : allSources.filter(source => source.id === selectedSource), [allSources, selectedSource]);
   const { summary, priced, scans } = portfolio;
   const [range, setRange] = useState<HistoryRange>('7d');
@@ -95,6 +100,7 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showAllAssets, setShowAllAssets] = useState(false);
+  const [assetMarkets, setAssetMarkets] = useState<CryptoMarket[] | null>(null);
   const [editing, setEditing] = useState<CryptoSource | 'new' | null>(null);
   const [fx, setFx] = useState<FxRate>(() => fallbackRate(baseCurrency));
   const [, setTick] = useState(0);
@@ -243,6 +249,7 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
 
   return (
     <section className="crypto-panel bg-surface rounded-2xl border border-border p-4 shadow-sm space-y-4" aria-labelledby="crypto-heading">
+      {assetMarkets && <CryptoAssetChart markets={assetMarkets} onClose={() => setAssetMarkets(null)} />}
       {/* Header: live total */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -278,7 +285,7 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
         </div>
       )}
 
-      {sources.length === 0 && summary.assets.length === 0 ? (
+      {allSources.length === 0 && summary.assets.length === 0 ? (
         <div className="rounded-xl bg-background p-8 text-center">
           <Wallet size={28} className="mx-auto text-secondary" />
           <p className="mt-3 text-sm font-bold text-textMain">Track your crypto wherever it's held</p>
@@ -354,7 +361,7 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h4 className="text-sm font-bold text-textMain">Holdings</h4>
-                <p className="mt-0.5 text-xs text-secondary">Live prices · every wallet and network combined.</p>
+                <p className="mt-0.5 text-xs text-secondary">{selectedSource === 'all' ? 'Live prices · every wallet and network combined.' : `Holdings in ${sourceLabel(selectedSource)}.`}</p>
               </div>
               {summary.hidden.length > 0 && (
                 <button type="button" onClick={() => setShowHidden(value => !value)} className="inline-flex items-center gap-1 text-xs font-bold text-secondary hover:text-textMain">
@@ -383,6 +390,9 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
                           <CoinLogo symbol={asset.symbol} logo={asset.logo} />
                           <div className="min-w-0">
                             <p className="font-bold">{asset.symbol}{asset.isStable && <span className="ml-1.5 rounded bg-background px-1.5 py-0.5 text-[9px] font-bold text-secondary">STABLE</span>}</p>
+                            {cryptoMarkets(asset.symbol, priced).length > 0
+                              ? <button type="button" onClick={() => setAssetMarkets(cryptoMarkets(asset.symbol, priced))} aria-label={`View ${asset.symbol} price chart`} className="mt-0.5 text-[11px] font-semibold text-primary hover:underline">View chart</button>
+                              : <span className="mt-0.5 block text-[10px] text-secondary">Chart unavailable</span>}
                             {asset.name && <p className="max-w-[160px] truncate text-[11px] text-secondary">{asset.name}</p>}
                           </div>
                         </div>
@@ -426,19 +436,22 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
           {/* Sources */}
           <div className={BOX}>
             <h4 className="text-sm font-bold text-textMain">Wallets & exchanges</h4>
-            <p className="mt-0.5 text-xs text-secondary">Everything here is read-only: the app can see balances, never move funds.</p>
+            <p className="mt-0.5 text-xs text-secondary">Click a wallet or exchange to see its holdings. Click it again to show all.</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {sources.map(source => {
+              {allSources.map(source => {
                 const scan = scans[source.id];
-                const value = summary.bySource[source.id] || 0;
+                const value = allPortfolio.summary.bySource[source.id] || 0;
+                const selected = selectedSource === source.id;
+                const toggle = () => onSelectSource?.(selected ? 'all' : source.id);
                 return (
-                  <div key={source.id} className="rounded-xl border border-border bg-background p-3">
+                  <div key={source.id} onClick={event => { if (!(event.target as HTMLElement).closest('button, a')) toggle(); }} className={`rounded-xl border p-3 transition-colors ${onSelectSource ? 'cursor-pointer' : ''} ${selected ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50'}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="flex items-center gap-2 truncate text-sm font-bold text-textMain">
+                        <button type="button" aria-pressed={selected} aria-label={`Holdings for ${source.label}`} onClick={toggle} className="flex max-w-full items-center gap-2 text-left text-sm font-bold text-textMain rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                           <CryptoSourceLogo exchange={source.exchange} chain={source.chains?.length === 1 ? source.chains[0] : undefined} size={24} />
-                          {source.label}
-                        </p>
+                          <span className="truncate">{source.label}</span>
+                          {selected && <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] text-white">Selected</span>}
+                        </button>
                         {source.address && <p className="mt-0.5 font-mono text-[11px] text-secondary" title={source.address}>{shortAddress(source.address)}</p>}
                         {source.exchange && (getExchangeKeys(source.id)
                           ? <p className="mt-0.5 flex items-center gap-1 text-[11px] text-secondary"><ShieldCheck size={11} className="text-emerald-500" />{EXCHANGES[source.exchange].name} · read-only key on this device</p>
@@ -476,6 +489,8 @@ const CryptoPanel: React.FC<CryptoPanelProps> = ({ sources: allSources, selected
           </div>
         </>
       )}
+
+      <CryptoAirdropInsights sources={sources} />
 
       {exchangeEditing && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setExchangeEditing(null)}>
