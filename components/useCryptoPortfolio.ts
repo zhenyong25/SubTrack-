@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CryptoSource } from '../types';
 import { scanWallet, type RawBalance } from '../services/cryptoScanService';
 import { scanExchange } from '../services/cryptoExchangeService';
+import { manualCryptoPriceKey, priceManualCrypto } from '../services/cryptoMarketService';
 import { fetchChanges24h, fetchPrices, type CoinPrice } from '../services/cryptoPriceService';
 import { priceBalances, priceKeysFor, summarize, type PricedBalance } from '../services/cryptoPortfolio';
 
@@ -98,7 +99,7 @@ export const useCryptoPortfolio = (sources: CryptoSource[], manual: PricedBalanc
   }, [sourceIds, scanSource]);
 
   const allRaw = useMemo(() => sources.flatMap(source => scans[source.id]?.balances || []), [sources, scans]);
-  const priceKeys = useMemo(() => priceKeysFor(allRaw), [allRaw]);
+  const priceKeys = useMemo(() => [...new Set([...priceKeysFor(allRaw), ...manual.map(balance => balance.priceKey || manualCryptoPriceKey(balance.symbol)).filter((key): key is string => !!key)])], [allRaw, manual]);
   const priceKeyList = priceKeys.join(',');
 
   const refreshPrices = useCallback(async (force = false) => {
@@ -135,7 +136,7 @@ export const useCryptoPortfolio = (sources: CryptoSource[], manual: PricedBalanc
   }, [sources, scans, prices, changes, pricedAt, priceKeys]);
 
   const priced = useMemo(
-    () => [...sources.flatMap(source => priceBalances(source.id, scans[source.id]?.balances || [], prices, changes)), ...manual],
+    () => [...sources.flatMap(source => priceBalances(source.id, scans[source.id]?.balances || [], prices, changes)), ...priceManualCrypto(manual, prices, changes)],
     [sources, scans, prices, changes, manual],
   );
   const summary = useMemo(() => summarize(priced), [priced]);

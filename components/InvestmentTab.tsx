@@ -1126,6 +1126,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
         <CryptoPanel
           sources={crypto.sources}
           selectedSource={selectedCryptoSource}
+          onSelectSource={setSelectedCryptoSource}
+          allPortfolio={cryptoPortfolio}
           addRequest={cryptoAddRequest}
           portfolio={scopedCryptoPortfolio}
           baseCurrency={baseCurrency}
