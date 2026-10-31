@@ -414,7 +414,7 @@ const PokerPanel: React.FC<PokerPanelProps> = props => {
         {rangeFilter}
       </div>
       {profitChart}
-      <div className="grid content-start gap-3 md:grid-cols-2 lg:grid-cols-1">
+      <div className="poker-result-cards grid auto-rows-fr gap-3 self-stretch md:grid-cols-2 lg:grid-cols-1">
         {([
           { id: 'tournaments' as View, title: 'Tournaments', Icon: Trophy, color: COLORS.tournaments, profit: mtt.profit, lines: [`${mtt.count} played · ${mtt.itm} ITM (${plainPct(mtt.itmRate)})`, `ROI ${signedPct(mtt.roi)} · ${usd(mtt.buyIns)} in buy-ins`] },
           { id: 'cash' as View, title: 'Cash games', Icon: Coins, color: COLORS.cash, profit: cash.profit, lines: [`${cash.sessions} sessions · ${plainPct(cash.winRate)} winning`, cash.hourly === undefined ? `${usd(cash.buyIns)} bought in` : `${signedUsd(cash.hourly)}/h over ${cash.hours.toLocaleString(undefined, { maximumFractionDigits: 1 })}h`] },
@@ -422,14 +422,14 @@ const PokerPanel: React.FC<PokerPanelProps> = props => {
           <button key={card.id} type="button" onClick={() => switchView(card.id)} className={`${BOX} poker-result-link text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background`} style={{ '--poker-accent': card.color } as React.CSSProperties}>
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-textMain">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-white" style={{ backgroundColor: card.color }}><card.Icon size={18} /></span>
+                <span className="poker-result-icon flex h-9 w-9 items-center justify-center rounded-xl"><card.Icon size={18} /></span>
                 {card.title}
               </span>
-              <ArrowRight size={18} style={{ color: card.color }} />
+              <ArrowRight size={18} className="text-secondary" />
             </div>
             <p className={`mt-3 text-xl font-extrabold tabular-nums ${tone(card.profit)}`}>{signedUsd(card.profit)}</p>
             {card.lines.map(line => <p key={line} className="mt-1 text-[11px] text-secondary">{line}</p>)}
-            <p className="mt-4 text-xs font-bold" style={{ color: card.color }}>View {card.title.toLowerCase()} <span aria-hidden="true">→</span></p>
+            <p className="mt-4 text-xs font-bold text-secondary">View {card.title.toLowerCase()} <span aria-hidden="true">→</span></p>
           </button>
         ))}
       </div>

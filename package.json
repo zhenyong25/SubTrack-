@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:insurance": "node scripts/test-insurance.mjs",
+    "test:valuations:browser": "node scripts/test-valuation-browser.mjs",
     "catalog:build": "node scripts/build-service-catalog.mjs",
     "logos:fetch": "node scripts/fetch-service-logos.mjs",
     "catalog:check": "node scripts/build-service-catalog.mjs --check",

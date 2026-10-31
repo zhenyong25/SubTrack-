@@ -7,6 +7,7 @@ import { handleSolanaRpc } from './server/solanaRpc';
 import { handleEarningsCalendar } from './server/earningsCalendar';
 import { handleStockInsights } from './server/stockInsights';
 import { handlePokemonMarket } from './server/pokemonMarket';
+import { handlePsaCert } from './server/psaCert';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -28,6 +29,7 @@ export default defineConfig(({ mode }) => {
               '/api/earnings-calendar': handleEarningsCalendar,
               '/api/stock-insights': handleStockInsights,
               '/api/pokemon/market': handlePokemonMarket,
+              '/api/pokemon/psa-cert': request => handlePsaCert(request, env.PSA_API_TOKEN),
             };
             Object.entries(routes).forEach(([route, handle]) => {
               server.middlewares.use(route, async (req, res) => {

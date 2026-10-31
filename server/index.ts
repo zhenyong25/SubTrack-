@@ -10,9 +10,11 @@ import { handleEarningsCalendar } from './earningsCalendar';
 import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
 import { handlePokemonMarket } from './pokemonMarket';
+import { handlePsaCert } from './psaCert';
 
 export interface Env {
   HF_TOKEN: string;
+  PSA_API_TOKEN?: string; // optional PSA public API token for slab lookups - wrangler secret put PSA_API_TOKEN
   SOLANA_RPC_URL?: string; // optional private Solana RPC (e.g. Helius) - set with: wrangler secret put SOLANA_RPC_URL
   ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
@@ -205,6 +207,7 @@ export default {
       return handleStockInsights(request);
     }
     if (url.pathname === '/api/pokemon/market') return handlePokemonMarket(request);
+    if (url.pathname === '/api/pokemon/psa-cert') return handlePsaCert(request, env.PSA_API_TOKEN);
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),
     // and a read-only Solana RPC relay - see the two modules for why they're server-side.

@@ -29,3 +29,15 @@ export async function fetchPokemonMarket(card: PokemonTrackedCard, signal?: Abor
   if (!Array.isArray(result.quotes) || !Array.isArray(result.messages)) throw new Error('The market source returned an invalid response.');
   return result;
 }
+
+export interface PsaCertLookup {
+  certificate: string; name: string; set: string; number: string; year: string; language: string;
+  grade: number | null; gradeLabel: string; variety: string; population: number | null; url: string;
+}
+// The slab's details from PSA, by the certificate number on its label (see server/psaCert.ts).
+export async function fetchPsaCert(certificate: string, signal?: AbortSignal): Promise<PsaCertLookup> {
+  const response = await fetch(`/api/pokemon/psa-cert?cert=${encodeURIComponent(certificate.trim())}`, { signal });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.name) throw new Error(result?.error || 'PSA could not be reached. Enter the card by hand for now.');
+  return result;
+}
