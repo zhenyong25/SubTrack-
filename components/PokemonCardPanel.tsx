@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, ExternalLink, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, ExternalLink, Download, Search, Loader2 } from 'lucide-react';
 import { CARD_GRADES, latestPokemonPrices, safeMarketUrl, type PokemonTrackedCard, type PokemonPrice } from '../services/pokemonCardService';
 import { openPokemonCardStore } from '../services/pokemonCardStorage';
+import { fetchPsaCert } from '../services/pokemonMarketService';
 import PokemonCardPicker from './PokemonCardPicker';
 import PokemonMarketPanel from './PokemonMarketPanel';
 
@@ -22,6 +23,28 @@ export default function PokemonCardPanel({ baseCurrency }: { baseCurrency: strin
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [history, setHistory] = useState<string | null>(null);
+  const [lookup, setLookup] = useState<{ busy: boolean; message: string; failed?: boolean }>({ busy: false, message: '' });
+  const [pickerVersion, setPickerVersion] = useState(0); // remounts the picker after a PSA lookup fills the card
+  // Fills the card from PSA's record for the certificate on the slab's label.
+  async function lookUpCertificate() {
+    if (!draft || lookup.busy) return;
+    if (!/^\d{5,12}$/.test(draft.certificate.trim())) { setLookup({ busy: false, message: 'Enter the certificate number printed on the PSA label (digits only).', failed: true }); return; }
+    setLookup({ busy: true, message: '' }); setError('');
+    try {
+      const slab = await fetchPsaCert(draft.certificate);
+      const halfGrade = slab.grade !== null && /\.5\s*$/.test(slab.gradeLabel) ? `PSA label: ${slab.gradeLabel}` : '';
+      setDraft(current => current && {
+        ...current, certificate: slab.certificate, name: slab.name, set: slab.set, number: slab.number, language: slab.language,
+        grade: slab.grade ? `PSA ${slab.grade}` : current.grade,
+        notes: current.notes || [slab.year, slab.variety, halfGrade].filter(Boolean).join(' · '),
+        catalogId: undefined, catalogSetId: undefined, imageUrl: undefined, rarity: undefined, catalogSourceUrl: undefined, pokedexNumber: undefined, englishSpeciesName: undefined,
+      });
+      setPickerVersion(version => version + 1);
+      setLookup({ busy: false, message: `Found ${slab.name} · ${slab.gradeLabel || 'grade not listed'}${slab.population ? ` · PSA population ${slab.population.toLocaleString()}` : ''}. Check the details, then save.` });
+    } catch (e) {
+      setLookup({ busy: false, message: e instanceof Error ? e.message : 'PSA could not be reached.', failed: true });
+    }
+  }
   useEffect(() => {
     let active = true;
     openPokemonCardStore().then(result => { if (active) { setStore(result); setCards(result.cards); setNotice(result.notice); } }).catch(e => { if (active) setError(e.message); });
@@ -42,10 +65,10 @@ export default function PokemonCardPanel({ baseCurrency }: { baseCurrency: strin
   return <section className="rounded-3xl border border-border bg-surface p-4 sm:p-6 space-y-5 text-textMain">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-xl font-extrabold">Pokémon card tracker</h2><p className="mt-1 text-sm text-secondary">Your high-value cards and PSA slabs, with market quotes fetched automatically from free sources.</p><p className="mt-1 text-xs text-secondary">Portfolio total stays manually entered. These reference prices do not change your holdings or net worth.</p></div>
-      <div className="flex gap-2"><button className={button} onClick={backup} disabled={!cards.length}><Download size={15} />Backup JSON</button><button className={button} disabled={!store || busy} onClick={() => { setDraft(blankCard());  }}><Plus size={15} />Add card</button></div>
+      <div className="flex gap-2"><button className={button} onClick={backup} disabled={!cards.length}><Download size={15} />Backup JSON</button><button className={button} disabled={!store || busy} onClick={() => { setDraft(blankCard()); setLookup({ busy: false, message: '' }); setError(''); }}><Plus size={15} />Add card</button></div>
     </div>
     <p className="text-xs text-secondary" role="status">{notice} Market quotes refresh automatically while this section is open.</p>
-    {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+    {error && !draft && <p role="alert" className="text-sm text-red-500">{error}</p>}
     <div className="flex flex-wrap gap-3"><input className={`${input} sm:!w-80`} aria-label="Search tracked cards" placeholder="Search name, set, number or PSA certificate" value={query} onChange={e => setQuery(e.target.value)} /><select className={`${input} !w-auto`} aria-label="Filter owned grade" value={filter} onChange={e => setFilter(e.target.value)}><option>All</option><option value="Raw">Owned raw</option><option value="PSA">Owned PSA slabs</option></select><span className="self-center text-xs text-secondary">{cards.length} tracked cards</span></div>
     {draft && <form className="rounded-2xl border border-border p-4 space-y-4" onSubmit={async e => {
       e.preventDefault(); const clean = { ...draft, name: draft.name.trim(), set: draft.set.trim(), certificate: draft.grade === 'Raw' ? '' : draft.certificate.trim() };
@@ -55,11 +78,19 @@ export default function PokemonCardPanel({ baseCurrency }: { baseCurrency: strin
       <h3 className="font-bold">{cards.some(c => c.id === draft.id) ? 'Edit card' : 'Add a tracked card'}</h3>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Your card's grade"><select className={input} value={draft.grade} onChange={e => setDraft({ ...draft, grade: e.target.value as PokemonTrackedCard['grade'] })}>{CARD_GRADES.map(g => <option key={g} value={g}>{g === 'Raw' ? 'Raw / ungraded' : g}</option>)}</select></Field>
-        {draft.grade !== 'Raw' && <Field label="PSA certificate number (optional)"><input pattern="[0-9]+" className={input} value={draft.certificate} onChange={e => setDraft({ ...draft, certificate: e.target.value })} /></Field>}
+        <div className="sm:col-span-2"><Field label="PSA certificate number - fills in the card for you">
+          <div className="flex gap-2">
+            <input inputMode="numeric" pattern="[0-9]+" className={input} value={draft.certificate} placeholder="e.g. 118141547" onChange={e => setDraft({ ...draft, certificate: e.target.value.replace(/\s/g, '') })}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookUpCertificate(); } }} />
+            <button type="button" className={`${button} shrink-0`} disabled={lookup.busy || !draft.certificate.trim()} onClick={lookUpCertificate}>{lookup.busy ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}Look up</button>
+          </div>
+        </Field></div>
       </div>
-      {draft.grade === 'Raw' && <p className="text-xs text-secondary">Raw cards do not need a PSA grade or certificate. Choose the card below, or enter its details if the catalog is missing it.</p>}
-      <PokemonCardPicker key={draft.id} card={draft} onChange={patch => setDraft(current => current ? { ...current, ...patch } : current)} />
+      {lookup.message && <p role={lookup.failed ? 'alert' : 'status'} className={`text-xs ${lookup.failed ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{lookup.message}</p>}
+      {draft.grade === 'Raw' && !draft.certificate && <p className="text-xs text-secondary">Raw cards do not need a PSA grade or certificate. Choose the card below, or enter its details if the catalog is missing it.</p>}
+      <PokemonCardPicker key={`${draft.id}:${pickerVersion}`} card={draft} onChange={patch => setDraft(current => current ? { ...current, ...patch } : current)} />
       <Field label="Notes / raw condition / variant"><textarea className={input} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="e.g. Near mint, reverse holo, first edition" /></Field>
+      {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       <div className="flex gap-2"><button disabled={busy} className={button} type="submit">{busy ? 'Saving…' : 'Save card'}</button><button disabled={busy} className={button} type="button" onClick={() => setDraft(null)}>Cancel</button></div>
     </form>}
     {!visible.length && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-secondary">{cards.length ? 'No matching cards.' : 'Add a card to automatically fetch available raw and PSA market quotes.'}</div>}

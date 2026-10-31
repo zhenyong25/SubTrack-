@@ -55,7 +55,7 @@ interface InvestmentTabProps {
   onCreateHolding: (holding: InvestmentHolding) => void;
   onUpdateHolding: (holding: InvestmentHolding, silent?: boolean) => void;
   onDeleteHolding: (holdingId: string) => void;
-  onSaveValuation: (valuation: InvestmentValuation) => void;
+  onSaveValuation: (valuation: InvestmentValuation) => void | Promise<void>;
   onDeleteValuation: (valuationId: string) => void;
   poker: PokerPanelProps;
   crypto: {
@@ -235,6 +235,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
   const [valuationDate, setValuationDate] = useState(new Date().toISOString().split('T')[0]);
   const [valuationPrice, setValuationPrice] = useState('');
   const [valuationNotes, setValuationNotes] = useState('');
+  const [valuationSaving, setValuationSaving] = useState(false);
+  const [valuationError, setValuationError] = useState('');
   const [expandedValuationHoldingId, setExpandedValuationHoldingId] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<EntryMode>(investments.length === 0 ? 'holding' : 'transaction');
   const [entryInvestmentId, setEntryInvestmentId] = useState('');
@@ -567,36 +569,44 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     quoteCurrency && CURRENCIES.includes(quoteCurrency) ? quoteCurrency : holding.currency;
 
   const openLogValue = (holding: InvestmentHolding) => {
+    setValuationError('');
     setValuationTarget(holding);
     setValuationDate(new Date().toISOString().split('T')[0]);
     setValuationPrice(String(holding.currentPrice));
     setValuationNotes('');
   };
 
-  const handleSubmitValuation = (event: React.FormEvent) => {
+  const handleSubmitValuation = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!valuationTarget) return;
+    if (!valuationTarget || valuationSaving) return;
     const price = Number(valuationPrice);
     if (!valuationDate || valuationPrice.trim() === '' || !Number.isFinite(price) || price < 0) return;
 
     const existing = valuationsByHolding.get(valuationTarget.id) || [];
-    onSaveValuation({
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      investmentId: valuationTarget.id,
-      valuationDate,
-      price,
-      marketValue: valuationTarget.units * price,
-      currency: valuationTarget.currency || baseCurrency,
-      notes: valuationNotes.trim() || undefined,
-    });
+    setValuationSaving(true);
+    setValuationError('');
+    try {
+      await onSaveValuation({
+        id: globalThis.crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        investmentId: valuationTarget.id,
+        valuationDate,
+        price,
+        marketValue: valuationTarget.units * price,
+        currency: valuationTarget.currency || baseCurrency,
+        notes: valuationNotes.trim() || undefined,
+      });
 
-    // The card should show the latest logged value, so only move the current price when this
-    // entry is the newest one (back-filling an older date shouldn't overwrite today's price).
-    const isNewest = existing.every(item => item.valuationDate.split('T')[0] <= valuationDate);
-    if (isNewest) onUpdateHolding({ ...valuationTarget, currentPrice: price }, true);
+      // Back-filling an older date must not overwrite the latest price.
+      const isNewest = existing.every(item => item.valuationDate.split('T')[0] <= valuationDate);
+      if (isNewest) onUpdateHolding({ ...valuationTarget, currentPrice: price }, true);
 
-    setValuationTarget(null);
+      setValuationTarget(null);
+    } catch (error) {
+      setValuationError(error instanceof Error ? error.message : 'Could not save this value. Please try again.');
+    } finally {
+      setValuationSaving(false);
+    }
   };
 
   const handleRefreshHoldingPrice = async (holding: InvestmentHolding) => {
@@ -651,7 +661,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
       });
     } else {
       onCreateHolding({
-        id: crypto.randomUUID(),
+        id: globalThis.crypto.randomUUID(),
         name,
         kind: newHoldingKind,
         symbol: symbol || undefined,
@@ -705,7 +715,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     const existing = editingAccountId ? accountsById.get(editingAccountId) : undefined;
     onSaveAccount({
       ...existing,
-      id: existing?.id || crypto.randomUUID(),
+      id: existing?.id || globalThis.crypto.randomUUID(),
       name,
       broker: accountBroker.trim() || undefined,
       accountType,
@@ -1412,7 +1422,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
 
       {valuationTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setValuationTarget(null)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => { if (!valuationSaving) setValuationTarget(null); }}>
           <div
             className="bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-scale-in border border-border my-4 sm:my-8"
             onClick={event => event.stopPropagation()}
@@ -1422,12 +1432,13 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 <h3 className="text-base font-bold text-textMain">Log value</h3>
                 <p className="text-[10px] text-secondary truncate">{valuationTarget.name} - {valuationTarget.units} unit{valuationTarget.units === 1 ? '' : 's'}</p>
               </div>
-              <button type="button" onClick={() => setValuationTarget(null)} className="text-secondary hover:text-textMain p-1 -mr-1" aria-label="Close">
+              <button type="button" disabled={valuationSaving} onClick={() => setValuationTarget(null)} className="text-secondary hover:text-textMain p-1 -mr-1" aria-label="Close">
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSubmitValuation} className="p-4 space-y-4">
+              <fieldset disabled={valuationSaving} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wide text-secondary mb-1">Date</label>
                 <input
@@ -1467,13 +1478,15 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                   placeholder="Optional"
                 />
               </div>
+              {valuationError && <p role="alert" className="text-xs text-red-400">{valuationError}</p>}
               <button
                 type="submit"
                 disabled={valuationPrice.trim() === '' || !Number.isFinite(Number(valuationPrice)) || Number(valuationPrice) < 0 || !valuationDate}
                 className="w-full rounded-xl bg-primary text-white font-bold py-3 text-sm shadow-lg disabled:opacity-40"
               >
-                Save value
+                {valuationSaving ? 'Saving…' : 'Save value'}
               </button>
+              </fieldset>
             </form>
           </div>
         </div>

@@ -12,6 +12,8 @@ import AddExpense from './components/AddExpense';
 import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import SavingsGoalsTab from './components/SavingsGoalsTab';
+import InsuranceTab from './components/InsuranceTab';
+import { ShieldCheck } from 'lucide-react';
 import CardDetail from './components/CardDetail';
 import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
@@ -44,6 +46,7 @@ enum Tab {
   CashFlow = 'CashFlow',
   Debts = 'Debts',
   Goals = 'Goals',
+  Insurance = 'Insurance',
   World = 'World',
   Settings = 'Settings'
 }
@@ -73,6 +76,8 @@ function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgetPlans, setBudgetPlans] = useState<BudgetPlan[]>([]);
   const [investments, setInvestments] = useState<InvestmentHolding[]>([]);
+  const investmentsRef = useRef(investments);
+  investmentsRef.current = investments;
   const [investmentValuations, setInvestmentValuations] = useState<InvestmentValuation[]>([]);
   const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
   const [investmentAccounts, setInvestmentAccounts] = useState<InvestmentAccount[]>([]);
@@ -943,25 +948,23 @@ function App() {
   };
 
   const handleUpdateInvestmentHolding = async (holding: InvestmentHolding, silent = false) => {
-    // Functional form, not a closure over `investments` - a background price refresh can
-    // call this for several holdings back-to-back, and closing over the render's snapshot
-    // would let a later call silently overwrite an earlier one's change before either
-    // triggers a re-render.
-    let updatedHoldings: InvestmentHolding[] = [];
-    setInvestments(prev => {
-      updatedHoldings = prev.map(item => (item.id === holding.id ? holding : item));
-      return updatedHoldings;
-    });
+    // Build the payload synchronously: React may defer a state updater until after saving.
+    // Keep the ref current immediately so consecutive quote updates preserve each other.
+    const updatedHoldings = investmentsRef.current.map(item => (item.id === holding.id ? holding : item));
+    investmentsRef.current = updatedHoldings;
+    setInvestments(updatedHoldings);
     const failure = await saveInvestments(updatedHoldings);
     if (failure) reportSyncFailure(failure);
     else if (!silent) showToast(`Updated ${holding.name}`);
   };
 
   // Every logged value is kept, including several on the same day (ordered by when they were logged).
-  const handleSaveInvestmentValuation = (valuation: InvestmentValuation) => {
+  const handleSaveInvestmentValuation = async (valuation: InvestmentValuation) => {
     const updated = [...investmentValuations, valuation];
+    const failure = await saveInvestmentValuations(updated);
+    if (failure) throw new Error(failure);
     setInvestmentValuations(updated);
-    void saveInvestmentValuations(updated).then(failure => { if (!failure) showToast('Value logged'); else reportSyncFailure(failure); });
+    showToast('Value logged');
   };
 
   const handleDeleteInvestmentValuation = (valuationId: string) => {
@@ -1457,6 +1460,7 @@ function App() {
         )}
 
         {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} focusGoalId={focusGoalId} onFocusHandled={() => setFocusGoalId(null)} />}
+        {activeTab === Tab.Insurance && <InsuranceTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} />}
         {activeTab === Tab.World && <FinanceWorld key={session?.user.id || 'local'} owner={session?.user.id || 'local'} expenses={expenses} incomes={incomes} subscriptions={subscriptions} loans={loans} loanPayments={loanPayments} onOpen={destination => { setWorldReviewRequested(destination === 'review'); setActiveTab(destination === 'goals' ? Tab.Goals : destination === 'expenses' ? Tab.Expenses : destination === 'income' ? Tab.Income : destination === 'debts' ? Tab.Debts : destination === 'subscriptions' ? Tab.Dashboard : Tab.CashFlow); }} />}
 
         {activeTab === Tab.Settings && (
@@ -1591,6 +1595,15 @@ function App() {
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Goals ? 'bg-primary/10' : 'bg-transparent'}`}><PiggyBank size={20} /></div>
           <span className="desktop-nav-label">Goals</span>
+        </button>
+        <button
+          aria-label="Insurance"
+          aria-current={activeTab === Tab.Insurance ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.Insurance)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Insurance ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Insurance ? 'bg-primary/10' : 'bg-transparent'}`}><ShieldCheck size={20} /></div>
+          <span className="desktop-nav-label">Insurance</span>
         </button>
         <button
           aria-label="My City"

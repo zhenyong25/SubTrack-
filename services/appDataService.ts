@@ -1862,19 +1862,21 @@ export const saveInvestmentValuations = async (valuations: InvestmentValuation[]
 
   if (!supabase) return null;
   const userId = await getSupabaseUserId();
-  if (!userId) return null;
+  if (!userId) return 'Sign in again to save investment values.';
 
   if (valuations.length === 0) {
-    await supabase.from('investment_valuations').delete().eq('user_id', userId);
-    return null;
+    const { error } = await supabase.from('investment_valuations').delete().eq('user_id', userId);
+    return error ? error.message : null;
   }
 
   const existingResult = await supabase.from('investment_valuations').select('id').eq('user_id', userId);
+  if (existingResult.error) return existingResult.error.message;
   if (!existingResult.error) {
     const nextIds = new Set(valuations.map(valuation => valuation.id));
     const staleIds = (existingResult.data ?? []).map(row => row.id).filter(id => !nextIds.has(id));
     if (staleIds.length > 0) {
-      await supabase.from('investment_valuations').delete().eq('user_id', userId).in('id', staleIds);
+      const { error } = await supabase.from('investment_valuations').delete().eq('user_id', userId).in('id', staleIds);
+      if (error) return error.message;
     }
   }
 
@@ -2367,6 +2369,7 @@ export const clearStoredAppData = async () => {
   const reminderKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith(REMINDER_STORAGE_PREFIX)));
   reminderKeys.forEach(key => localStorage.removeItem(key));
   localStorage.removeItem(SAVINGS_STORAGE_KEY);
+  localStorage.removeItem('subtrack_insurance_v1');
   localStorage.removeItem(PROFILE_STORAGE_KEY);
   localStorage.removeItem(SUBSCRIPTIONS_STORAGE_KEY);
   localStorage.removeItem(INCOMES_STORAGE_KEY);
@@ -2404,6 +2407,7 @@ export const clearStoredAppData = async () => {
 
   await Promise.all([
     supabase.from('savings_goals').delete().eq('user_id', userId),
+    supabase.from('insurance_policies').delete().eq('user_id', userId),
     supabase.from('subscriptions').delete().eq('user_id', userId),
     supabase.from('incomes').delete().eq('user_id', userId),
     supabase.from('expenses').delete().eq('user_id', userId),
