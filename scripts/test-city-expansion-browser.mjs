@@ -10,8 +10,9 @@ if (!executable) throw new Error('Set CHROME_PATH to Chromium.');
 const directory = mkdtempSync(path.join(tmpdir(), 'subtrack-city-expansion-'));
 let browser, socket, server;
 const gallery = process.argv.includes('--gallery');
+const recreation = process.argv.includes('--recreation');
 try {
-  const bundle = await build({ entryPoints: [gallery ? 'tests/city-building-gallery.ts' : 'tests/city-expansion-browser-fixture.tsx'], bundle: true, write: false, format: 'iife', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } });
+  const bundle = await build({ entryPoints: [gallery ? 'tests/city-building-gallery.ts' : recreation ? 'tests/city-recreation-browser-fixture.tsx' : 'tests/city-expansion-browser-fixture.tsx'], bundle: true, write: false, format: 'iife', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } });
   const css = readFileSync(path.join('dist/assets', readdirSync('dist/assets').find(f => f.endsWith('.css'))));
   server = createServer((req, res) => {
     if (req.url === '/app.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(bundle.outputFiles[0].contents); }
@@ -32,7 +33,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}` });
   let result;
-  for (let i = 0; i < 400; i++) { result = await evaluate('document.getElementById("result")?.textContent'); if (result && result !== 'RUNNING') break; await new Promise(resolve => setTimeout(resolve, 100)); }
+  for (let i = 0; i < (recreation ? 1400 : 400); i++) { result = await evaluate('document.getElementById("result")?.textContent'); if (result && result !== 'RUNNING') break; await new Promise(resolve => setTimeout(resolve, 100)); }
   assert.ok(result?.startsWith('PASS:'), `${result}; ${errors.join('; ')}`);
   assert.deepEqual(errors, []);
   mkdirSync('artifacts/city-expansion', { recursive: true });
@@ -44,7 +45,22 @@ try {
     }
     assert.deepEqual(errors, []);
     console.log('PASS: gallery rendered all 120 individual models across 12 category sheets.');
-
+  } else if (recreation) {
+    // Move closer to the actual court users before recording the live scene.
+    await evaluate(`document.querySelector('button[aria-label="Switch to day"]')?.click()`);
+    await evaluate(`document.querySelector('button[aria-label="Zoom in"]').click();document.querySelector('button[aria-label="Zoom in"]').click();document.querySelector('button[aria-label="Zoom in"]').click()`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    writeFileSync('artifacts/city-expansion/recreation-active.png', Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await evaluate(`document.getElementById('pause-recreation').click()`);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const count = await evaluate(`document.querySelector('canvas').dataset.recreationVisitors`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    assert.equal(await evaluate(`document.querySelector('canvas').dataset.recreationVisitors`), count);
+    await evaluate(`document.getElementById('pause-recreation').click();document.getElementById('remove-recreation').click()`);
+    for (let i = 0; i < 100; i++) { if (await evaluate(`document.querySelector('canvas')?.dataset.recreationVisitors === '0'`)) break; await new Promise(resolve => setTimeout(resolve, 100)); }
+    assert.equal(await evaluate(`document.querySelector('canvas').dataset.recreationVisitors`), '0');
+    assert.deepEqual(errors, []);
+    console.log(result + ' Pause/resume and recreation demolition passed.');
   } else {
   writeFileSync('artifacts/city-expansion/desktop.png', Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
   await evaluate(`document.querySelector('.city-building-catalogue').closest('section').scrollIntoView()`);

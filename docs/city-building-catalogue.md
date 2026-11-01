@@ -26,3 +26,11 @@ Definitions are in `services/cityBuildingExpansion.ts`. The model dispatcher is 
 Validation: `npm run test:city` checks game rules, all 120 save round-trips, all upgrade stages and model geometry bounds. `npm run test:city:browser` checks categories, search, empty results, coastal guidance, placement selection, a live 3D scene and desktop/mobile layout. Screenshots go to `artifacts/city-expansion/`.
 
 `npm run test:city:browser -- --gallery` renders 12 model contact sheets, one per new category. Geometry fingerprint tests compare normalized vertices without materials, so colour or facade changes alone cannot pass as a different building design.
+
+## Resident recreation
+
+Residents visit all ten recreation types. Basketball and tennis courts have animated players and balls; skate parks have riders and boards; pools have swimming strokes; playgrounds have children climbing, sliding, digging and using the swing seat. Football grounds and stadiums have running players and passes. Other recreation venues have exercise, bowling or visitor animations in their public areas.
+
+Visitors come from the existing simulated residents, including short breaks for employed residents. They follow connected roads to an entrance, enter the facility, spend time there and return to their departure road or workplace. Empty cities, disconnected entrances and facilities with no utility service receive no visitors. Removing or moving a facility or removing roads releases its visitors. Activity capacity and a city-wide visit budget bound the animation work, and destination priority rotates so later-built facilities receive visitors too. Pause and reduced motion freeze both the actors and their equipment.
+
+Visits are visual simulation state and are not persisted or rewarded with extra coins. Existing job assignments, financial records and building production are unchanged. Use `npm run test:city:browser -- --recreation` for the live-scene check and `artifacts/city-expansion/recreation-active.png` for its preview.

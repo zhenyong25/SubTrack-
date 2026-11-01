@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { along, buildGraph, pickNext, spawnOnRoads, surfaceHeight, type ToWorld } from './traffic';
+import { RecreationVisits, type RecreationPlace, type RecreationResident } from './recreation';
+import { RecreationEquipment } from './recreationEquipment';
 
 // The residents. Every resident lives in one of the homes you built. Those with a job are inside
-// their workplace; everyone else is out walking the streets - so the people you see are exactly
-// residents minus filled jobs. Scale is real-world: a tile is about 10 m, so a person is about
+// their workplace or taking a recreation break; everyone else walks or visits a facility.
+// Activity visitors are drawn from these same residents. Scale is real-world: a tile is about 10 m, so a person is about
 // 0.175 tall.
 //
 // Close to the camera each person is a jointed figure (hips, knees, shoulders, elbows, neck,
@@ -18,7 +20,7 @@ const HAIR = ['#1c130e', '#3b2516', '#5a3a22', '#8a5a2b', '#c9a15d', '#2b2b2b', 
 const SHOES = ['#1f1f1f', '#5b3a29', '#f2f2f2', '#2f3e46'];
 
 export interface HomePlace { id: string; residents: number; door: number | null }
-export interface WorkPlace { id: string; staff: number }
+export interface WorkPlace { id: string; staff: number; door?: number | null }
 
 interface Person {
   home: HomePlace | null; work: WorkPlace | null; // with a job: inside at work, out of sight
@@ -49,8 +51,16 @@ export class Pedestrians {
   private m = { base: new THREE.Matrix4(), joint: new THREE.Matrix4(), child: new THREE.Matrix4(), out: new THREE.Matrix4(), rot: new THREE.Matrix4(), head: new THREE.Matrix4() };
   private quat = new THREE.Quaternion(); private up = new THREE.Vector3(0, 1, 0); private scale = new THREE.Vector3(); private v = new THREE.Vector3();
   private materials: THREE.Material[] = [];
+  readonly recreation: RecreationVisits;
+  private equipment: RecreationEquipment;
+  private animationTime = 0;
 
   constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private plaza: THREE.Vector3) {
+    this.recreation = new RecreationVisits(toWorld, (id, road) => {
+      const person = this.people[id]; if (!person) return;
+      person.from = road; person.to = road < 0 ? -1 : pickNext(this.graph, road, -1); person.t = 0;
+    });
+    this.equipment = new RecreationEquipment(scene);
     const cloth = new THREE.MeshStandardMaterial({ roughness: 0.85 });
     const skin = new THREE.MeshStandardMaterial({ roughness: 0.55 });
     const hairMaterial = new THREE.MeshStandardMaterial({ roughness: 0.75 });
@@ -126,8 +136,11 @@ export class Pedestrians {
     this.graph = buildGraph(roads);
     this.roads = roads;
     this.roadList = [...roads];
+    this.recreation.setRoads(this.graph);
     this.people.forEach(person => { if (!person.work && (!this.graph.has(person.from) || !this.graph.has(person.to))) this.startWalk(person); });
   }
+
+  setRecreation(places: RecreationPlace[]) { this.recreation.setPlaces(places); }
 
   // Who lives where and who has a job. Jobs are spread across the city's residents rather than
   // filled house by house; whoever has no job is out walking.
@@ -143,6 +156,7 @@ export class Pedestrians {
       const home = homeSlots[i] || null;
       const work = workSlots[i] || null;
       const lostJob = person.work && !work;
+      if (person.home?.id !== home?.id || person.work?.id !== work?.id) this.recreation.residentChanged(i);
       person.home = home;
       person.work = work;
       if (lostJob || (!work && person.from < 0 && this.roadList.length)) this.startWalk(person);
@@ -192,6 +206,14 @@ export class Pedestrians {
   }
 
   update(dt: number, time: number, motion: boolean, camera: THREE.Camera) {
+    if (motion) this.animationTime += dt * 1000;
+    time = this.animationTime;
+    const residents: RecreationResident[] = [];
+    this.people.forEach((person, id) => {
+      if (!person.work && !this.recreation.visits.has(id)) { if (motion) this.advance(person, dt); this.locate(person, time, id); }
+      residents.push({ id, employed: Boolean(person.work), road: person.from, door: person.work?.door ?? person.home?.door ?? null, position: person.pos });
+    });
+    this.recreation.update(dt, motion, residents);
     const counts: Record<string, number> = {};
     Object.keys(this.parts).forEach(name => { counts[name] = 0; });
     let farCount = 0;
@@ -205,19 +227,21 @@ export class Pedestrians {
 
     for (let i = 0; i < this.people.length; i += 1) {
       const p = this.people[i];
-      if (p.work) continue; // at work, indoors
-      if (motion) this.advance(p, dt);
-      this.locate(p, time, i);
+      const activity = this.recreation.pose(i);
+      if (p.work && !activity) continue; // at work, indoors
+      if (activity) { p.pos.copy(activity.position); p.heading = activity.heading; }
       const distance = cam.distanceTo(p.pos);
       if (distance > FAR_LIMIT) continue;
 
-      const walking = motion;
+      const walking = motion && (!activity || activity.walking);
       const cycle = walking ? time * 0.0062 * (p.speed / 0.145) + p.phase : 0; // about one stride a second
       this.quat.setFromAxisAngle(this.up, p.heading);
       const bob = walking ? Math.abs(Math.cos(cycle)) * 0.0025 : 0;
       // Feet on whatever is underfoot - the raised pavement, the asphalt or the grass.
-      const ground = surfaceHeight(this.roads, p.pos.x, p.pos.z) + 0.004;
-      base.compose(this.v.set(p.pos.x, ground + bob, p.pos.z), this.quat, this.scale.setScalar(p.height * PERSON_SCALE));
+      const ground = activity ? p.pos.y : surfaceHeight(this.roads, p.pos.x, p.pos.z) + 0.004;
+      base.compose(this.v.set(p.pos.x, ground + bob, p.pos.z), this.quat, this.scale.setScalar(p.height * PERSON_SCALE * (activity?.scale || 1)));
+      if (activity?.rootPitch) base.multiply(rot.makeRotationX(activity.rootPitch));
+      if (activity?.rootRoll) base.multiply(rot.makeRotationZ(activity.rootRoll));
 
       const near = counts.torso < MAX_DETAILED && distance < NEAR_DISTANCE;
       if (!near) {
@@ -233,7 +257,7 @@ export class Pedestrians {
       if (walking) base.multiply(rot.makeRotationY(Math.sin(cycle) * 0.08));
       put('pelvis', out.multiplyMatrices(base, joint.makeTranslation(0, 0.19, 0)), p.dress ? p.shirt : p.pants);
       if (p.dress) put('dress', out.multiplyMatrices(base, joint.makeTranslation(0, 0.2, 0)), p.shirt);
-      put('torso', out.multiplyMatrices(base, joint.makeRotationX(0.03).setPosition(0, 0.205, 0)), p.shirt);
+      put('torso', out.multiplyMatrices(base, joint.makeRotationX(activity?.torsoPitch ?? 0.03).setPosition(0, 0.205, 0)), p.shirt);
       put('neck', out.multiplyMatrices(base, joint.makeTranslation(0, 0.343, 0)), p.skin);
       headMatrix.multiplyMatrices(base, joint.makeTranslation(0, 0.374, 0.003));
       put('head', headMatrix, p.skin);
@@ -247,8 +271,8 @@ export class Pedestrians {
       for (let side = 0; side < 2; side += 1) {
         const sign = side ? 1 : -1;
         const phase = cycle + side * Math.PI;
-        const swing = walking ? Math.sin(phase) * 0.45 : 0;
-        const knee = walking ? 0.06 + Math.max(0, Math.cos(phase)) * 0.75 : 0.02;
+        const swing = activity?.thighs?.[side] ?? (walking ? Math.sin(phase) * 0.45 : 0);
+        const knee = activity?.knees?.[side] ?? (walking ? 0.06 + Math.max(0, Math.cos(phase)) * 0.75 : 0.02);
         joint.multiplyMatrices(base, rot.makeRotationX(swing).setPosition(sign * 0.021, 0.185, 0));
         put('thigh', joint, p.pants);
         child.multiplyMatrices(joint, rot.makeRotationX(-knee).setPosition(0, -0.096, 0));
@@ -259,11 +283,11 @@ export class Pedestrians {
       // Arms swing opposite the legs; resting arms hang at the sides.
       for (let side = 0; side < 2; side += 1) {
         const sign = side ? 1 : -1;
-        const swing = walking ? -Math.sin(cycle + side * Math.PI) * 0.38 : 0;
+        const swing = activity?.arms?.[side] ?? (walking ? -Math.sin(cycle + side * Math.PI) * 0.38 : 0);
         joint.multiplyMatrices(base, rot.makeRotationX(swing).setPosition(sign * 0.049, 0.318, 0));
-        joint.multiply(rot.makeRotationZ(sign * 0.06));
+        joint.multiply(rot.makeRotationZ(sign * (activity?.armSplay ?? 0.06)));
         put('upperArm', joint, p.shirt);
-        child.multiplyMatrices(joint, rot.makeRotationX(-(walking ? 0.2 + Math.max(0, -swing) * 0.5 : 0.12)).setPosition(0, -0.072, 0));
+        child.multiplyMatrices(joint, rot.makeRotationX(activity?.elbows?.[side] ?? -(walking ? 0.2 + Math.max(0, -swing) * 0.5 : 0.12)).setPosition(0, -0.072, 0));
         put('forearm', child, p.skin);
       }
     }
@@ -279,9 +303,11 @@ export class Pedestrians {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     });
+    this.equipment.update(this.recreation);
   }
 
   dispose() {
+    this.equipment.dispose();
     [...Object.values(this.parts), this.far, this.farHead].forEach(mesh => { mesh.geometry.dispose(); mesh.removeFromParent(); mesh.dispose(); });
     this.materials.forEach(material => material.dispose());
   }
