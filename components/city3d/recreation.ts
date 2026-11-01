@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ToWorld } from './traffic';
+import type { StreetNetwork } from './streets';
 
 export const RECREATION_TYPES = new Set(['playground', 'skatepark', 'basketballcourt', 'tennisclub', 'publicpool', 'bowlinghall', 'sportscentre', 'amusementpark', 'footballground', 'citystadium']);
 export interface RecreationPlace {
@@ -14,6 +15,7 @@ export interface ActivityPose {
 export interface Visit {
   resident: number; place: RecreationPlace; slot: number; phase: 'outbound' | 'entering' | 'playing' | 'leaving' | 'returning';
   position: THREE.Vector3; route: number[]; next: number; origin: number; elapsed: number; heading: number; duration: number;
+  originPosition?: THREE.Vector3; walking?: boolean;
 }
 const capacity = (type: string) => type === 'tennisclub' || type === 'bowlinghall' ? 2 : type === 'playground' ? 3 : type === 'citystadium' ? 8 : type === 'footballground' ? 6 : 4;
 const lerp = (a: number, b: number, value: number) => a + (b - a) * value;
@@ -105,7 +107,7 @@ export class RecreationVisits {
   private placeKey = '';
   private nextAssignment = 0;
   seconds = 0;
-  constructor(private toWorld: ToWorld, private release: (resident: number, road: number) => void) {}
+  constructor(private toWorld: ToWorld, private release: (resident: number, road: number) => void, private streets?: StreetNetwork) {}
   setRoads(graph: Map<number, number[]>) { this.graph = graph; this.routeTrees.clear(); this.placeKey = ''; this.cancelAll(); }
   residentChanged(id: number) { this.cancel(id); }
   setPlaces(places: RecreationPlace[]) {
@@ -124,7 +126,7 @@ export class RecreationVisits {
     for (const road of this.graph.keys()) { const d = this.toWorld(road).distanceToSquared(position); if (d < distance) { distance = d; best = road; } }
     return best;
   }
-  private cancel(id: number) { const visit = this.visits.get(id); if (!visit) return; this.release(id, this.nearestRoad(visit.position, visit.place.door ?? -1)); this.visits.delete(id); this.cooldown.set(id, this.seconds + 5); }
+  private cancel(id: number) { this.streets?.cancel(`recreation:${id}`); const visit = this.visits.get(id); if (!visit) return; this.release(id, this.nearestRoad(visit.position, visit.place.door ?? -1)); this.visits.delete(id); this.cooldown.set(id, this.seconds + 5); }
   private cancelAll() { for (const id of [...this.visits.keys()]) this.cancel(id); }
   private tree(place: RecreationPlace) { let next = this.routeTrees.get(place.id); if (!next) { next = routesTo(this.graph, place.door!); this.routeTrees.set(place.id, next); } return next; }
   private startVisits(residents: RecreationResident[]) {
@@ -146,8 +148,10 @@ export class RecreationVisits {
           if (origin == null) continue;
           const route = roadRoute(this.tree(place), origin, place.door!);
           if (!route || route.length > 32) continue;
-          const position = person.employed ? this.toWorld(origin) : person.position.clone();
-          this.visits.set(person.id, { resident: person.id, place, slot, phase: 'outbound', position, route, next: 0, origin, elapsed: 0, heading: 0, duration: 35 + slot * 3 });
+          const position = person.employed && !this.streets ? this.toWorld(origin) : person.position.clone();
+          if (this.streets && !this.streets.route(position, this.streets.curb(place.door!, place.center))) continue;
+          if (this.streets && !this.streets.crowd.has(person.id) && !this.streets.crowd.spawn(person.id, position)) continue;
+          this.visits.set(person.id, { resident: person.id, place, slot, phase: 'outbound', position, originPosition: position.clone(), route, next: 0, origin, elapsed: 0, heading: 0, duration: 35 + slot * 3, walking: true });
           break;
         }
       }
@@ -155,19 +159,36 @@ export class RecreationVisits {
   }
   update(dt: number, motion: boolean, residents: RecreationResident[]) {
     const live = new Set(residents.map(r => r.id));
-    for (const id of [...this.visits.keys()]) if (!live.has(id)) { this.visits.delete(id); this.cooldown.delete(id); }
+    for (const id of [...this.visits.keys()]) if (!live.has(id)) { this.streets?.cancel(`recreation:${id}`); this.visits.delete(id); this.cooldown.delete(id); }
     if (!motion) return;
     this.seconds += dt;
     if (this.seconds >= this.nextAssignment) { this.startVisits(residents); this.nextAssignment = this.seconds + 0.75; }
     const step = (visit: Visit, target: THREE.Vector3, speed = 0.32) => {
+      if (this.streets) {
+        const result = this.streets.stepResident(visit.resident, visit.position, target, dt, speed);
+        visit.walking = result.walking; if (result.walking) visit.heading = result.heading;
+        return result.arrived;
+      }
       const delta = target.clone().sub(visit.position), distance = delta.length();
       if (Math.hypot(delta.x, delta.z) > 0.001) visit.heading = Math.atan2(delta.x, delta.z);
+      visit.walking = distance > 0.001;
       if (distance <= speed * dt + 0.001) { visit.position.copy(target); return true; }
       visit.position.addScaledVector(delta, speed * dt / distance); return false;
     };
     for (const [id, visit] of this.visits) {
       const entrance = facilityPoint(visit.place, 0, 0.045, 0.46);
       if (visit.phase === 'outbound' || visit.phase === 'returning') {
+        if (this.streets) {
+          const target = visit.phase === 'outbound' ? this.streets.curb(visit.place.door!, visit.place.center) : visit.originPosition!;
+          const result = this.streets.walk(`recreation:${id}`, visit.position, target, dt);
+          visit.walking = result.walking; if (result.walking) visit.heading = result.heading;
+          if (result.blocked) { this.cancel(id); continue; }
+          if (result.arrived) {
+            if (visit.phase === 'outbound') { visit.phase = 'entering'; visit.next = visit.route.length; }
+            else { this.release(id, visit.origin); this.visits.delete(id); this.cooldown.set(id, this.seconds + 22); }
+          }
+          continue;
+        }
         const target = this.toWorld(visit.route[visit.next]); target.y = 0.08;
         if (step(visit, target)) {
           visit.next++;
@@ -189,7 +210,7 @@ export class RecreationVisits {
   }
   pose(id: number): ActivityPose | null {
     const visit = this.visits.get(id); if (!visit) return null;
-    return visit.phase === 'playing' ? activityPose(visit.place, visit.slot, this.seconds) : { position: visit.position, heading: visit.heading, walking: true, scale: 1 };
+    return visit.phase === 'playing' ? activityPose(visit.place, visit.slot, this.seconds) : { position: visit.position, heading: visit.heading, walking: visit.walking ?? true, scale: 1 };
   }
   get attendance() { const counts = new Map<string, number>(); for (const visit of this.visits.values()) if (visit.phase === 'playing') counts.set(visit.place.id, (counts.get(visit.place.id) || 0) + 1); return counts; }
 }
