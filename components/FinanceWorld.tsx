@@ -260,7 +260,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
     city.buildings.length === 0 ? 'Start beside the avenue: a Cottage and a Café, then a Water tower and a Power plant as you grow.' : '',
   ].filter(Boolean);
   // Each advisor: their building (the first one built), the resident in the job, and their last report.
-  // Filled jobs: these residents are inside at work; the rest are the people on the streets.
+  // Employment is a job assignment; residents can also take short recreation breaks.
   const employed = [...stats.status.values()].reduce((sum, item) => sum + item.staff, 0);
   const advisors = AGENTS.map(agent => {
     const building = city.buildings.find(item => item.type === agent.building) || null;
@@ -341,7 +341,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
           <div className="flex items-baseline justify-between"><p className="text-[10px] font-bold uppercase text-secondary">Level {level} · {TITLES[level]}</p><p className="text-[10px] text-secondary">{progress.ratio >= 1 ? 'Max' : `${progress.current} / ${progress.needed} XP`}</p></div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-background"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress.ratio * 100}%` }} /></div>
         </div>
-        <div className="rounded-2xl border border-border bg-surface p-3"><p className="flex items-center gap-1 text-[10px] font-bold uppercase text-secondary"><Users size={12} /> Residents</p><p className="mt-0.5 text-base font-black text-textMain">{stats.residents.toLocaleString()} <span className="text-[10px] font-semibold text-secondary">/ {stats.jobs} jobs</span></p><p className="text-[10px] text-secondary">{employed} at work · {stats.residents - employed} out walking</p></div>
+        <div className="rounded-2xl border border-border bg-surface p-3"><p className="flex items-center gap-1 text-[10px] font-bold uppercase text-secondary"><Users size={12} /> Residents</p><p className="mt-0.5 text-base font-black text-textMain">{stats.residents.toLocaleString()} <span className="text-[10px] font-semibold text-secondary">/ {stats.jobs} jobs</span></p><p className="text-[10px] text-secondary">{employed} employed · {stats.residents - employed} other residents</p></div>
         <div className="rounded-2xl border border-border bg-surface p-3"><p className="flex items-center gap-1 text-[10px] font-bold uppercase text-secondary"><Smile size={12} /> Happiness</p><p className={`mt-0.5 text-base font-black ${stats.happiness >= 70 ? 'text-emerald-500' : stats.happiness < 45 ? 'text-rose-500' : 'text-textMain'}`}>{stats.happiness}%</p></div>
         <div className="rounded-2xl border border-border bg-surface p-3"><p className="flex items-center gap-1 text-[10px] font-bold uppercase text-secondary"><Zap size={12} /> Power</p><p className={`mt-0.5 text-base font-black ${powerShort ? 'text-rose-500' : 'text-textMain'}`}>{stats.power.demand}<span className="text-[10px] font-semibold text-secondary"> / {stats.power.supply}</span></p></div>
         <div className="rounded-2xl border border-border bg-surface p-3"><p className="flex items-center gap-1 text-[10px] font-bold uppercase text-secondary"><Droplets size={12} /> Water</p><p className={`mt-0.5 text-base font-black ${waterShort ? 'text-rose-500' : 'text-textMain'}`}>{stats.water.demand}<span className="text-[10px] font-semibold text-secondary"> / {stats.water.supply}</span></p></div>
@@ -454,6 +454,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
                 <button type="button" onClick={() => setSelectedId(null)} aria-label="Close" className="text-secondary hover:text-textMain"><X size={16} /></button>
               </div>
               <p className="mt-2 text-xs text-secondary">{selectedType?.description || 'The heart of your city. It also supplies a little power and water.'}</p>
+              {selectedType?.category === 'recreation' && <p className="mt-2 rounded-lg bg-background px-3 py-2 text-[11px] text-secondary">Residents walk here to play and exercise when this facility has road access, power and water. Visits use your existing population, including short breaks for employed residents.</p>}
               {selected && agentForBuilding(selected.type) && (() => { const agent = agentForBuilding(selected.type)!; const name = advisors.find(item => item.agent.id === agent.id)?.name; return <button type="button" onClick={() => setAgentOpen(agent.id)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-white" style={{ background: agent.color }}><Users size={14} />{name ? `Visit ${name}, your ${agent.role}` : `Visit the ${agent.role}'s desk`}</button>; })()}
               {selectedId === 'hall' && <button type="button" onClick={() => setAccountantOpen(true)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white"><Users size={14} />Visit Jules in the Accountant office</button>}
               {selectedStatus && selectedId !== 'hall' && (
@@ -569,7 +570,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               <li>🌲 Bulldoze wild trees on your land for {TIMBER_COINS} 🪙 a tree - building or laying road over them pays too.</li>
               <li>🗺️ You own {city.chunks.length} of 100 plots; level {level} allows {maxChunks(level)}. The next costs {chunkCost(city)} 🪙.</li>
               {nextUnlocks.length > 0 && <li>🔓 Level {level + 1} unlocks {nextUnlocks.map(type => `${buildingIcon(type.id)} ${type.name}`).join(', ')}.</li>}
-              <li>🚶 Residents are everyone living in the homes you've built. Those with a job are inside at work; everyone else is out walking - each one someone you can see on your streets{stats.residents > 4000 ? ' (4,000 are drawn at once)' : ''}.</li>
+              <li>🚶 Residents live in your homes, walk the streets and visit connected recreation facilities. Employed residents can take short breaks to play or exercise{stats.residents > 4000 ? ' (up to 4,000 residents are simulated at once)' : ''}.</li>
               <li>🪙 {coinText(city.lifetimeCoins)} coins earned so far. Coins have no cash value - the game rewards recording and reviewing, never how much you spend or earn.</li>
             </ul>
           </section>

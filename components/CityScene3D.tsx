@@ -12,6 +12,7 @@ import { createTextures, type FacadeStyle } from './city3d/textures';
 import { bake, buildModel, type ModelContext, type Prefab } from './city3d/models';
 import { PAVEMENT_INNER, PAVEMENT_SURFACE, ROAD_SURFACE, Smoke, Traffic } from './city3d/traffic';
 import { Pedestrians, type HomePlace, type WorkPlace } from './city3d/people';
+import { RECREATION_TYPES, type RecreationPlace } from './city3d/recreation';
 
 // The 3D city on a 100×100 map. Physically based lighting from a sky model, procedural
 // textures, smooth models baked into InstancedMeshes, and residents and cars walking and
@@ -734,7 +735,7 @@ const CityScene3D: React.FC<Props> = props => {
         roadSet = new Set(city.roads);
         if (roadsChanged) buildRoads(roadSet);
         buildLights(city.lights, roadSet);
-        people.setRoads(roadSet);
+        if (roadsChanged) people.setRoads(roadSet);
         traffic.setRoads(roadSet);
         treesDue = time + 400;
       }
@@ -753,18 +754,29 @@ const CityScene3D: React.FC<Props> = props => {
       if (city !== lastPeopleCity || current.status !== lastStatus) {
         lastPeopleCity = city;
         lastStatus = current.status;
-        const homes: HomePlace[] = [], works: WorkPlace[] = [];
+        const homes: HomePlace[] = [], works: WorkPlace[] = [], recreation: RecreationPlace[] = [];
         city.buildings.forEach(building => {
           const type = getBuilding(building.type)!;
           const status = current.status.get(building.id);
           if (!status) return;
           if (status.residents > 0) homes.push({ id: building.id, residents: status.residents, door: doorFor(roadSet, building.x, building.z, type.size) });
-          if (status.staff > 0) works.push({ id: building.id, staff: status.staff });
+          if (status.staff > 0) works.push({ id: building.id, staff: status.staff, door: doorFor(roadSet, building.x, building.z, type.size) });
+          if (RECREATION_TYPES.has(building.type)) recreation.push({
+            id: building.id, type: building.type, size: type.size,
+            door: doorFor(roadSet, building.x, building.z, type.size), center: world(building.x + (type.size - 1) / 2, building.z + (type.size - 1) / 2),
+            rotation: facing(roadSet, building.x, building.z, type.size), online: status.road && status.serviced > 0,
+          });
         });
         people.setCity(homes, works);
+        people.setRecreation(recreation);
       }
       traffic.setCount((current.residents + current.jobs) / 12);
       people.update(dt, time, motion, camera);
+      const attendance = people.recreation.attendance;
+      const visitors = [...attendance.values()].reduce((sum, value) => sum + value, 0);
+      if (renderer.domElement.dataset.recreationVisitors !== String(visitors)) renderer.domElement.dataset.recreationVisitors = String(visitors);
+      const activeRecreation = [...attendance.keys()].map(id => city.buildings.find(b => b.id === id)?.type).filter(Boolean).join(',');
+      if (renderer.domElement.dataset.recreationActivities !== activeRecreation) renderer.domElement.dataset.recreationActivities = activeRecreation;
       traffic.update(dt, motion);
       smoke.update(time, motion);
       waterNormal.offset.set(motion ? time * 0.000012 : 0, motion ? time * 0.000008 : 0);
