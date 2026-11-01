@@ -8,6 +8,8 @@ import { handleEarningsCalendar } from './server/earningsCalendar';
 import { handleStockInsights } from './server/stockInsights';
 import { handlePokemonMarket } from './server/pokemonMarket';
 import { handlePsaCert } from './server/psaCert';
+import { handleCreditCardMarket } from './server/creditCardMarket';
+import { handleCardImage } from './server/cardImage';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -29,6 +31,8 @@ export default defineConfig(({ mode }) => {
               '/api/earnings-calendar': handleEarningsCalendar,
               '/api/stock-insights': handleStockInsights,
               '/api/pokemon/market': handlePokemonMarket,
+              '/api/credit-cards': handleCreditCardMarket,
+              '/api/card-image': handleCardImage,
               '/api/pokemon/psa-cert': request => handlePsaCert(request, env.PSA_API_TOKEN),
             };
             Object.entries(routes).forEach(([route, handle]) => {
@@ -43,7 +47,7 @@ export default defineConfig(({ mode }) => {
                 res.statusCode = response.status;
                 res.setHeader('Content-Type', response.headers.get('Content-Type') || 'application/json');
                 res.setHeader('Cache-Control', 'no-store');
-                res.end(await response.text());
+                res.end(Buffer.from(await response.arrayBuffer())); // bytes, so images pass through intact
               });
             });
           },
