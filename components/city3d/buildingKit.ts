@@ -1,8 +1,18 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { ModelContext } from './models';
 
 // Shared construction primitives, in a one-tile coordinate system. Building recipes
 // choose their own massing and features; there is no generic building-body fallback.
+
+// Larger parts get softly rounded edges; slats, rails and trim stay crisp (and cheap).
+const softBox = (w: number, h: number, d: number) => {
+  const least = Math.min(w, h, d);
+  return least >= 0.04 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(0.012, least / 5)) : new THREE.BoxGeometry(w, h, d);
+};
+// A lighter (amount > 0) or darker (amount < 0) version of a colour, for trim.
+const shade = (color: string, amount: number) => `#${new THREE.Color(color).lerp(new THREE.Color(amount > 0 ? '#ffffff' : '#1d2528'), Math.abs(amount)).getHexString()}`;
+
 export class BuildingKit {
   group = new THREE.Group();
   constructor(public c: ModelContext, public level: number) {}
@@ -12,7 +22,7 @@ export class BuildingKit {
     mesh.castShadow = true; mesh.receiveShadow = true; this.group.add(mesh); return mesh;
   }
   box(w: number, h: number, d: number, x = 0, y = 0.035, z = 0, color = '#e5dfcf', name = '') {
-    return this.mesh(new THREE.BoxGeometry(w, h, d), this.mat(color), x, y + h / 2, z, name);
+    return this.mesh(softBox(w, h, d), this.mat(color), x, y + h / 2, z, name);
   }
   cyl(r: number, h: number, x = 0, y = 0.035, z = 0, color = '#bac3c5', top = r, name = '') {
     return this.mesh(new THREE.CylinderGeometry(top, r, h, 16), this.mat(color), x, y + h / 2, z, name);
@@ -41,10 +51,15 @@ export class BuildingKit {
     const mesh = this.mesh(new THREE.CylinderGeometry(radius, radius, delta.length(), 6), this.mat(color));
     mesh.position.copy(start.add(end).multiplyScalar(0.5)); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize()); return mesh;
   }
-  roof(w: number, d: number, h: number, x: number, y: number, z: number, color = '#975e4e') {
-    const shape = new THREE.Shape(); shape.moveTo(-w / 2, 0); shape.lineTo(0, h); shape.lineTo(w / 2, 0); shape.closePath();
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false }); geometry.translate(0, 0, -d / 2);
-    return this.mesh(geometry, this.mat(color), x, y, z, 'pitched-roof');
+  // Pitched roof along x with eaves that overhang the walls and a darker ridge cap.
+  roof(w: number, d: number, h: number, x: number, y: number, z: number, color = '#975e4e', eave = 0.018) {
+    const half = w / 2 + eave;
+    const shape = new THREE.Shape(); shape.moveTo(-half, -0.004); shape.lineTo(0, h); shape.lineTo(half, -0.004); shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: d + eave * 2, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.005, bevelSegments: 1 });
+    geometry.translate(0, 0, -(d + eave * 2) / 2);
+    const roof = this.mesh(geometry, this.mat(color), x, y, z, 'pitched-roof');
+    this.box(0.018, 0.012, d + eave * 2 + 0.01, x, y + h - 0.006, z, shade(color, -0.25), 'roof-ridge');
+    return roof;
   }
   arch(w: number, d: number, h: number, x: number, y: number, z: number, color = '#9bbcc1') {
     const shape = new THREE.Shape(); shape.moveTo(-w / 2, 0);
@@ -54,7 +69,13 @@ export class BuildingKit {
   }
   block(w: number, h: number, d: number, x = 0, z = 0, wall = '#ddd8c9', floors = 2, y = 0.04, glass = false) {
     const material = this.c.facade({ wall, window: glass ? '#7aafc8' : '#7795a7', frame: glass ? '#dce7ec' : '#f3ead9', cols: Math.max(2, Math.round(w * 8)), rows: floors, door: true, glass, seed: Math.round((w + h + d) * 100) });
-    return this.mesh(new THREE.BoxGeometry(w, h, d), material, x, y + h / 2, z, 'occupied-building');
+    const body = this.mesh(softBox(w, h, d), material, x, y + h / 2, z, 'occupied-building');
+    // A darker plinth and a light cornice give every building a base and a finished top.
+    if (h >= 0.12 && Math.min(w, d) >= 0.12) {
+      this.box(w + 0.014, 0.014, d + 0.014, x, y, z, shade(wall, -0.3), 'plinth');
+      this.box(w + 0.02, 0.014, d + 0.02, x, y + h - 0.007, z, shade(wall, 0.35), 'cornice');
+    }
+    return body;
   }
   plot(color = '#c9c5b9') { this.box(0.94, 0.035, 0.94, 0, 0, 0, color, 'plot'); }
   path(x: number, z: number, w: number, d: number, color = '#d6cbb5') { this.box(w, 0.012, d, x, 0.036, z, color); }
@@ -110,10 +131,65 @@ export class BuildingKit {
     this.box(length * 0.33, 0.012, length * 0.55, x, 0.185, z, '#d9cba4');
     if (cabin) this.block(length * 0.28, 0.09, length * 0.22, x, z - length * 0.08, '#f2eddc', 1, 0.2);
   }
+  // A car facing +z: body, a set-back glass cabin, lights and four wheels.
   vehicle(x: number, z: number, color: string, length = 0.26) {
-    this.box(length * 0.44, 0.075, length, x, 0.07, z, color, 'vehicle');
-    this.box(length * 0.39, 0.04, length * 0.65, x, 0.145, z, '#8eafc3');
-    for (const side of [-1, 1]) for (const end of [-1, 1]) { const wheel = this.cyl(0.025, 0.018, x + side * length * 0.23, 0.04, z + end * length * 0.3, '#41474a'); wheel.rotation.z = Math.PI / 2; }
+    const w = length * 0.46;
+    this.wheels(x, z, w, length * 0.62, 0.024);
+    this.box(w, 0.06, length, x, 0.052, z, color, 'vehicle');
+    this.box(w * 0.86, 0.05, length * 0.52, x, 0.112, z - length * 0.06, color);
+    this.box(w * 0.9, 0.038, length * 0.46, x, 0.116, z - length * 0.06, '#5d7f92');
+    this.box(w * 0.82, 0.008, length * 0.5, x, 0.162, z - length * 0.06, shade(color, 0.25));
+    this.lights(x, z, w, length, 0.075);
+  }
+  // A bus facing +z; `tram` adds a pantograph and `cars` splits it into a train.
+  coach(x: number, z: number, color: string, length = 0.4, options: { tram?: boolean; cars?: number } = {}) {
+    const w = 0.13, h = 0.125, base = 0.058;
+    const cars = options.cars || 1, carLength = (length - (cars - 1) * 0.012) / cars;
+    for (let n = 0; n < cars; n += 1) {
+      const cz = z - length / 2 + carLength / 2 + n * (carLength + 0.012);
+      const last = n === cars - 1;
+      this.wheels(x, cz, w, carLength * 0.66, 0.026);
+      this.box(w, h, carLength, x, base, cz, color, 'coach');
+      this.box(w + 0.003, 0.042, carLength * (last ? 0.78 : 0.9), x, base + 0.056, cz - (last ? carLength * 0.06 : 0), '#2e4651');
+      this.box(w + 0.003, 0.014, carLength * 0.96, x, base + 0.012, cz, shade(color, -0.3));
+      this.box(w * 0.9, 0.012, carLength * 0.92, x, base + h, cz, '#e9ece6');
+    }
+    const front = z + length / 2;
+    this.box(w - 0.02, 0.06, 0.006, x, base + 0.048, front + 0.001, '#2e4651');
+    this.box(w - 0.04, 0.016, 0.007, x, base + h - 0.026, front + 0.002, '#f2b440', 'destination-sign');
+    this.lights(x, z, w, length, base + 0.024);
+    if (options.tram) {
+      this.beam([x, base + h + 0.012, z], [x + 0.03, base + h + 0.07, z + 0.03], 0.004, '#4b5a5e');
+      this.beam([x + 0.03, base + h + 0.07, z + 0.03], [x, base + h + 0.11, z], 0.004, '#4b5a5e');
+      this.box(0.08, 0.006, 0.012, x, base + h + 0.11, z, '#4b5a5e');
+    }
+  }
+  // A box truck facing +z; `ladder` makes it a fire engine.
+  truck(x: number, z: number, color: string, length = 0.32, cargo = '#d6d4c2', ladder = false) {
+    const w = 0.12, cab = length * 0.3;
+    this.wheels(x, z, w, length * 0.64, 0.026);
+    this.box(w, 0.09, cab, x, 0.056, z + length / 2 - cab / 2, color);
+    this.box(w * 0.9, 0.036, 0.006, x, 0.1, z + length / 2 + 0.001, '#2e4651');
+    this.box(w, 0.018, length, x, 0.05, z, shade(color, -0.35));
+    if (ladder) {
+      this.box(w * 0.9, 0.06, length - cab - 0.01, x, 0.066, z - cab / 2, color);
+      for (const side of [-1, 1]) this.box(0.006, 0.006, length * 0.78, x + side * 0.03, 0.142, z - 0.02, '#d8d9d0');
+      for (let i = 0; i < 7; i++) this.box(0.06, 0.005, 0.005, x, 0.142, z - length * 0.4 + i * length * 0.1, '#d8d9d0');
+      this.box(0.03, 0.014, 0.03, x, 0.15, z + length / 2 - cab / 2, '#3d7bd1');
+    } else this.box(w + 0.01, 0.13, length - cab - 0.01, x, 0.066, z - cab / 2, cargo, 'cargo-box');
+    this.lights(x, z, w, length, 0.074);
+  }
+  wheels(x: number, z: number, w: number, base: number, r: number) {
+    for (const side of [-1, 1]) for (const end of [-1, 1]) {
+      const wheel = this.cyl(r, 0.02, x + side * (w / 2 - 0.006), 0, z + end * base / 2, '#3a4043');
+      wheel.rotation.z = Math.PI / 2; wheel.position.y = r + 0.012;
+    }
+  }
+  lights(x: number, z: number, w: number, length: number, y: number) {
+    for (const side of [-1, 1]) {
+      this.box(0.016, 0.01, 0.005, x + side * (w / 2 - 0.016), y, z + length / 2 + 0.002, '#fff3c9');
+      this.box(0.016, 0.01, 0.005, x + side * (w / 2 - 0.016), y, z - length / 2 - 0.002, '#c9453a');
+    }
   }
   stairs(x: number, z: number, width: number, steps = 3) {
     for (let i = 0; i < steps; i++) this.box(width, 0.025 * (i + 1), 0.035, x, 0.035, z - i * 0.03, '#dbd6c5');
