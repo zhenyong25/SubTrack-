@@ -4,6 +4,7 @@
 // Coins have no cash value, and nothing rewards how much is spent, earned or traded.
 
 import type { Expense, Income, SavingsEntry } from '../types';
+import { EXPANSION_BUILDINGS, type BuildingAppearance } from './cityBuildingExpansion';
 import { parseAccountantReport, type AccountantReport } from './cityAccountantService';
 import { FIX_REWARD, fixedSince, parseAgentRecords, type AgentId, type AgentRecord, type AgentReport } from './cityAgents';
 import { parseWorld, QUEST_REWARDS, worldStats, worldWeek, type QuestId } from './financeWorldService';
@@ -98,9 +99,11 @@ const harvest = (state: CityState, tiles: number[]): CityState => {
 // ---------------------------------------------------------------------------------------------
 // Buildings
 
-export type BuildingCategory = 'homes' | 'business' | 'industry' | 'utilities' | 'services' | 'advisors';
+export type BuildingCategory = 'homes' | 'business' | 'industry' | 'utilities' | 'services' | 'advisors' | 'farming' | 'harbour' | 'fishing' | 'highrise' | 'shopping' | 'dining' | 'recreation' | 'culture' | 'transport' | 'civic' | 'science' | 'nature';
 
 export interface BuildingType {
+  appearance?: BuildingAppearance;
+  icon?: string;
   id: string;
   name: string;
   category: BuildingCategory;
@@ -147,6 +150,7 @@ export const BUILDINGS: BuildingType[] = [
   { id: 'vault', name: 'Savings Vault', category: 'advisors', size: 1, cost: 140, unlock: 2, income: 4, jobs: 2, happiness: 3, power: 1, water: 1, description: 'Your Savings Coach works here - keeps every goal on track with a monthly amount.' },
   { id: 'creditunion', name: 'Credit Union', category: 'advisors', size: 1, cost: 160, unlock: 3, income: 5, jobs: 3, happiness: 2, power: 1, water: 1, description: 'Your Debt Advisor works here - what to pay off first, and how much sooner you could be free.' },
   { id: 'lighthouse', name: 'Lighthouse', category: 'services', size: 1, cost: 500, unlock: 8, income: 15, happiness: 10, power: 1, coastal: true, noRoad: true, description: 'Guides ships - and visitors. Build it by the water.' },
+  ...EXPANSION_BUILDINGS,
 ];
 
 export const HALL = { id: 'hall', name: 'Town Hall', x: 49, z: 49, size: 2, income: 6, happiness: 5, powerSupply: 10, waterSupply: 10 } as const;
@@ -389,8 +393,8 @@ export const cityStats = (state: CityState, now: number): CityStats => {
     residents += scale(type.residents, building.level);
     jobs += scale(type.jobs, building.level) * factor;
     if (factor > 0) happiness += (type.happiness || 0) * (1 + (building.level - 1) * 0.5);
-    if (type.category === 'homes') { homes += 1; happiness -= (1 - factor) * 3; }
-    if (type.category === 'services') green += 1;
+    if (type.residents) { homes += 1; happiness -= (1 - factor) * 3; }
+    if (type.category === 'services' || type.category === 'nature') green += 1;
   });
   // Lit streets feel safer: +1 for every 4 street lights, up to +12.
   happiness += Math.min(12, Math.floor(state.lights.length / 4));
