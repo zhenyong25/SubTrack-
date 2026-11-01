@@ -33,6 +33,19 @@ export function findExactService(name: string, services: SubscriptionService[] =
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+// For logos only: also tries the name without bracketed notes ("iPhone (24 months)") and a
+// catalog name that the record name starts with, whole words ("StarHub Broadband" → StarHub).
+export function findServiceForLogo(name: string, services: SubscriptionService[] = BUNDLED_SERVICES) {
+  const exact = findExactService(name, services) || findExactService(name.replace(/[([{][^)\]}]*[)\]}]/g, ' '), services);
+  if (exact) return exact;
+  const query = normalizeServiceName(name.replace(/[([{][^)\]}]*[)\]}]/g, ' '));
+  if (!query) return undefined;
+  const candidates = services.filter(s => s.is_active && query.startsWith(`${normalizeServiceName(s.name)} `));
+  const longest = Math.max(0, ...candidates.map(s => normalizeServiceName(s.name).length));
+  const best = candidates.filter(s => normalizeServiceName(s.name).length === longest);
+  return new Set(best.map(s => s.domain)).size === 1 ? best[0] : undefined;
+}
+
 export function searchServices(query: string, services: SubscriptionService[], category = '') {
   const normalized = normalizeServiceName(query);
   const words = normalized.split(' ').filter(Boolean);

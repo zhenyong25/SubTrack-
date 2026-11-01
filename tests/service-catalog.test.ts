@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUNDLED_SERVICES, findExactService, searchServices, isSubscriptionService } from '../services/serviceCatalog';
+import { BUNDLED_SERVICES, findExactService, findServiceForLogo, searchServices, isSubscriptionService } from '../services/serviceCatalog';
 import { getServiceLogoUrl, getServiceLogoUrls, getSubscriptionLogoDataUrl } from '../services/subscriptionLogoService';
 import { getServiceCatalogSnapshot, loadServiceCatalog } from '../services/serviceCatalogStore';
 
@@ -82,4 +82,19 @@ test('catalog loading handles pages beyond 1,000 and retains the last good resul
     await loadServiceCatalog();
     assert.equal(getServiceCatalogSnapshot(), good, 'missing migration must retain the catalog');
   } finally { Date.now = originalNow; target.__catalogClient = null; }
+});
+
+test('logo matching reads brands from record names without guessing', () => {
+  const domain = (name: string) => findServiceForLogo(name)?.domain;
+  assert.equal(domain('HP Smart'), 'hp.com');
+  assert.equal(domain('Iphone (24months)'), 'apple.com');
+  assert.equal(domain('Hugging Face'), 'huggingface.co');
+  assert.equal(domain('Starhub'), 'starhub.com');
+  assert.equal(domain('StarHub Broadband 1Gbps'), 'starhub.com');
+  assert.equal(domain('Income Tax'), 'iras.gov.sg');
+  assert.equal(domain('Anywheel'), 'anywheel.sg');
+  assert.equal(domain('Netflix Premium Family'), 'netflix.com');
+  assert.equal(domain('Apple Music'), 'music.apple.com');
+  assert.equal(domain('spot'), undefined);
+  assert.equal(domain('My personal gym'), undefined);
 });
