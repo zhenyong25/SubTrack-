@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:city:browser": "node scripts/test-city-expansion-browser.mjs",
     "test:insurance": "node scripts/test-insurance.mjs",
     "test:valuations:browser": "node scripts/test-valuation-browser.mjs",
     "catalog:build": "node scripts/build-service-catalog.mjs",

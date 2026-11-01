@@ -19,6 +19,10 @@ The catalogue contains 145 buildable types: the 25 original types and 120 additi
 
 Harbour buildings and selected fisheries require dry land directly beside water. They do not occupy water tiles. Nature spaces work without roads. Residential high-rises house residents; commercial buildings provide jobs and income. Civic and recreational buildings support happiness. Solar canopies, water reclamation and the energy institute provide utilities. These additions use the existing coin economy; there are no separate crop, fish or cargo inventories.
 
+Use All to browse the complete catalogue, or choose a category. Search matches names, descriptions and category IDs within the selected category. Unlocked and Within budget filters narrow the selection. Cards show footprint, cost, effects, utility demand and shoreline requirements.
+
 Definitions are in `services/cityBuildingExpansion.ts`. The model dispatcher is in `components/city3d/expansionModels.ts`; the 120 individual architectural recipes are split across `ruralBuildings.ts`, `urbanBuildings.ts`, `publicBuildings.ts` and `infrastructureBuildings.ts`. They share construction primitives in `buildingKit.ts`, but each building chooses its own geometry, layout and defining equipment. Each design has a stable save ID. Existing buildings and saves retain their original IDs and settings. No database migration is required.
 
-Run `npm run test:city` to check building rules, saved-city compatibility, model bounds, and architectural uniqueness.
+Validation: `npm run test:city` checks game rules, all 120 save round-trips, all upgrade stages and model geometry bounds. `npm run test:city:browser` checks categories, search, empty results, coastal guidance, placement selection, a live 3D scene and desktop/mobile layout. Screenshots go to `artifacts/city-expansion/`.
+
+`npm run test:city:browser -- --gallery` renders 12 model contact sheets, one per new category. Geometry fingerprint tests compare normalized vertices without materials, so colour or facade changes alone cannot pass as a different building design.
