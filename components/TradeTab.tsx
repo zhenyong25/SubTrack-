@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, CalendarDays, Crosshair, Loader2, Radar, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BookOpen, CalendarDays, CandlestickChart, Crosshair, Loader2, Radar, ShieldCheck } from 'lucide-react';
 import { DEFAULT_RULES, type JournalTrade, type TradeRules } from '../services/tradingMath';
 import { deleteJournalTrade, loadTradeData, saveJournalTrade, saveTradeRules } from '../services/tradeStoreService';
 import TradePlanPanel from './TradePlanPanel';
@@ -7,9 +7,10 @@ import TradeScannerPanel from './TradeScannerPanel';
 import TradeJournalPanel from './TradeJournalPanel';
 import TradeEarningsPanel from './TradeEarningsPanel';
 import TradeOptionsPanel from './TradeOptionsPanel';
+import TradePatternsPanel from './TradePatternsPanel';
 import { Field, INPUT_CLASS, Panel } from './tradeUi';
 
-type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings' | 'options';
+type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings' | 'patterns' | 'options';
 
 const VIEWS: Array<{ id: TradeView; label: string; icon: React.ElementType }> = [
   { id: 'plan', label: 'Plan', icon: Crosshair },
@@ -18,6 +19,7 @@ const VIEWS: Array<{ id: TradeView; label: string; icon: React.ElementType }> = 
   { id: 'journal', label: 'Journal', icon: BookOpen },
   { id: 'rules', label: 'Rules', icon: ShieldCheck },
   { id: 'earnings', label: 'Earnings', icon: CalendarDays },
+  { id: 'patterns', label: 'Patterns', icon: CandlestickChart },
 ];
 
 interface TradeTabProps {
@@ -103,6 +105,7 @@ const TradeTab: React.FC<TradeTabProps> = ({ holdingSymbols, onNotify }) => {
       {view === 'journal' && <TradeJournalPanel rules={rules} journal={journal} onSave={saveTrade} onDelete={deleteTrade} />}
       {view === 'rules' && <RulesPanel rules={rules} onSave={next => { saveRules(next); onNotify('Trading rules saved'); }} />}
       {view === 'earnings' && <TradeEarningsPanel rules={rules} holdingSymbols={holdingSymbols} onSaveRules={next => { saveRules(next); onNotify('Added to your watchlist'); }} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
+      {view === 'patterns' && <TradePatternsPanel rules={rules} />}
 
       <p className="text-[10px] text-secondary">
         For practice and education, not financial advice - most day traders lose money. Prices are delayed and unofficial (Yahoo Finance). Rules adapted from the open-source day-trader-skill.

@@ -6,8 +6,12 @@ import path from 'node:path';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'subtrack-trading-'));
 try {
-  const outfile = path.join(directory, 'trading.test.mjs');
-  await build({ entryPoints: ['tests/trading.test.ts'], bundle: true, platform: 'node', format: 'esm', outfile });
-  const result = spawnSync(process.execPath, ['--test', outfile], { stdio: 'inherit' });
+  const outfiles = [];
+  for (const name of ['trading', 'candlestickPatterns']) {
+    const outfile = path.join(directory, `${name}.test.mjs`);
+    await build({ entryPoints: [`tests/${name}.test.ts`], bundle: true, platform: 'node', format: 'esm', outfile });
+    outfiles.push(outfile);
+  }
+  const result = spawnSync(process.execPath, ['--test', ...outfiles], { stdio: 'inherit' });
   process.exitCode = result.status ?? 1;
 } finally { rmSync(directory, { recursive: true, force: true }); }
