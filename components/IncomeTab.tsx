@@ -167,7 +167,6 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
 
   return (
     <div className="desktop-layout income-layout space-y-6 pb-24 animate-fade-in">
-      <Payslips />
       <div className="income-hero bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
@@ -409,6 +408,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
           </div>
         )}
       </div>
+      <Payslips />
     </div>
   );
 };
