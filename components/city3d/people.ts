@@ -3,9 +3,11 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { along, buildGraph, pickNext, spawnOnRoads, surfaceHeight, type ToWorld } from './traffic';
 import { RecreationVisits, type RecreationPlace, type RecreationResident } from './recreation';
 import { RecreationEquipment } from './recreationEquipment';
+import { BuildingVisits, type BuildingEntrance } from './buildingVisits';
+import type { StreetNetwork } from './streets';
 
-// The residents. Every resident lives in one of the homes you built. Those with a job are inside
-// their workplace or taking a recreation break; everyone else walks or visits a facility.
+// The residents. Every resident lives in one of the homes you built. They commute, visit
+// buildings, stroll on pavements, or take a recreation break. Indoor residents are hidden.
 // Activity visitors are drawn from these same residents. Scale is real-world: a tile is about 10 m, so a person is about
 // 0.175 tall.
 //
@@ -28,6 +30,9 @@ interface Person {
   side: number; speed: number; phase: number; height: number; hairStyle: number; dress: boolean;
   shirt: THREE.Color; pants: THREE.Color; skin: THREE.Color; hair: THREE.Color; shoes: THREE.Color;
   pos: THREE.Vector3; heading: number;
+  walking: boolean; wander: THREE.Vector3 | null;
+  streetVisible: boolean; spawnAt: number;
+  previousNode: number | null; wanderOrigin: number | null;
 }
 
 const NEAR_DISTANCE = 18;
@@ -52,14 +57,23 @@ export class Pedestrians {
   private quat = new THREE.Quaternion(); private up = new THREE.Vector3(0, 1, 0); private scale = new THREE.Vector3(); private v = new THREE.Vector3();
   private materials: THREE.Material[] = [];
   readonly recreation: RecreationVisits;
+  readonly buildings: BuildingVisits | null;
   private equipment: RecreationEquipment;
   private animationTime = 0;
 
-  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private plaza: THREE.Vector3) {
+  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private plaza: THREE.Vector3, private streets?: StreetNetwork) {
     this.recreation = new RecreationVisits(toWorld, (id, road) => {
       const person = this.people[id]; if (!person) return;
       person.from = road; person.to = road < 0 ? -1 : pickNext(this.graph, road, -1); person.t = 0;
-    });
+      person.wander = null;
+      if (this.streets) { this.streets.crowd.release(id); person.streetVisible = false; }
+      if (this.streets) { const node = this.streets.closest(person.pos); if (node) person.pos.copy(node.position); }
+    }, streets);
+    this.buildings = streets ? new BuildingVisits(streets, (id, curb, road) => {
+      const person = this.people[id]; if (!person) return;
+      person.pos.copy(curb); person.from = road; person.to = road; person.wander = null;
+      streets.crowd.release(id); person.streetVisible = false;
+    }) : null;
     this.equipment = new RecreationEquipment(scene);
     const cloth = new THREE.MeshStandardMaterial({ roughness: 0.85 });
     const skin = new THREE.MeshStandardMaterial({ roughness: 0.55 });
@@ -137,13 +151,23 @@ export class Pedestrians {
     this.roads = roads;
     this.roadList = [...roads];
     this.recreation.setRoads(this.graph);
-    this.people.forEach(person => { if (!person.work && (!this.graph.has(person.from) || !this.graph.has(person.to))) this.startWalk(person); });
+    this.buildings?.roadsChanged();
+    this.people.forEach((person, id) => {
+      person.wander = null; this.streets?.cancel(`wander:${id}`);
+      if (this.streets) person.streetVisible = false;
+      // An edited road may remove a crossing while somebody is using it. Release them
+      // onto a surviving pavement before restarting traffic on the changed network.
+      const node = this.streets?.closest(person.pos);
+      if (node) { person.pos.copy(node.position); person.from = person.to = node.road; }
+      else if ((!person.work || this.streets) && (!this.graph.has(person.from) || !this.graph.has(person.to))) this.startWalk(person);
+    });
   }
 
   setRecreation(places: RecreationPlace[]) { this.recreation.setPlaces(places); }
+  setEntrances(places: BuildingEntrance[]) { this.buildings?.setPlaces(places); }
 
   // Who lives where and who has a job. Jobs are spread across the city's residents rather than
-  // filled house by house; whoever has no job is out walking.
+  // filled house by house. The street simulation draws trips from those same residents.
   setCity(homes: HomePlace[], works: WorkPlace[]) {
     const homeSlots = homes.flatMap(home => Array.from({ length: home.residents }, () => home));
     const workSlots = works.flatMap(work => Array.from({ length: work.staff }, () => work));
@@ -151,15 +175,17 @@ export class Pedestrians {
     for (let i = workSlots.length - 1; i > 0; i -= 1) { const j = Math.floor(random() * (i + 1)); [workSlots[i], workSlots[j]] = [workSlots[j], workSlots[i]]; }
     const target = Math.min(this.capacity, homeSlots.length);
     while (this.people.length < target) this.people.push(this.newPerson(this.people.length));
+    for (let i = target; i < this.people.length; i++) { this.recreation.residentChanged(i); this.buildings?.cancel(i); this.streets?.cancel(`wander:${i}`); }
     this.people.length = target;
     this.people.forEach((person, i) => {
       const home = homeSlots[i] || null;
       const work = workSlots[i] || null;
       const lostJob = person.work && !work;
-      if (person.home?.id !== home?.id || person.work?.id !== work?.id) this.recreation.residentChanged(i);
+      const changed = person.home?.id !== home?.id || person.work?.id !== work?.id;
+      if (changed) { this.recreation.residentChanged(i); this.buildings?.cancel(i); this.streets?.cancel(`wander:${i}`); this.streets?.crowd.release(i); }
       person.home = home;
       person.work = work;
-      if (lostJob || (!work && person.from < 0 && this.roadList.length)) this.startWalk(person);
+      if (lostJob || (this.streets && changed) || (!work && person.from < 0 && this.roadList.length)) this.startWalk(person);
     });
   }
 
@@ -172,7 +198,7 @@ export class Pedestrians {
       height: 0.92 + Math.random() * 0.14, hairStyle: dress ? (i % 2 ? 1 : 2) : [0, 0, 0, 1, 3][i % 5], dress,
       shirt: new THREE.Color(SHIRTS[(i * 5) % SHIRTS.length]), pants: dress ? skin.clone() : new THREE.Color(PANTS[(i * 3) % PANTS.length]),
       skin, hair: new THREE.Color(HAIR[(i * 11) % HAIR.length]), shoes: new THREE.Color(SHOES[(i * 13) % SHOES.length]),
-      pos: new THREE.Vector3(), heading: Math.random() * Math.PI * 2,
+      pos: new THREE.Vector3(), heading: Math.random() * Math.PI * 2, walking: false, wander: null, streetVisible: !this.streets, spawnAt: 0, previousNode: null, wanderOrigin: null,
     };
   }
 
@@ -183,6 +209,12 @@ export class Pedestrians {
     person.from = start.from;
     person.to = start.to;
     person.t = Math.random();
+    if (this.streets) {
+      const node = this.streets.closest(this.toWorld(start.from));
+      if (node) person.pos.copy(node.position);
+      person.wander = null;
+      person.streetVisible = false; person.spawnAt = this.animationTime / 1000;
+    }
   }
 
   private advance(person: Person, dt: number) {
@@ -208,12 +240,36 @@ export class Pedestrians {
   update(dt: number, time: number, motion: boolean, camera: THREE.Camera) {
     if (motion) this.animationTime += dt * 1000;
     time = this.animationTime;
+    this.streets?.crowd.begin(this.people.flatMap((person, id) => {
+      const activity = this.recreation.pose(id), building = this.buildings?.pose(id);
+      if (building && !building.visible || person.work && !activity && !building || !person.streetVisible && !activity && !building) return [];
+      return [{ id, position: activity?.position || building?.position || person.pos }];
+    }));
     const residents: RecreationResident[] = [];
     this.people.forEach((person, id) => {
-      if (!person.work && !this.recreation.visits.has(id)) { if (motion) this.advance(person, dt); this.locate(person, time, id); }
-      residents.push({ id, employed: Boolean(person.work), road: person.from, door: person.work?.door ?? person.home?.door ?? null, position: person.pos });
+      if (!person.work && !this.recreation.visits.has(id) && !this.buildings?.visits.has(id)) {
+        if (this.streets && this.streets.nodes.size) {
+          if (!person.streetVisible && time / 1000 >= person.spawnAt) {
+            const position = this.streets.spawnResident(id, person.pos);
+            if (position) { person.pos.copy(position); person.streetVisible = true; }
+            else person.spawnAt = time / 1000 + 0.7 + id % 5 * 0.1;
+          }
+          if (motion && person.streetVisible) {
+            if (!person.wander) {
+              const node = this.streets.closest(person.pos), forward = node?.links.filter(link => link.to !== person.previousNode);
+              const links = forward?.length ? forward : node?.links;
+              const next = links?.[Math.floor(Math.random() * links.length)];
+              person.wanderOrigin = node?.id ?? null; person.wander = (next ? this.streets.nodes.get(next.to)!.position : node?.position)?.clone() || null;
+            }
+            if (person.wander) { const result = this.streets.walk(`wander:${id}`, person.pos, person.wander, dt, person.speed * 1.5); person.walking = result.walking; if (result.walking) person.heading = result.heading; if (result.arrived || result.blocked) { person.previousNode = result.blocked ? this.streets.closest(person.wander)?.id ?? person.wanderOrigin : person.wanderOrigin; person.wander = null; } }
+          }
+        } else { if (motion) this.advance(person, dt); this.locate(person, time, id); person.walking = true; }
+      }
+      if ((person.streetVisible || person.work || !this.streets) && !this.buildings?.visits.has(id) && !this.streets?.isCrossing(`wander:${id}`)) residents.push({ id, employed: Boolean(person.work), road: person.from, door: person.work?.door ?? person.home?.door ?? null, position: person.pos });
     });
     this.recreation.update(dt, motion, residents);
+    this.buildings?.update(dt, motion, this.people.flatMap((person, id) => this.recreation.visits.has(id) || this.streets?.isCrossing(`wander:${id}`) || !person.streetVisible && !person.work && !this.buildings?.visits.has(id) ? [] : [{ id, home: person.home?.id || null, work: person.work?.id || null, position: person.pos }]), this.people.length);
+    for (const id of [...this.recreation.visits.keys(), ...(this.buildings?.visits.keys() || [])]) this.streets?.cancel(`wander:${id}`);
     const counts: Record<string, number> = {};
     Object.keys(this.parts).forEach(name => { counts[name] = 0; });
     let farCount = 0;
@@ -225,15 +281,21 @@ export class Pedestrians {
       this.parts[name].setColorAt(i, color);
     };
 
+    const visiblePositions: THREE.Vector3[] = [];
     for (let i = 0; i < this.people.length; i += 1) {
       const p = this.people[i];
-      const activity = this.recreation.pose(i);
+      const building = this.buildings?.pose(i);
+      const activity = this.recreation.pose(i) || building;
+      if (building && !building.visible) { p.streetVisible = false; continue; }
       if (p.work && !activity) continue; // at work, indoors
+      if (this.streets && !p.streetVisible && !activity) continue;
       if (activity) { p.pos.copy(activity.position); p.heading = activity.heading; }
+      p.streetVisible = true;
+      visiblePositions.push(p.pos);
       const distance = cam.distanceTo(p.pos);
       if (distance > FAR_LIMIT) continue;
 
-      const walking = motion && (!activity || activity.walking);
+      const walking = motion && (activity ? activity.walking : p.walking);
       const cycle = walking ? time * 0.0062 * (p.speed / 0.145) + p.phase : 0; // about one stride a second
       this.quat.setFromAxisAngle(this.up, p.heading);
       const bob = walking ? Math.abs(Math.cos(cycle)) * 0.0025 : 0;
@@ -304,6 +366,7 @@ export class Pedestrians {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     });
     this.equipment.update(this.recreation);
+    this.streets?.setPedestrians(visiblePositions);
   }
 
   dispose() {

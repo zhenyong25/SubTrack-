@@ -11,9 +11,10 @@ const directory = mkdtempSync(path.join(tmpdir(), 'subtrack-city-expansion-'));
 let browser, socket, server;
 const gallery = process.argv.includes('--gallery');
 const recreation = process.argv.includes('--recreation');
+const movement = process.argv.includes('--movement');
 try {
-  const bundle = await build({ entryPoints: [gallery ? 'tests/city-building-gallery.ts' : recreation ? 'tests/city-recreation-browser-fixture.tsx' : 'tests/city-expansion-browser-fixture.tsx'], bundle: true, write: false, format: 'iife', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } });
-  const css = readFileSync(path.join('dist/assets', readdirSync('dist/assets').find(f => f.endsWith('.css'))));
+  const bundle = await build({ entryPoints: [gallery ? 'tests/city-building-gallery.ts' : movement ? 'tests/city-movement-browser-fixture.tsx' : recreation ? 'tests/city-recreation-browser-fixture.tsx' : 'tests/city-expansion-browser-fixture.tsx'], bundle: true, write: false, format: 'iife', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } });
+  const css = readFileSync(path.join('dist/assets', readdirSync('dist/assets').find(f => f.startsWith('index-') && f.endsWith('.css'))));
   server = createServer((req, res) => {
     if (req.url === '/app.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(bundle.outputFiles[0].contents); }
     else if (req.url === '/styles.css') { res.setHeader('Content-Type', 'text/css'); res.end(css); }
@@ -33,7 +34,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}` });
   let result;
-  for (let i = 0; i < (recreation ? 1400 : 400); i++) { result = await evaluate('document.getElementById("result")?.textContent'); if (result && result !== 'RUNNING') break; await new Promise(resolve => setTimeout(resolve, 100)); }
+  for (let i = 0; i < (recreation || movement ? 1400 : 400); i++) { result = await evaluate('document.getElementById("result")?.textContent'); if (result && result !== 'RUNNING') break; await new Promise(resolve => setTimeout(resolve, 100)); }
   assert.ok(result?.startsWith('PASS:'), `${result}; ${errors.join('; ')}`);
   assert.deepEqual(errors, []);
   mkdirSync('artifacts/city-expansion', { recursive: true });
@@ -45,6 +46,25 @@ try {
     }
     assert.deepEqual(errors, []);
     console.log('PASS: gallery rendered all 120 individual models across 12 category sheets.');
+  } else if (movement) {
+    await evaluate(`document.querySelector('button[aria-label="Switch to day"]')?.click();document.querySelector('button[aria-label="Zoom in"]').click();document.querySelector('button[aria-label="Zoom in"]').click()`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    writeFileSync('artifacts/city-expansion/movement-desktop.png', Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await evaluate(`document.getElementById('pause-movement').click()`); await new Promise(resolve => setTimeout(resolve, 250));
+    const before = await evaluate(`JSON.stringify(document.querySelector('canvas').dataset)`); await new Promise(resolve => setTimeout(resolve, 500));
+    assert.equal(await evaluate(`JSON.stringify(document.querySelector('canvas').dataset)`), before, 'Pause must freeze signals, visits and traffic');
+    await evaluate(`document.getElementById('pause-movement').click()`);
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await new Promise(resolve => setTimeout(resolve, 500));
+    await evaluate(`document.getElementById('result').style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%'`);
+    assert.ok(await evaluate('document.documentElement.scrollWidth <= 390'), 'Mobile city overflows');
+    writeFileSync('artifacts/city-expansion/movement-mobile.png', Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await evaluate(`document.getElementById('remove-movement').click();document.getElementById('remove-roads').click()`);
+    for (let i = 0; i < 100; i++) { if (await evaluate(`document.querySelector('canvas')?.dataset.trafficSignals === '0'`)) break; await new Promise(resolve => setTimeout(resolve, 100)); }
+    assert.equal(await evaluate(`document.querySelector('canvas').dataset.trafficSignals`), '0');
+    assert.equal(await evaluate(`document.querySelector('canvas').dataset.buildingVisitors`), '0');
+    assert.equal(await evaluate(`document.querySelector('canvas').dataset.activeCrossings`), '0');
+    assert.deepEqual(errors, []);
+    console.log(result + ' Pause/resume, mobile layout and demolition passed.');
   } else if (recreation) {
     // Move closer to the actual court users before recording the live scene.
     await evaluate(`document.querySelector('button[aria-label="Switch to day"]')?.click()`);

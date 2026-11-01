@@ -10,9 +10,13 @@ import {
 } from '../services/cityGameService';
 import { createTextures, type FacadeStyle } from './city3d/textures';
 import { bake, buildModel, type ModelContext, type Prefab } from './city3d/models';
-import { PAVEMENT_INNER, PAVEMENT_SURFACE, ROAD_SURFACE, Smoke, Traffic } from './city3d/traffic';
+import { PAVEMENT_SURFACE, ROAD_SURFACE, Smoke, Traffic } from './city3d/traffic';
 import { Pedestrians, type HomePlace, type WorkPlace } from './city3d/people';
 import { RECREATION_TYPES, type RecreationPlace } from './city3d/recreation';
+import { StreetNetwork } from './city3d/streets';
+import { TrafficSignals } from './city3d/trafficSignals';
+import type { BuildingEntrance } from './city3d/buildingVisits';
+import { pavementRects } from './city3d/pavement';
 
 // The 3D city on a 100×100 map. Physically based lighting from a sky model, procedural
 // textures, smooth models baked into InstancedMeshes, and residents and cars walking and
@@ -113,7 +117,7 @@ const CityScene3D: React.FC<Props> = props => {
     const canvas = renderer.domElement;
     canvas.style.touchAction = 'none';
     canvas.tabIndex = 0;
-    canvas.setAttribute('aria-label', 'Your 3D city. Drag to pan, right-drag or two fingers to rotate, scroll or pinch to zoom.');
+    canvas.setAttribute('aria-label', 'Your 3D city. Residents visit buildings and use traffic-controlled crossings. Drag to pan, right-drag or two fingers to rotate, scroll or pinch to zoom.');
     container.appendChild(canvas);
 
     const scene = new THREE.Scene();
@@ -284,24 +288,22 @@ const CityScene3D: React.FC<Props> = props => {
         dummy.position.set(p.x, ROAD_SURFACE - 0.025, p.z); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
         asphalt.setMatrixAt(i, dummy.matrix);
         const links = [[0, 1], [1, 0], [0, -1], [-1, 0]].map(([dx, dz]) => roads.has(tileIndex(x + dx, z + dz)) && x + dx >= 0 && x + dx < MAP && z + dz >= 0 && z + dz < MAP);
-        const connections = links.filter(Boolean).length;
         links.forEach((linked, side) => {
           const angle = side * (Math.PI / 2); // 0: +z, 1: +x, 2: -z, 3: -x
           const dx = Math.sin(angle), dz = Math.cos(angle);
           if (linked) {
-            if (connections <= 2) {
+            if (!streets.crossings.has(index)) {
               const m = new THREE.Matrix4().compose(new THREE.Vector3(p.x + dx * 0.28, 0.034, p.z + dz * 0.28), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle), new THREE.Vector3(1, 1, 1));
               marks.push(m);
             } else {
-              // Zebra crossing on each arm of a junction.
+              // A marked crossing matches each controlled sidewalk edge.
               for (let s = -2; s <= 2; s += 1) {
-                stripes.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x + dx * 0.4 + Math.cos(angle) * s * 0.12, 0.034, p.z + dz * 0.4 - Math.sin(angle) * s * 0.12), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle), new THREE.Vector3(1, 1, 1)));
+                stripes.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x + dx * 0.4 + Math.cos(angle) * s * 0.15, 0.034, p.z + dz * 0.4 - Math.sin(angle) * s * 0.15), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle), new THREE.Vector3(1, 1, 1)));
               }
             }
-          } else {
-            curbs.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x + dx * (PAVEMENT_INNER + 0.075), PAVEMENT_SURFACE - 0.035, p.z + dz * (PAVEMENT_INNER + 0.075)), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle), new THREE.Vector3(1, 1, 1)));
           }
         });
+        for (const rect of pavementRects(roads, index)) curbs.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x + rect.x, PAVEMENT_SURFACE - 0.035, p.z + rect.z), new THREE.Quaternion(), new THREE.Vector3(rect.width, 1, rect.depth)));
       });
       const make = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], shadow = false) => {
         const mesh = instanced(geometry, material, matrices.length, shadow);
@@ -311,8 +313,8 @@ const CityScene3D: React.FC<Props> = props => {
       roadMeshes = [
         asphalt,
         make(new THREE.BoxGeometry(0.035, 0.006, 0.2), markingMaterial, marks),
-        make(new THREE.BoxGeometry(0.06, 0.006, 0.16), markingMaterial, stripes),
-        make(new THREE.BoxGeometry(1, 0.07, 0.15), curbMaterial, curbs),
+        make(new THREE.BoxGeometry(0.06, 0.006, 0.2), markingMaterial, stripes),
+        make(new THREE.BoxGeometry(1, 0.07, 1), curbMaterial, curbs),
       ];
       roadMeshes.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
     };
@@ -464,8 +466,10 @@ const CityScene3D: React.FC<Props> = props => {
 
     // ---------------------------------------------------------------- people, cars, coins
     const hallCenter = world(HALL.x + 0.5, HALL.z + 0.5);
-    const people = new Pedestrians(scene, MAX_PEOPLE, index => { const { x, z } = tileXZ(index); return world(x, z); }, hallCenter);
-    const traffic = new Traffic(scene, MAX_CARS, index => { const { x, z } = tileXZ(index); return world(x, z); });
+    const streets = new StreetNetwork(index => { const { x, z } = tileXZ(index); return world(x, z); });
+    const signals = new TrafficSignals(scene, streets);
+    const people = new Pedestrians(scene, MAX_PEOPLE, streets.toWorld, hallCenter, streets);
+    const traffic = new Traffic(scene, MAX_CARS, streets.toWorld, streets);
     const coinMaterial = new THREE.MeshStandardMaterial({ color: '#f5c542', metalness: 0.95, roughness: 0.22, emissive: '#7a5600', emissiveIntensity: 0.35 });
     const coinMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.035, 40).rotateX(Math.PI / 2), coinMaterial, 3000);
     coinMesh.count = 0;
@@ -715,6 +719,7 @@ const CityScene3D: React.FC<Props> = props => {
     let treesDue = 0;
     let lastPeopleCity: CityState | null = null;
     let lastStatus: CityStats['status'] | null = null;
+    let lastEntranceKey = '';
     const animMatrix = new THREE.Matrix4(), animLocal = new THREE.Matrix4(), coinMatrix = new THREE.Matrix4(), coinQuat = new THREE.Quaternion(), coinPos = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
 
     const tick = (time: number) => {
@@ -728,15 +733,20 @@ const CityScene3D: React.FC<Props> = props => {
       const city = current.city;
 
       if (city.chunks !== lastChunks) { lastChunks = city.chunks; paintTerrain(city); drawBorder(city); }
-      if (city.roads !== lastRoads || city.lights !== lastLights) {
+      const entranceKey = city.buildings.map(b => `${b.id}:${b.type}:${b.x}:${b.z}`).join('|');
+      if (city.roads !== lastRoads || city.lights !== lastLights || entranceKey !== lastEntranceKey) {
         const roadsChanged = city.roads !== lastRoads;
+        const navigationChanged = roadsChanged || entranceKey !== lastEntranceKey;
+        lastEntranceKey = entranceKey;
         lastRoads = city.roads;
         lastLights = city.lights;
         roadSet = new Set(city.roads);
-        if (roadsChanged) buildRoads(roadSet);
+        if (navigationChanged) {
+          const doors = city.buildings.map(b => doorFor(roadSet, b.x, b.z, getBuilding(b.type)!.size)).filter((d): d is number => d !== null);
+          streets.setRoads(roadSet, doors); signals.rebuild(); buildRoads(roadSet);
+          people.setRoads(roadSet); traffic.setRoads(roadSet);
+        }
         buildLights(city.lights, roadSet);
-        if (roadsChanged) people.setRoads(roadSet);
-        traffic.setRoads(roadSet);
         treesDue = time + 400;
       }
       if (city.cleared !== lastCleared) { lastCleared = city.cleared; treesDue = treesDue || time + 50; }
@@ -754,11 +764,19 @@ const CityScene3D: React.FC<Props> = props => {
       if (city !== lastPeopleCity || current.status !== lastStatus) {
         lastPeopleCity = city;
         lastStatus = current.status;
-        const homes: HomePlace[] = [], works: WorkPlace[] = [], recreation: RecreationPlace[] = [];
+        const homes: HomePlace[] = [], works: WorkPlace[] = [], recreation: RecreationPlace[] = [], entrances: BuildingEntrance[] = [];
         city.buildings.forEach(building => {
           const type = getBuilding(building.type)!;
           const status = current.status.get(building.id);
           if (!status) return;
+          const door = doorFor(roadSet, building.x, building.z, type.size);
+          const center = world(building.x + (type.size - 1) / 2, building.z + (type.size - 1) / 2);
+          const rotation = facing(roadSet, building.x, building.z, type.size);
+          if (door !== null && !RECREATION_TYPES.has(building.type) && !['nature'].includes(type.category) && !['tree', 'park', 'fountain', 'solar', 'windmill'].includes(building.type)) entrances.push({
+            id: building.id, type: building.type, door, curb: streets.curb(door, center),
+            threshold: new THREE.Vector3(center.x + Math.sin(rotation) * type.size * 0.18, 0.065, center.z + Math.cos(rotation) * type.size * 0.18),
+            online: status.road && (status.residents > 0 || status.serviced > 0), public: ['business', 'shopping', 'dining', 'services', 'culture', 'civic', 'transport', 'advisors'].includes(type.category),
+          });
           if (status.residents > 0) homes.push({ id: building.id, residents: status.residents, door: doorFor(roadSet, building.x, building.z, type.size) });
           if (status.staff > 0) works.push({ id: building.id, staff: status.staff, door: doorFor(roadSet, building.x, building.z, type.size) });
           if (RECREATION_TYPES.has(building.type)) recreation.push({
@@ -768,9 +786,11 @@ const CityScene3D: React.FC<Props> = props => {
           });
         });
         people.setCity(homes, works);
+        people.setEntrances(entrances);
         people.setRecreation(recreation);
       }
       traffic.setCount((current.residents + current.jobs) / 12);
+      streets.update(dt, motion);
       people.update(dt, time, motion, camera);
       const attendance = people.recreation.attendance;
       const visitors = [...attendance.values()].reduce((sum, value) => sum + value, 0);
@@ -778,6 +798,15 @@ const CityScene3D: React.FC<Props> = props => {
       const activeRecreation = [...attendance.keys()].map(id => city.buildings.find(b => b.id === id)?.type).filter(Boolean).join(',');
       if (renderer.domElement.dataset.recreationActivities !== activeRecreation) renderer.domElement.dataset.recreationActivities = activeRecreation;
       traffic.update(dt, motion);
+      signals.update();
+      const diagnostics = {
+        buildingEntries: people.buildings?.entered || 0, buildingExits: people.buildings?.exited || 0,
+        buildingVisitors: people.buildings?.visits.size || 0, trafficSignals: streets.crossings.size,
+        pedestrianCrossings: streets.completedCrossings, waitingPedestrians: [...streets.crossings.values()].reduce((sum, c) => sum + c.waiting.size, 0),
+        activeCrossings: [...streets.crossings.values()].reduce((sum, c) => sum + c.active.size, 0),
+        stoppedCars: streets.stoppedCars, signalPhases: [...new Set([...streets.crossings.values()].map(c => c.phase))].join(','),
+      };
+      for (const [key, value] of Object.entries(diagnostics)) if (canvas.dataset[key] !== String(value)) canvas.dataset[key] = String(value);
       smoke.update(time, motion);
       waterNormal.offset.set(motion ? time * 0.000012 : 0, motion ? time * 0.000008 : 0);
 
@@ -868,6 +897,7 @@ const CityScene3D: React.FC<Props> = props => {
       canvas.removeEventListener('webglcontextlost', lost);
       people.dispose();
       traffic.dispose();
+      signals.dispose();
       smoke.dispose();
       updateLand(latest.current.city, false);
       disposeMeshes(roadMeshes);
@@ -902,6 +932,7 @@ const CityScene3D: React.FC<Props> = props => {
         <button type="button" aria-label="Zoom in" onClick={() => engine.current?.zoom(0.8)} className="island-pad-button"><Plus size={16} /></button>
         <button type="button" aria-label="Zoom out" onClick={() => engine.current?.zoom(1.25)} className="island-pad-button"><Minus size={16} /></button>
       </div>
+      <div className="pointer-events-none absolute bottom-3 left-3 max-w-[240px] rounded-lg bg-slate-950/75 px-2.5 py-2 text-[10px] leading-relaxed text-slate-200">Residents visit buildings.<br /><span className="text-emerald-300">Green walk light</span> · Cars wait at crossings.</div>
       {roadCost && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-slate-950/85 px-4 py-1.5 text-xs font-bold text-white">
           {roadCost.tiles} {roadCost.what} · {roadCost.cost} 🪙{roadCost.blocked ? ` · ${roadCost.blocked} blocked` : ''}

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import type { StreetNetwork } from './streets';
 
 // Cars moving along the road network, chimney smoke, and the road-walking helpers people.ts
 // shares. Each is a few
@@ -10,23 +11,8 @@ export type ToWorld = (index: number) => THREE.Vector3; // centre of a tile
 // Road surfaces, shared with the road geometry in CityScene3D so people and cars stand on top
 // of them: the asphalt's top, the raised pavement's top, and where the pavement starts (its
 // distance from the road's centre line, on sides with no road joining).
-export const ROAD_SURFACE = 0.03;
-export const PAVEMENT_SURFACE = 0.075;
-export const PAVEMENT_INNER = 0.355;
-
-// Height of whatever is underfoot at a point: pavement, asphalt, or the grass at 0.
-export const surfaceHeight = (roads: Set<number>, x: number, z: number) => {
-  const tx = Math.floor(x + 50), tz = Math.floor(z + 50);
-  if (tx < 0 || tz < 0 || tx > 99 || tz > 99) return 0;
-  const index = tz * 100 + tx;
-  if (!roads.has(index)) return 0;
-  const lx = x + 50 - tx - 0.5, lz = z + 50 - tz - 0.5;
-  const pavement = (lx > PAVEMENT_INNER && (tx === 99 || !roads.has(index + 1)))
-    || (lx < -PAVEMENT_INNER && (tx === 0 || !roads.has(index - 1)))
-    || (lz > PAVEMENT_INNER && !roads.has(index + 100))
-    || (lz < -PAVEMENT_INNER && !roads.has(index - 100));
-  return pavement ? PAVEMENT_SURFACE : ROAD_SURFACE;
-};
+import { ROAD_SURFACE } from './pavement';
+export { ROAD_SURFACE, PAVEMENT_SURFACE, PAVEMENT_INNER, surfaceHeight } from './pavement';
 
 const DIRS = [1, -1, 100, -100];
 
@@ -65,7 +51,43 @@ export const along = (toWorld: ToWorld, from: number, to: number, t: number, off
 
 const CARS = ['#d62828', '#f7f7f2', '#1d3557', '#2a9d8f', '#ffb703', '#6c757d', '#111111', '#8ecae6', '#9b2226'];
 
-interface Car { from: number; to: number; t: number; speed: number }
+interface Car { from: number; to: number; t: number; speed: number; previous?: number; next?: number }
+
+// Lane centres sit midway between the centre line and the kerb (0.3): two 3 m lanes, leaving
+// room between a car's side and people standing at the kerb.
+export const LANE = 0.15;
+
+// Join the lane centres with a continuous curve before/after a tile centre.
+// Snapping the lane offset at the centre used to put turning cars into the
+// opposing queue, where both streams could wait on each other permanently.
+export function vehiclePose(toWorld: ToWorld, car: Car, out: THREE.Vector3) {
+  const aroundStart = car.t < 0.5 && car.previous !== undefined;
+  const before = aroundStart ? car.previous! : car.from, node = aroundStart ? car.from : car.to, after = aroundStart ? car.to : car.next;
+  if (after === undefined) return along(toWorld, car.from, car.to, car.t, -LANE, out);
+  const centre = toWorld(node), incoming = centre.clone().sub(toWorld(before)).normalize(), outgoing = toWorld(after).sub(centre).normalize();
+  const dot = incoming.dot(outgoing);
+  if (dot > 0.99) return along(toWorld, car.from, car.to, car.t, -LANE, out);
+  const u = aroundStart ? car.t + 0.5 : car.t - 0.5;
+  const rightIn = new THREE.Vector3(incoming.z, 0, -incoming.x), rightOut = new THREE.Vector3(outgoing.z, 0, -outgoing.x);
+  const a = centre.clone().addScaledVector(incoming, -0.5).addScaledVector(rightIn, LANE);
+  const b = centre.clone().addScaledVector(outgoing, 0.5).addScaledVector(rightOut, LANE);
+  const tangent = new THREE.Vector3();
+  if (dot < -0.99) {
+    const c = centre.clone().addScaledVector(incoming, 0.1).addScaledVector(rightIn, LANE);
+    const d = centre.clone().addScaledVector(incoming, 0.1).addScaledVector(rightOut, LANE);
+    out.copy(a).multiplyScalar((1 - u) ** 3).addScaledVector(c, 3 * u * (1 - u) ** 2).addScaledVector(d, 3 * u * u * (1 - u)).addScaledVector(b, u ** 3);
+    tangent.copy(c).sub(a).multiplyScalar(3 * (1 - u) ** 2).addScaledVector(d.clone().sub(c), 6 * u * (1 - u)).addScaledVector(b.clone().sub(d), 3 * u * u);
+  } else {
+    // Meet at the intersection of the two lane centres. Follow those lanes
+    // continuously, without cutting the occupied pavement corner or jumping
+    // sideways into an oncoming car when the road segment changes.
+    const corner = centre.clone().addScaledVector(rightIn.clone().add(rightOut), LANE / (1 + dot));
+    const incomingLength = a.distanceTo(corner), outgoingLength = corner.distanceTo(b), distance = u * (incomingLength + outgoingLength);
+    if (distance < incomingLength) { out.copy(a).addScaledVector(incoming, distance); tangent.copy(incoming); }
+    else { out.copy(corner).addScaledVector(outgoing, distance - incomingLength); tangent.copy(outgoing); }
+  }
+  return Math.atan2(tangent.x, tangent.z);
+}
 
 export class Traffic {
   readonly meshes: THREE.InstancedMesh[];
@@ -76,7 +98,7 @@ export class Traffic {
   private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private out = new THREE.Matrix4(); private quat = new THREE.Quaternion(); private up = new THREE.Vector3(0, 1, 0); private one = new THREE.Vector3(1, 1, 1); private pos = new THREE.Vector3();
   readonly lightMaterial: THREE.MeshStandardMaterial;
 
-  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld) {
+  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private streets?: StreetNetwork) {
     const paint = new THREE.MeshStandardMaterial({ roughness: 0.25, metalness: 0.55 });
     const glass = new THREE.MeshStandardMaterial({ color: '#1c2833', roughness: 0.1, metalness: 0.8 });
     const tyre = new THREE.MeshStandardMaterial({ color: '#1b1b1b', roughness: 0.8 });
@@ -96,6 +118,7 @@ export class Traffic {
       return mesh;
     };
     this.body = make(bodyGeometry, paint, capacity);
+    this.body.name = 'city-cars';
     this.cabin = make(cabinGeometry, glass, capacity);
     this.wheels = make(wheelGeometry, tyre, capacity * 4);
     this.lights = make(lightGeometry, this.lightMaterial, capacity);
@@ -108,26 +131,45 @@ export class Traffic {
   setRoads(roads: Set<number>) {
     this.graph = buildGraph(roads);
     this.roadList = [...roads];
-    this.cars.forEach(car => { if (!this.graph.has(car.from) || !this.graph.has(car.to)) Object.assign(car, spawnOnRoads(this.graph, this.roadList)); });
+    this.cars = this.cars.filter(car => this.graph.has(car.from) && this.graph.has(car.to));
   }
 
   setCount(count: number) {
     const target = this.roadList.length < 4 ? 0 : Math.min(this.capacity, Math.max(0, Math.round(count)));
-    while (this.cars.length < target) this.cars.push({ ...spawnOnRoads(this.graph, this.roadList), t: Math.random(), speed: 0.6 + Math.random() * 0.35 });
-    this.cars.length = target;
-    this.body.count = this.cabin.count = this.lights.count = target;
-    this.wheels.count = target * 4;
+    let attempts = 0;
+    while (this.cars.length < target && attempts++ < target * 4 + 8) {
+      const segment = spawnOnRoads(this.graph, this.roadList);
+      if (segment.from === segment.to) continue;
+      const candidate = { ...segment, previous: pickNext(this.graph, segment.from, segment.to), next: pickNext(this.graph, segment.to, segment.from), t: Math.random(), speed: 0.6 + Math.random() * 0.35 };
+      const heading = vehiclePose(this.toWorld, candidate, this.pos);
+      if (this.streets && !this.streets.canSpawn(this.pos, heading)) continue;
+      this.streets?.moveVehicle(this.cars.length, this.pos, heading); this.cars.push(candidate);
+    }
+    if (this.cars.length > target) this.cars.length = target;
+    const countNow = this.cars.length;
+    this.body.count = this.cabin.count = this.lights.count = countNow;
+    this.wheels.count = countNow * 4;
   }
 
   update(dt: number, motion: boolean) {
+    this.cars.forEach(car => { if (car.next === undefined) car.next = pickNext(this.graph, car.to, car.from); });
+    this.streets?.setVehicles(this.cars.map((car, id) => { const position = new THREE.Vector3(); const heading = vehiclePose(this.toWorld, car, position); return { id, position, heading }; }));
     for (let i = 0; i < this.cars.length; i += 1) {
       const car = this.cars[i];
       if (motion && car.from !== car.to) {
-        car.t += dt * car.speed;
-        while (car.t >= 1) { car.t -= 1; const next = pickNext(this.graph, car.to, car.from); car.from = car.to; car.to = next; }
+        const nextCar = { ...car, t: car.t + dt * car.speed };
+        while (nextCar.t >= 1) { nextCar.t -= 1; nextCar.previous = nextCar.from; nextCar.from = nextCar.to; nextCar.to = nextCar.next!; nextCar.next = pickNext(this.graph, nextCar.to, nextCar.from); }
+        const current = new THREE.Vector3(), next = new THREE.Vector3();
+        vehiclePose(this.toWorld, car, current);
+        const nextHeading = vehiclePose(this.toWorld, nextCar, next);
+        // Where the car leaves the junction ahead, so it never enters a box it cannot clear.
+        const exit = car.next !== undefined ? new THREE.Vector3() : undefined;
+        if (exit) vehiclePose(this.toWorld, { from: car.to, to: car.next!, t: 0.85, previous: car.from, speed: 0 }, exit);
+        if (!this.streets || this.streets.canDrive(i, current, next, nextHeading, exit)) Object.assign(car, nextCar);
       }
       // Drive on the left, as in Malaysia and Singapore.
-      const heading = along(this.toWorld, car.from, car.to, car.t, -0.2, this.pos);
+      const heading = vehiclePose(this.toWorld, car, this.pos);
+      this.streets?.moveVehicle(i, this.pos, heading);
       this.pos.y = ROAD_SURFACE; // tyres on the asphalt, not sunk into it
       this.quat.setFromAxisAngle(this.up, heading);
       this.base.compose(this.pos, this.quat, this.one);
