@@ -2364,6 +2364,8 @@ export const markStatementTransactionDismissed = async (
 };
 
 export const clearStoredAppData = async () => {
+  const plannerKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('subtrack_card_plan_v1:')));
+  plannerKeys.forEach(key => localStorage.removeItem(key));
   const worldKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('subtrack_world_v1:') || key?.startsWith('subtrack_city_v1:')));
   worldKeys.forEach(key => localStorage.removeItem(key));
   const reminderKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith(REMINDER_STORAGE_PREFIX)));

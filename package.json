@@ -4,6 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:city:movement:browser": "node scripts/test-city-expansion-browser.mjs --movement",
+    "test:cards:planner": "node scripts/test-card-planner.mjs",
+    "test:cards:planner:browser": "node scripts/test-card-planner-browser.mjs",
+    "test:auth:browser": "node scripts/test-auth-refresh-browser.mjs",
     "test:city:browser": "node scripts/test-city-expansion-browser.mjs",
     "test:insurance": "node scripts/test-insurance.mjs",
     "test:valuations:browser": "node scripts/test-valuation-browser.mjs",

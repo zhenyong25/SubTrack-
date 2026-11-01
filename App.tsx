@@ -19,7 +19,6 @@ import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
 import IncomeTab from './components/IncomeTab';
 import ExpenseTab from './components/ExpenseTab';
-import StatementCsvImport from './components/StatementCsvImport';
 import InvestmentTab from './components/InvestmentTab';
 import TradeTab from './components/TradeTab';
 import { deleteAccountStatement, deleteInvestmentHolding, deleteInvestmentTransaction, deletePaymentCard, downloadAccountStatement, uploadAccountStatement } from './services/appDataService';
@@ -104,6 +103,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [authChecking, setAuthChecking] = useState(isSupabaseConfigured());
   const [session, setSession] = useState<Session | null>(null);
+  const dataAccountId = session?.user.id ?? null;
   
   // Card Management State
   const [addingCard, setAddingCard] = useState<PaymentCard | null>(null);
@@ -195,6 +195,8 @@ function App() {
     };
   }, []);
 
+  // Refocus and token refresh can replace the session object for the same account.
+  // Bootstrap only when account identity changes, keeping the current screen mounted.
   useEffect(() => {
     let cancelled = false;
 
@@ -309,7 +311,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [authChecking, session]);
+  }, [authChecking, dataAccountId]);
 
   // Deep link support (e.g. iOS Back Tap / Action Button shortcuts): opening the app
   // with ?add=expense|income|subscription jumps straight to that form.
@@ -1327,6 +1329,7 @@ function App() {
         
         {activeTab === Tab.Cards && (
             <CardsTab
+                ownerKey={session?.user.id || 'local'}
                 cards={cards}
                 subscriptions={subscriptions}
                 expenses={expenses}
@@ -1342,10 +1345,6 @@ function App() {
 
         {activeTab === Tab.Expenses && (
             <ExpenseTab
-                importPanel={<StatementCsvImport key={session?.user.id || 'local'} accounts={cashAccounts} cards={cards} expenses={expenses} incomes={incomes} subscriptions={subscriptions} currency={userProfile.currency} onCommitted={result => {
-                  if (result.expenses.length) setExpenses(current => [...current, ...result.expenses.filter(record => !current.some(item => item.id === record.id))]);
-                  if (result.incomes.length) setIncomes(current => [...current, ...result.incomes.filter(record => !current.some(item => item.id === record.id))]);
-                }} />}
                 expenses={expenses}
                 subscriptions={subscriptions}
                 budgetPlans={budgetPlans}
