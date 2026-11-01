@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CityTextures, FacadeStyle } from './textures';
+import { expansionById } from '../../services/cityBuildingExpansion';
+import { buildExpansionModel } from './expansionModels';
 
 // Building models, built from smooth primitives (rounded boxes, lathed towers, extruded roofs)
 // and textured facades. Each model faces +z, sits on y = 0 and is centred on its footprint.
@@ -502,6 +504,9 @@ export const bake = (group: THREE.Group): Prefab => {
   return { parts, height: box.max.y, smoke: (group.userData.smoke as THREE.Vector3[]) || [] };
 };
 
-export const buildModel = (type: string, c: ModelContext, level: number, size: number) => MODELS[type](c, level, size);
-export const hasModel = (type: string) => Boolean(MODELS[type]);
+export const buildModel = (type: string, c: ModelContext, level: number, size: number) => {
+  const expansion = expansionById.get(type);
+  return expansion ? buildExpansionModel(expansion, c, level) : MODELS[type](c, level, size);
+};
+export const hasModel = (type: string) => Boolean(MODELS[type]) || expansionById.has(type);
 export { tree as treeModel };

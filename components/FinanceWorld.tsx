@@ -18,6 +18,7 @@ import CityAccountantOffice from './CityAccountantOffice';
 import CityAgentOffice from './CityAgentOffice';
 import { AGENTS, agentFor, agentForBuilding, type AgentId, type AgentInput } from '../services/cityAgents';
 import type { AccountantReport } from '../services/cityAccountantService';
+import { EXPANSION_CATEGORIES } from '../services/cityBuildingExpansion';
 
 const CityScene3D = React.lazy(() => import('./CityScene3D'));
 
@@ -31,8 +32,10 @@ const ICONS: Record<string, string> = {
   postoffice: '📮', vault: '🐷', creditunion: '🤝',
 };
 const CATEGORIES: Array<{ id: BuildingCategory; label: string }> = [
+  ...EXPANSION_CATEGORIES,
   { id: 'homes', label: 'Homes' }, { id: 'business', label: 'Business' }, { id: 'industry', label: 'Industry' }, { id: 'utilities', label: 'Utilities' }, { id: 'services', label: 'Services' }, { id: 'advisors', label: 'Advisors' },
 ];
+const buildingIcon = (id: string) => ICONS[id] || getBuilding(id)?.icon || '🏢';
 const TITLES = ['', 'Camp', 'Hamlet', 'Village', 'Village', 'Town', 'Town', 'City', 'City', 'Metropolis', 'Metropolis', 'Capital', 'Capital', 'Megacity', 'Megacity', 'World city'];
 const box = 'min-w-0 rounded-2xl border border-border bg-surface p-4';
 const coinText = (value: number) => Math.floor(value).toLocaleString();
@@ -257,7 +260,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
     return { agent, building, name: building && staff > 0 ? staffRoster(building.id, building.type, staff)[0]?.name ?? null : null, record: city.agents?.[agent.id] };
   });
   const agentInput: AgentInput = { today, subscriptions, loans, payments: loanPayments, goals: savings.goals, entries: savings.entries };
-  const modeText = mode.kind === 'place' ? `${ICONS[mode.type]} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙 - green has a road, yellow needs one`
+  const modeText = mode.kind === 'place' ? `${buildingIcon(mode.type)} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙 - green has a road, yellow needs one`
     : mode.kind === 'move' ? 'Tap where to move it'
       : mode.kind === 'road' ? `Drag to draw a road · ${ROAD_COST} 🪙 per tile`
         : mode.kind === 'lights' ? `Drag along roads to put up street lights · ${LIGHT_COST} 🪙 each`
@@ -394,7 +397,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
                   <button key={type.id} type="button" disabled={locked} onClick={() => { setMode(active ? { kind: 'idle' } : { kind: 'place', type: type.id }); setSelectedId(null); }}
                     className={`rounded-xl border p-3 text-left transition ${active ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-primary'} ${locked ? 'opacity-50' : ''} bg-background`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-2xl leading-none">{ICONS[type.id]}</span>
+                      <span className="text-2xl leading-none">{buildingIcon(type.id)}</span>
                       {locked ? <span className="flex items-center gap-1 text-[10px] font-bold text-secondary"><Lock size={11} /> Lv {type.unlock}</span>
                         : <span className={`text-[11px] font-black ${affordable ? 'text-amber-600 dark:text-amber-300' : 'text-rose-500'}`}>{type.cost} 🪙</span>}
                     </div>
@@ -413,7 +416,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
             <section className={`${box} border-amber-400/40`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-2xl leading-none">{ICONS[selected?.type || 'hall']}</p>
+                  <p className="text-2xl leading-none">{buildingIcon(selected?.type || 'hall')}</p>
                   <h2 className="mt-2 text-sm font-black text-textMain">{selectedType?.name || HALL.name}</h2>
                   {selected && <p className="mt-0.5 flex gap-0.5 text-amber-400">{Array.from({ length: MAX_BUILDING_LEVEL }, (_, i) => <Star key={i} size={12} fill={i < selected.level ? 'currentColor' : 'none'} />)}</p>}
                 </div>
@@ -534,7 +537,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               <li>💡 {city.lights.length} street light{city.lights.length === 1 ? '' : 's'}: every 4 add 1 happiness (up to +12), and they light the streets at night.</li>
               <li>🌲 Bulldoze wild trees on your land for {TIMBER_COINS} 🪙 a tree - building or laying road over them pays too.</li>
               <li>🗺️ You own {city.chunks.length} of 100 plots; level {level} allows {maxChunks(level)}. The next costs {chunkCost(city)} 🪙.</li>
-              {nextUnlocks.length > 0 && <li>🔓 Level {level + 1} unlocks {nextUnlocks.map(type => `${ICONS[type.id]} ${type.name}`).join(', ')}.</li>}
+              {nextUnlocks.length > 0 && <li>🔓 Level {level + 1} unlocks {nextUnlocks.map(type => `${buildingIcon(type.id)} ${type.name}`).join(', ')}.</li>}
               <li>🚶 Residents are everyone living in the homes you've built. Those with a job are inside at work; everyone else is out walking - each one someone you can see on your streets{stats.residents > 4000 ? ' (4,000 are drawn at once)' : ''}.</li>
               <li>🪙 {coinText(city.lifetimeCoins)} coins earned so far. Coins have no cash value - the game rewards recording and reviewing, never how much you spend or earn.</li>
             </ul>
