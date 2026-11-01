@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BUNDLED_SERVICES, findExactService, type SubscriptionService } from '../services/serviceCatalog';
+import { BUNDLED_SERVICES, findServiceForLogo, type SubscriptionService } from '../services/serviceCatalog';
 import { useServiceCatalog } from '../services/serviceCatalogStore';
 import { getSubscriptionLogoDataUrl, getServiceLogoUrls } from '../services/subscriptionLogoService';
 
@@ -16,7 +16,8 @@ export default function SubscriptionLogo({ name, serviceId, logoUrl, service, cl
   const resolvedId = serviceId || (logoUrl?.startsWith('catalog:') ? logoUrl.slice(8) : undefined);
   const resolved = service || (resolvedId
     ? catalog.find(s => s.id === resolvedId) || BUNDLED_SERVICES.find(s => s.id === resolvedId)
-    : findExactService(name, catalog));
+    // The bundled list covers brands added since the Supabase catalog was last seeded.
+    : findServiceForLogo(name, catalog) || (catalog === BUNDLED_SERVICES ? undefined : findServiceForLogo(name, BUNDLED_SERVICES)));
   const customLogo = logoUrl && /^(https:\/\/|data:image\/(?:png|jpeg|webp|gif);base64,|\/[^/])/.test(logoUrl) ? logoUrl : undefined;
   const candidates = [...new Set([customLogo, ...getServiceLogoUrls(resolved)].filter((url): url is string => Boolean(url)))];
   const [failedSources, setFailedSources] = useState<string[]>([]);

@@ -1182,6 +1182,13 @@
     "sha256": "08cc50b61c59e1600b4f7e92b1f5cec30a0d2ba42f711d43fcd6e21275213146",
     "bytes": 2015
   },
+  "circles.life": {
+    "file": "/service-logos/circles.life.png",
+    "source": "https://www.google.com/s2/favicons?domain=circles.life&sz=128",
+    "downloadedAt": "2026-11-01T05:12:29.018Z",
+    "sha256": "79ade378cbbfc5ecf2ba1a58666f2e827ee407f03fe55961792050be7a3dc5ac",
+    "bytes": 4312
+  },
   "civitai.com": {
     "file": "/service-logos/civitai.com.png",
     "source": "https://www.google.com/s2/favicons?domain=civitai.com&sz=128",
@@ -2309,6 +2316,13 @@
     "sha256": "9352b5a93416e54997dcda72fc8005b09b01fdcde8c140780b48833e02407ebf",
     "bytes": 619
   },
+  "fender.com": {
+    "file": "/service-logos/fender.com.png",
+    "source": "https://www.google.com/s2/favicons?domain=fender.com&sz=128",
+    "downloadedAt": "2026-11-01T05:12:27.741Z",
+    "sha256": "8a52f6f0305ec1893e162738ac4030cb04df6fc738d41f89f4a1a1bede121df4",
+    "bytes": 1083
+  },
   "fiaformulae.com": {
     "file": "/service-logos/fiaformulae.com.png",
     "source": "https://www.google.com/s2/favicons?domain=fiaformulae.com&sz=128",
@@ -2834,6 +2848,13 @@
     "sha256": "4a6b4a2df0102d1cf592fcac6dc502c954324474f2cbb01e694260c273ec4a12",
     "bytes": 2774
   },
+  "genially.com": {
+    "file": "/service-logos/genially.com.png",
+    "source": "https://icons.duckduckgo.com/ip3/genially.com.ico",
+    "downloadedAt": "2026-11-01T05:12:35.633Z",
+    "sha256": "6644ece601f79b68bf57edfafd565c2a4a43e7f8c007d0078cd693ff707d472b",
+    "bytes": 3274
+  },
   "genie.co.kr": {
     "file": "/service-logos/genie.co.kr.png",
     "source": "https://www.google.com/s2/favicons?domain=genie.co.kr&sz=128",
@@ -2917,6 +2938,13 @@
     "downloadedAt": "2026-09-09T13:16:51.374Z",
     "sha256": "87924c68653ccd3443f0376c0f13a0aee55858f51e15729953118028c0f320a4",
     "bytes": 2998
+  },
+  "giga.com.sg": {
+    "file": "/service-logos/giga.com.sg.png",
+    "source": "https://www.google.com/s2/favicons?domain=giga.com.sg&sz=128",
+    "downloadedAt": "2026-11-01T05:12:29.051Z",
+    "sha256": "5498cca534bdc31106b072688dfe48c7c64274b9aaeaeab6f03bb47ea5f65c7e",
+    "bytes": 1531
   },
   "git-tower.com": {
     "file": "/service-logos/git-tower.com.png",
@@ -3415,6 +3443,13 @@
     "sha256": "bef370ee543a5263f2c7bc118661ea18683f8aa4155bbd5ae07e7ad2a4371d52",
     "bytes": 494
   },
+  "hp.com": {
+    "file": "/service-logos/hp.com.png",
+    "source": "https://www.google.com/s2/favicons?domain=hp.com&sz=128",
+    "downloadedAt": "2026-11-01T05:12:28.891Z",
+    "sha256": "62ca988466f98f0b28c2483ac46448b36ea10e1d939c5baedef1b77345ed5258",
+    "bytes": 1166
+  },
   "httpie.io": {
     "file": "/service-logos/httpie.io.png",
     "source": "https://www.google.com/s2/favicons?domain=httpie.io&sz=128",
@@ -3435,6 +3470,13 @@
     "downloadedAt": "2026-09-09T13:16:54.636Z",
     "sha256": "39c65b90849ac4015377d3afe0f81a285f75219c7963cb58c0d0437fbe1552db",
     "bytes": 303
+  },
+  "huggingface.co": {
+    "file": "/service-logos/huggingface.co.png",
+    "source": "https://www.google.com/s2/favicons?domain=huggingface.co&sz=128",
+    "downloadedAt": "2026-11-01T05:12:29.096Z",
+    "sha256": "37f5c02ffad6619b064ee1e23fd50b7e591afff27310a2714fa0011a9eccf541",
+    "bytes": 3405
   },
   "hulu.com": {
     "file": "/service-logos/hulu.com.png",
@@ -3701,6 +3743,13 @@
     "downloadedAt": "2026-09-09T13:16:29.623Z",
     "sha256": "3da4a07221717a936fbc13fc29c64fe27be8c0e8af4f3fc8b2ba5c5f0d74f0cd",
     "bytes": 7561
+  },
+  "iras.gov.sg": {
+    "file": "/service-logos/iras.gov.sg.png",
+    "source": "https://www.google.com/s2/favicons?domain=iras.gov.sg&sz=128",
+    "downloadedAt": "2026-11-01T05:12:31.412Z",
+    "sha256": "85feb8f7a4ce8cbc41fab78a1e7f9ffb4ced2a69e9cce532bb16dfbc44010f1e",
+    "bytes": 9235
   },
   "ironvest.com": {
     "file": "/service-logos/ironvest.com.png",
@@ -4409,6 +4458,13 @@
     "sha256": "0e67560af2a2f8372c21737b9473990a057a13f2e38dc05ea9e3866d10c1a9c0",
     "bytes": 3179
   },
+  "m1.com.sg": {
+    "file": "/service-logos/m1.com.sg.png",
+    "source": "https://www.google.com/s2/favicons?domain=m1.com.sg&sz=128",
+    "downloadedAt": "2026-11-01T05:12:28.996Z",
+    "sha256": "40f0d784b660e160bca9f5ea2ac0463c0e2f4d9c631b163dd3badd97062d0124",
+    "bytes": 2366
+  },
   "macpaw.com": {
     "file": "/service-logos/macpaw.com.png",
     "source": "https://www.google.com/s2/favicons?domain=macpaw.com&sz=128",
@@ -4562,6 +4618,13 @@
     "downloadedAt": "2026-09-09T13:16:50.267Z",
     "sha256": "1a44fa7ddd4992be4a0b7c666ac97bcf08b4b8720da87d82077082551d8c20eb",
     "bytes": 2078
+  },
+  "mattermost.com": {
+    "file": "/service-logos/mattermost.com.png",
+    "source": "https://www.google.com/s2/favicons?domain=mattermost.com&sz=128",
+    "downloadedAt": "2026-11-01T05:12:29.075Z",
+    "sha256": "b1610b01d2ee32b988db33e8ac00fe3a88cb6af5ffccc1053979ca031aa68f10",
+    "bytes": 2506
   },
   "mcafee.com": {
     "file": "/service-logos/mcafee.com.png",
@@ -5255,6 +5318,13 @@
     "downloadedAt": "2026-09-09T13:16:37.758Z",
     "sha256": "1c0a9566bd34a0e38bb57512b491d05c6e8b244ef2fcd13f283b9227c0313b59",
     "bytes": 680
+  },
+  "nlziet.nl": {
+    "file": "/service-logos/nlziet.nl.png",
+    "source": "https://icons.duckduckgo.com/ip3/nlziet.nl.ico",
+    "downloadedAt": "2026-11-01T05:12:26.231Z",
+    "sha256": "7e26a977598e4e5867bd5346ec563ab9720377b1a45a75d8fe3eb98c2cc89ff4",
+    "bytes": 11355
   },
   "nodecraft.com": {
     "file": "/service-logos/nodecraft.com.png",
@@ -6999,6 +7069,13 @@
     "sha256": "880a23d030cc306475d8f5bff7d7366d8a0aa92ecc01e15fd3a5cb98620a8811",
     "bytes": 3495
   },
+  "simba.sg": {
+    "file": "/service-logos/simba.sg.png",
+    "source": "https://www.google.com/s2/favicons?domain=simba.sg&sz=128",
+    "downloadedAt": "2026-11-01T05:12:29.035Z",
+    "sha256": "7a0f284bf27f38e64ca2dbd041696b7f64b117c67d2c2e526d24697f9cca974b",
+    "bytes": 708
+  },
   "simpleanalytics.com": {
     "file": "/service-logos/simpleanalytics.com.png",
     "source": "https://www.google.com/s2/favicons?domain=simpleanalytics.com&sz=128",
@@ -7607,6 +7684,13 @@
     "downloadedAt": "2026-09-09T13:16:47.628Z",
     "sha256": "697a8f9921a9da35cc9bbabc71175026e11cba5872888d6de64c54e384a969b4",
     "bytes": 1612
+  },
+  "substack.com": {
+    "file": "/service-logos/substack.com.ico",
+    "source": "https://substack.com/favicon.ico",
+    "downloadedAt": "2026-11-01T05:12:31.393Z",
+    "sha256": "086065e669faa997b8285bba261690ce4839e5b6e2c2e6ad2673928fac40e15a",
+    "bytes": 4286
   },
   "sudowrite.com": {
     "file": "/service-logos/sudowrite.com.png",
@@ -8937,6 +9021,13 @@
     "downloadedAt": "2026-09-09T13:16:53.844Z",
     "sha256": "1d9285608feee18323b7d56535e37a47325ada4705e67b97f96569d410a825d3",
     "bytes": 1587
+  },
+  "wtatv.com": {
+    "file": "/service-logos/wtatv.com.png",
+    "source": "https://icons.duckduckgo.com/ip3/wtatv.com.ico",
+    "downloadedAt": "2026-11-01T05:12:28.887Z",
+    "sha256": "942c9c96970c68e7699ed80eeeafb44cf54381ca72d8f1435eb28cee6b02fe34",
+    "bytes": 391
   },
   "wwe.com": {
     "file": "/service-logos/wwe.com.png",

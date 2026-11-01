@@ -391,6 +391,7 @@ PFF|pff.com
 Action Network|actionnetwork.com
 TeamRankings|teamrankings.com
 # Productivity
+HP Smart|hp.com|HP Instant Ink,HP,HP Plus,HP+
 Microsoft 365|microsoft.com|Office 365,Microsoft Office
 Google Workspace|workspace.google.com|G Suite,Google Apps
 Notion|notion.so
@@ -655,6 +656,12 @@ Bark|bark.us
 Net Nanny|netnanny.com
 Canopy|canopy.us
 # Communication
+StarHub|starhub.com|Starhub Mobile,StarHub Broadband,StarHub Fibre
+Singtel|singtel.com|Singtel Mobile,Singtel Fibre
+M1|m1.com.sg|M1 Mobile,M1 Fibre
+Circles.Life|circles.life|Circles Life,CirclesLife
+SIMBA|simba.sg|TPG,TPG Mobile
+giga!|giga.com.sg|giga
 Zoom|zoom.us
 Slack|slack.com
 Microsoft Teams|teams.microsoft.com
@@ -734,6 +741,7 @@ Chatwoot|chatwoot.com
 Gorgias|gorgias.com
 Re:amaze|reamaze.com
 # AI
+Hugging Face|huggingface.co|HuggingFace,Hugging Face Pro,HF Pro
 ChatGPT|chatgpt.com|ChatGPT Plus,ChatGPT Pro,OpenAI
 Claude|claude.ai|Claude Pro,Anthropic
 Google Gemini|gemini.google.com|Gemini Advanced,Bard,Google AI Pro
@@ -1317,6 +1325,8 @@ South China Morning Post|scmp.com
 Nikkei Asia|asia.nikkei.com
 The Japan Times|japantimes.co.jp
 # Shopping & Lifestyle
+Apple|apple.com|iPhone,iPad,Mac,MacBook,Apple Watch,AppleCare,AppleCare+,Apple Store
+Anywheel|anywheel.sg
 Amazon Prime|amazon.com
 Apple One|apple.com
 Walmart+|walmart.com
@@ -1348,6 +1358,7 @@ KiwiCo|kiwico.com
 CrunchLabs|crunchlabs.com
 Lovevery|lovevery.com
 # Finance & Business
+IRAS|iras.gov.sg|Income Tax,Property Tax,Inland Revenue Authority of Singapore
 YNAB|ynab.com|You Need A Budget
 Monarch Money|monarchmoney.com
 Copilot Money|copilot.money
