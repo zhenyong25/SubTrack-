@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight, Building2, Check, Cloud, CloudOff, Coins, Droplets, Gift, Hammer, Lamp, Lock, Map as MapIcon, Move, Route, Shovel, Smile, Sparkles, Star, Trash2, TrendingUp, Users, X, Zap,
+  Anchor, ArrowRight, Building2, Check, Cloud, CloudOff, Coins, Droplets, Factory, Fish, Gift, Hammer, HeartPulse, House, Lamp, Landmark, LayoutGrid, Leaf, Lock, Map as MapIcon, Microscope, Move, Palette, Route, Shovel, Smile, Sparkles, Star, Store, Trash2, TrendingUp, Users, Utensils, Wheat, X, Zap,
 } from 'lucide-react';
 import type { Expense, Income, Loan, LoanPayment, Subscription } from '../types';
 import { loadSavingsGoals, type SavingsData } from '../services/savingsGoalService';
@@ -32,10 +32,12 @@ const ICONS: Record<string, string> = {
   postoffice: '📮', vault: '🐷', creditunion: '🤝',
 };
 const CATEGORIES: Array<{ id: BuildingCategory; label: string }> = [
-  ...EXPANSION_CATEGORIES,
   { id: 'homes', label: 'Homes' }, { id: 'business', label: 'Business' }, { id: 'industry', label: 'Industry' }, { id: 'utilities', label: 'Utilities' }, { id: 'services', label: 'Services' }, { id: 'advisors', label: 'Advisors' },
 ];
 const buildingIcon = (id: string) => ICONS[id] || getBuilding(id)?.icon || '🏢';
+const ALL_CATEGORIES = [...CATEGORIES, ...EXPANSION_CATEGORIES];
+const CATEGORY_ICONS = { all: LayoutGrid, homes: House, business: Store, industry: Factory, utilities: Zap, services: HeartPulse, advisors: Users, farming: Wheat, harbour: Anchor, fishing: Fish, highrise: Building2, shopping: Store, dining: Utensils, recreation: Smile, culture: Palette, transport: Route, civic: Landmark, science: Microscope, nature: Leaf };
+const CATEGORY_CHOICES = [{ id: 'all' as const, label: 'All buildings' }, ...ALL_CATEGORIES].map(item => ({ ...item, count: item.id === 'all' ? BUILDINGS.length : BUILDINGS.filter(type => type.category === item.id).length }));
 const TITLES = ['', 'Camp', 'Hamlet', 'Village', 'Village', 'Town', 'Town', 'City', 'City', 'Metropolis', 'Metropolis', 'Capital', 'Capital', 'Megacity', 'Megacity', 'World city'];
 const box = 'min-w-0 rounded-2xl border border-border bg-surface p-4';
 const coinText = (value: number) => Math.floor(value).toLocaleString();
@@ -105,7 +107,10 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [accountantOpen, setAccountantOpen] = useState(false);
   const [accountantWorking, setAccountantWorking] = useState(false);
-  const [category, setCategory] = useState<BuildingCategory>('homes');
+  const [category, setCategory] = useState<BuildingCategory | 'all'>('homes');
+  const [buildingSearch, setBuildingSearch] = useState('');
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [affordableOnly, setAffordableOnly] = useState(false);
   const [toast, setToast] = useState<{ text: string; tone: 'good' | 'bad' } | null>(null);
   const [confirmDemolish, setConfirmDemolish] = useState(false);
   const [savings, setSavings] = useState<SavingsData>({ goals: [], entries: [] });
@@ -241,6 +246,9 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
   ];
 
   const nextUnlocks = BUILDINGS.filter(type => type.unlock === level + 1);
+  const catalogue = BUILDINGS.filter(type => (category === 'all' || type.category === category)
+    && (!availableOnly || type.unlock <= level) && (!affordableOnly || type.cost <= city.coins)
+    && `${type.name} ${type.description} ${type.category}`.toLowerCase().includes(buildingSearch.trim().toLowerCase()));
   const powerShort = stats.power.demand > stats.power.supply;
   const waterShort = stats.water.demand > stats.water.supply;
   const tips = [
@@ -260,7 +268,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
     return { agent, building, name: building && staff > 0 ? staffRoster(building.id, building.type, staff)[0]?.name ?? null : null, record: city.agents?.[agent.id] };
   });
   const agentInput: AgentInput = { today, subscriptions, loans, payments: loanPayments, goals: savings.goals, entries: savings.entries };
-  const modeText = mode.kind === 'place' ? `${buildingIcon(mode.type)} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙 - green has a road, yellow needs one`
+  const modeText = mode.kind === 'place' ? `${buildingIcon(mode.type)} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙${placingType?.coastal ? ' · Build beside water' : ''} - green has a road, yellow needs one`
     : mode.kind === 'move' ? 'Tap where to move it'
       : mode.kind === 'road' ? `Drag to draw a road · ${ROAD_COST} 🪙 per tile`
         : mode.kind === 'lights' ? `Drag along roads to put up street lights · ${LIGHT_COST} 🪙 each`
@@ -383,13 +391,33 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               {tool('bulldoze', 'Bulldoze', Shovel)}
               {tool('land', 'Buy land', MapIcon)}
             </div>
-            <div className="mt-3 flex flex-wrap gap-1 rounded-xl border border-border bg-background p-1">
-              {CATEGORIES.map(item => (
-                <button key={item.id} type="button" onClick={() => setCategory(item.id)} className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-bold ${category === item.id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>{item.label}</button>
-              ))}
+            <div className="city-category-panel mt-4 rounded-2xl border border-border p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <label htmlFor="city-building-category" className="text-xs font-bold text-textMain">Building categories</label>
+                <span className="text-[11px] text-secondary">{ALL_CATEGORIES.length} categories</span>
+              </div>
+              <select id="city-building-category" aria-label="Building category" value={category} onChange={event => setCategory(event.target.value as BuildingCategory | 'all')} className="w-full rounded-xl border border-border bg-surface px-3 py-3 text-sm font-semibold text-textMain outline-none focus:border-primary sm:hidden">
+                {CATEGORY_CHOICES.map(item => <option key={item.id} value={item.id}>{item.label} ({item.count})</option>)}
+              </select>
+              <div className="city-category-grid hidden gap-1.5 sm:grid" role="group" aria-label="Building categories">
+                {CATEGORY_CHOICES.map(item => {
+                  const Icon = CATEGORY_ICONS[item.id];
+                  return <button key={item.id} type="button" aria-pressed={category === item.id} onClick={() => setCategory(item.id)} className={`city-category-option flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${category === item.id ? 'border-primary/40 bg-primary/10 text-primary' : 'border-transparent text-secondary hover:border-border hover:bg-surface hover:text-textMain'}`}>
+                    <Icon size={15} strokeWidth={1.8} className="shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    <span className="city-category-count flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-[10px] tabular-nums">{item.count}</span>
+                  </button>;
+                })}
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-              {BUILDINGS.filter(type => type.category === category).map(type => {
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input type="search" aria-label="Search building catalogue" placeholder="Find a building…" value={buildingSearch} onChange={event => setBuildingSearch(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-textMain outline-none focus:border-primary" />
+              <label className="flex items-center gap-1.5 text-xs text-secondary"><input type="checkbox" checked={availableOnly} onChange={event => setAvailableOnly(event.target.checked)} />Unlocked</label>
+              <label className="flex items-center gap-1.5 text-xs text-secondary"><input type="checkbox" checked={affordableOnly} onChange={event => setAffordableOnly(event.target.checked)} />Within budget</label>
+            </div>
+            <p className="mt-3 text-[11px] text-secondary">{catalogue.length} choices · {BUILDINGS.length} buildings in your city catalogue</p>
+            <div className="city-building-catalogue mt-3 grid max-h-[520px] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+              {catalogue.map(type => {
                 const locked = level < type.unlock;
                 const affordable = city.coins >= type.cost;
                 const active = mode.kind === 'place' && mode.type === type.id;
@@ -397,17 +425,20 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
                   <button key={type.id} type="button" disabled={locked} onClick={() => { setMode(active ? { kind: 'idle' } : { kind: 'place', type: type.id }); setSelectedId(null); }}
                     className={`rounded-xl border p-3 text-left transition ${active ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-primary'} ${locked ? 'opacity-50' : ''} bg-background`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-2xl leading-none">{buildingIcon(type.id)}</span>
+                      <span className="text-2xl leading-none" aria-hidden="true">{buildingIcon(type.id)}</span>
                       {locked ? <span className="flex items-center gap-1 text-[10px] font-bold text-secondary"><Lock size={11} /> Lv {type.unlock}</span>
                         : <span className={`text-[11px] font-black ${affordable ? 'text-amber-600 dark:text-amber-300' : 'text-rose-500'}`}>{type.cost} 🪙</span>}
                     </div>
                     <p className="mt-2 text-xs font-bold text-textMain">{type.name}</p>
+                    <p className="mt-1 text-[10px] leading-snug text-secondary">{type.description}</p>
                     <p className="mt-0.5 text-[10px] leading-snug text-secondary">{effects(type.id).join(' · ')}</p>
+                    <p className="mt-1 text-[10px] text-secondary">{type.size}×{type.size}{type.coastal ? ' · Shoreline' : ''}{type.noRoad ? ' · No road needed' : ''}{type.power ? ` · ${type.power} power` : ''}{type.water ? ` · ${type.water} water` : ''}</p>
                   </button>
                 );
               })}
             </div>
-            <p className="mt-3 text-[10px] text-secondary">Buildings need a road beside them, and power and water to run. Drag to pan the map, right-drag or two fingers to rotate, scroll or pinch to zoom. Esc leaves a tool.</p>
+            {!catalogue.length && <p className="py-6 text-center text-sm text-secondary">No buildings match these filters. Try All or clear a filter.</p>}
+            <p className="mt-3 text-[10px] text-secondary">Check each building for road, power, water and shoreline requirements. Nature spaces work without roads. Drag to pan the map, right-drag or two fingers to rotate, scroll or pinch to zoom. Esc leaves a tool.</p>
           </section>
         </div>
 

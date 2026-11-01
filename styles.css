@@ -434,6 +434,25 @@
   background: color-mix(in srgb, var(--color-secondary, #94a3b8) 50%, transparent);
 }
 .poker-log-list::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.city-building-catalogue {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-secondary) 30%, transparent) transparent;
+  overscroll-behavior: contain;
+}
+.city-building-catalogue::-webkit-scrollbar { width: 5px; }
+.city-building-catalogue::-webkit-scrollbar-track { background: transparent; }
+.city-building-catalogue::-webkit-scrollbar-thumb { background: #94a3b84d; border-radius: 999px; }
+.city-category-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.city-category-panel { background: var(--color-background); border-color: color-mix(in srgb, var(--color-secondary) 14%, var(--color-surface)); }
+.city-category-option[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+}
+.city-category-count { background: var(--color-surface); color: var(--color-secondary); }
+.city-category-option[aria-pressed="true"] .city-category-count {
+  background: color-mix(in srgb, var(--color-primary) 20%, var(--color-background));
+  color: var(--color-primary);
+}
 @media (min-width: 1024px) {
   .poker-two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .poker-log-list { max-height: 680px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
