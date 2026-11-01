@@ -32,7 +32,8 @@
     "test:world": "node scripts/test-finance-world.mjs",
     "test:city": "node scripts/test-city-game.mjs",
     "test:agents": "node scripts/test-city-agents.mjs",
-    "test:receivables": "node scripts/test-receivables.mjs"
+    "test:receivables": "node scripts/test-receivables.mjs",
+    "test:cardmarket": "node scripts/test-card-market.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

@@ -11,6 +11,8 @@ import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
 import { handlePokemonMarket } from './pokemonMarket';
 import { handlePsaCert } from './psaCert';
+import { handleCreditCardMarket } from './creditCardMarket';
+import { handleCardImage } from './cardImage';
 
 export interface Env {
   HF_TOKEN: string;
@@ -207,6 +209,8 @@ export default {
       return handleStockInsights(request);
     }
     if (url.pathname === '/api/pokemon/market') return handlePokemonMarket(request);
+    if (url.pathname === '/api/credit-cards') return handleCreditCardMarket(request);
+    if (url.pathname === '/api/card-image') return handleCardImage(request);
     if (url.pathname === '/api/pokemon/psa-cert') return handlePsaCert(request, env.PSA_API_TOKEN);
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),

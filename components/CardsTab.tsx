@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Landmark, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Landmark, Plus, Pencil, Trash2, Wallet, Globe2 } from 'lucide-react';
+import CreditCardMarket from './CreditCardMarket';
+import type { MarketCountry } from '../services/creditCardMarketService';
 import { CardBenefit, CardPointTransaction, Expense, PaymentCard, Subscription } from '../types';
 import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
@@ -20,6 +22,15 @@ interface CardsTabProps {
 
 const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, cardBenefits = [], cardPointTransactions, baseCurrency, onAddCard, onViewCard, onEditCard, onDeleteCard }) => {
   const [filter, setFilter] = useState<'All' | 'Debit' | 'Credit' | 'MultiCurrency'>('All');
+  // My cards, or every credit card on the market in Singapore or Malaysia. Remembered per device.
+  const [view, setView] = useState<'mine' | MarketCountry>(() => {
+    try { const saved = localStorage.getItem('subtrack_cards_view'); return saved === 'sg' || saved === 'my' ? saved : 'mine'; } catch { return 'mine'; }
+  });
+  const chooseView = (next: 'mine' | MarketCountry) => {
+    setView(next);
+    try { localStorage.setItem('subtrack_cards_view', next); } catch { /* storage blocked */ }
+  };
+  const ownCardNames = useMemo(() => cards.filter(card => card.kind === 'Credit').map(card => card.name), [cards]);
 
   const cardRows = useMemo(() => {
     return cards
@@ -60,6 +71,17 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
 
   return (
     <div className="desktop-layout cards-layout pb-24 animate-fade-in space-y-6">
+      <div role="tablist" aria-label="Cards" className="flex gap-1 overflow-x-auto rounded-2xl border border-border bg-surface p-1">
+        {([['mine', 'My cards', Wallet], ['sg', 'Singapore cards', Globe2], ['my', 'Malaysia cards', Globe2]] as const).map(([id, label, Icon]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => chooseView(id)}
+            className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-bold transition-colors ${view === id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>
+            <Icon size={15} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Cards don't record a country, so your base currency decides which list they're matched in. */}
+      {view !== 'mine' ? <CreditCardMarket country={view} ownCardNames={baseCurrency === (view === 'sg' ? 'MYR' : 'SGD') ? [] : ownCardNames} /> : (<>
       <div className="cards-overview bg-gradient-to-br from-[#1f2a44] via-[#18233a] to-[#11182b] rounded-2xl border border-white/5 p-5 shadow-[0_20px_60px_-30px_rgba(59,130,246,0.45)] text-white">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
@@ -266,6 +288,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ cards, subscriptions, expenses, car
           ))}
         </div>
       )}
+      </>)}
     </div>
   );
 };
