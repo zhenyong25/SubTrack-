@@ -11,6 +11,7 @@ import { handlePsaCert } from './server/psaCert';
 import { handleCreditCardMarket } from './server/creditCardMarket';
 import { handleCardImage } from './server/cardImage';
 import { handlePokemonShops } from './server/pokemonShops';
+import { handlePokemonEvents } from './server/pokemonEvents';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -35,6 +36,7 @@ export default defineConfig(({ mode }) => {
               '/api/credit-cards': handleCreditCardMarket,
               '/api/card-image': handleCardImage,
               '/api/pokemon/shops': handlePokemonShops,
+              '/api/pokemon/events': handlePokemonEvents,
               '/api/pokemon/psa-cert': request => handlePsaCert(request, env.PSA_API_TOKEN),
             };
             Object.entries(routes).forEach(([route, handle]) => {
