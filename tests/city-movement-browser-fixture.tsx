@@ -24,7 +24,8 @@ function Fixture() {
 createRoot(document.getElementById('root')!).render(<Fixture />);
 async function verify() {
   const seen = { waiting: false, crossing: false, stopped: false, walk: false, cars: false };
-  for (let i = 0; i < 2400; i++) {
+  // Software rendering in CI can run the simulation at a fraction of real time.
+  for (let i = 0; i < 6600; i++) {
     const d = document.querySelector('canvas')?.dataset;
     if (d) {
       seen.waiting ||= Number(d.waitingPedestrians) > 0; seen.crossing ||= Number(d.activeCrossings) > 0;

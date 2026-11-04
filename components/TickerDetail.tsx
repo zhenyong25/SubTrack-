@@ -26,6 +26,9 @@ import { buildInsights, fetchStockInsights, type StockInsights } from '../servic
 import { AnalystCard, EarningsCard, FinancialsCard, GrowthCard, InsightsCard, KeyStatsCard, NewsCard, ProfileCard } from './TickerFundamentals';
 import InvestmentLogo from './InvestmentLogo';
 import PriceAlertControls from './PriceAlertControls';
+import { CANDLESTICK_PATTERNS, type PatternMatch } from '../services/candlestickPatterns';
+import { MA_PERIODS, MA_COLORS, cleanCandles, compressChartCandles, indicatorHistoryRange, tickerTechnical, type AverageType } from '../services/tickerTechnicalService';
+import TickerTechnicals from './TickerTechnicals';
 
 type TickerRange = '1D' | '5D' | '1M' | '3M' | '1Y' | 'MAX';
 type TickerInterval = '20s' | StockHistoryInterval;
@@ -96,26 +99,6 @@ const formatMarketState = (state?: string | null) => {
   }
 };
 
-const compressCandles = (candles: StockCandle[], maximum = 700): StockCandle[] => {
-  if (candles.length <= maximum) return candles;
-  const groupSize = Math.ceil(candles.length / maximum);
-  const compressed: StockCandle[] = [];
-
-  for (let index = 0; index < candles.length; index += groupSize) {
-    const group = candles.slice(index, index + groupSize);
-    compressed.push({
-      timestamp: group[group.length - 1].timestamp,
-      open: group[0].open,
-      high: Math.max(...group.map(candle => candle.high)),
-      low: Math.min(...group.map(candle => candle.low)),
-      close: group[group.length - 1].close,
-      volume: group.reduce((sum, candle) => sum + (candle.volume || 0), 0),
-    });
-  }
-
-  return compressed;
-};
-
 const TickerDetail: React.FC<TickerDetailProps> = ({
   investment,
   metrics,
@@ -133,16 +116,34 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
   const [zoom, setZoom] = useState(1);
   const [selectedCandleIndex, setSelectedCandleIndex] = useState<number | null>(null);
   const [liveTicks, setLiveTicks] = useState<Array<{ timestamp: number; price: number }>>([]);
+  const [averageType, setAverageType] = useState<AverageType>('SMA');
+  const [enabledAverages, setEnabledAverages] = useState<number[]>([20, 50, 200]);
+  const [showPatterns, setShowPatterns] = useState(true);
+  const [focusedPattern, setFocusedPattern] = useState<PatternMatch | null>(null);
+  const [warmup, setWarmup] = useState<{ key: string; candles: StockCandle[] } | null>(null);
+  const [warmupError, setWarmupError] = useState('');
   const [daily, setDaily] = useState<StockIntradayHistory | null>(null);
   const [insights, setInsights] = useState<StockInsights | null>(null);
   const [insightsError, setInsightsError] = useState('');
   const chartViewportRef = useRef<HTMLDivElement>(null);
+  const [chartSize, setChartSize] = useState({ width: 920, height: 430 });
   const zoomRef = useRef(zoom);
   // Where to put the scroll after a zoom renders, so the point being zoomed on stays put.
   const zoomAnchorRef = useRef<{ contentX: number; viewX: number; ratio: number } | null>(null);
   const dragRef = useRef<{ startX: number; startScroll: number; moved: boolean } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const hasMouse = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches, []);
+
+  useLayoutEffect(() => {
+    const viewport = chartViewportRef.current;
+    if (!viewport) return;
+    const measure = () => {
+      const width = Math.max(320, Math.min(920, viewport.clientWidth)), height = window.innerWidth < 640 ? 340 : 430;
+      setChartSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
+    };
+    measure(); const observer = new ResizeObserver(measure); observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     zoomRef.current = zoom;
@@ -203,6 +204,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
 
     const controller = new AbortController();
     setIsLoading(true);
+    setHistory(null);
     setError('');
     fetchStockIntradayHistory(investment.symbol, interval, controller.signal, RANGE_TO_API[range])
       .then(result => {
@@ -220,15 +222,26 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
     return () => controller.abort();
   }, [investment.symbol, interval, range]);
 
-  // A year of daily bars for the statistics, separate from whatever range the chart shows.
+  // Daily history also warms up long moving averages before the chart's visible range.
   useEffect(() => {
+    setDaily(null);
     if (!investment.symbol) return;
     const controller = new AbortController();
-    fetchStockIntradayHistory(investment.symbol, '1d', controller.signal, '1y')
+    fetchStockIntradayHistory(investment.symbol, '1d', controller.signal, 'max')
       .then(result => { if (!controller.signal.aborted) setDaily(result); })
       .catch(() => { /* statistics are optional - the chart and position still show */ });
     return () => controller.abort();
   }, [investment.symbol]);
+
+  useEffect(() => {
+    setWarmup(null); setWarmupError('');
+    if (!investment.symbol || interval === '20s' || interval === '1d') return;
+    const controller = new AbortController(), key = `${investment.symbol}:${interval}`;
+    fetchStockIntradayHistory(investment.symbol, interval, controller.signal, indicatorHistoryRange(interval))
+      .then(result => { if (!controller.signal.aborted) setWarmup({ key, candles: cleanCandles(result.candles) }); })
+      .catch(() => { if (!controller.signal.aborted) setWarmupError('Earlier candles could not be loaded. Averages use the available chart history.'); });
+    return () => controller.abort();
+  }, [investment.symbol, interval]);
 
   // Fundamentals, analysts, earnings, statements and news - Stocks only (crypto has none).
   useEffect(() => {
@@ -244,6 +257,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
 
   useEffect(() => {
     setSelectedCandleIndex(null);
+    setFocusedPattern(null);
     setZoom(1);
     if (chartViewportRef.current) chartViewportRef.current.scrollLeft = 0;
   }, [range, interval]);
@@ -300,11 +314,11 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
         };
       });
     }
-    return history?.candles || [];
+    return cleanCandles(history?.candles || []);
   }, [history, interval, liveTicks]);
 
   const candles = useMemo(() => {
-    const available = compressCandles(rawCandles);
+    const available = compressChartCandles(rawCandles);
     if (available.length > 0) return available;
     return [{
       timestamp: Date.now(),
@@ -312,21 +326,33 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
       high: investment.currentPrice,
       low: investment.currentPrice,
       close: investment.currentPrice,
-      volume: 0,
+      volume: 0, sourceStart: 0, sourceEnd: 0,
     }];
   }, [rawCandles, investment.currentPrice]);
 
+  const technical = useMemo(() => tickerTechnical(rawCandles,
+    interval === '1d' ? cleanCandles(daily?.candles || []) : warmup?.key === `${investment.symbol}:${interval}` ? warmup.candles : [],
+    averageType, interval !== '20s'), [rawCandles, daily, warmup, interval, investment.symbol, averageType]);
+  const averagePoints = useMemo(() => enabledAverages.flatMap(period => candles.map(c => technical.averages[period][c.sourceEnd]).filter((v): v is number => v !== null && v !== undefined)), [candles, technical, enabledAverages]);
+  const patternGroups = useMemo(() => {
+    const groups = new Map<number, PatternMatch[]>();
+    if (showPatterns) for (const match of technical.matches) {
+      const index = candles.findIndex(c => c.sourceStart <= match.index && c.sourceEnd >= match.index);
+      if (index >= 0) groups.set(index, [...(groups.get(index) || []), match]);
+    }
+    return groups;
+  }, [candles, technical.matches, showPatterns]);
+
   const chart = useMemo(() => {
-    const width = 920;
-    const height = 430;
-    const padding = { top: 22, right: 20, bottom: 34, left: 68 };
-    const priceBottom = 302;
-    const volumeTop = 332;
+    const { width, height } = chartSize;
+    const padding = { top: 22, right: 20, bottom: 34, left: width < 500 ? 48 : 68 };
+    const priceBottom = height * 302 / 430;
+    const volumeTop = height * 332 / 430;
     const volumeBottom = height - padding.bottom;
     const plotWidth = width - padding.left - padding.right;
     const priceHeight = priceBottom - padding.top;
-    const candleMin = Math.min(...candles.map(candle => candle.low));
-    const candleMax = Math.max(...candles.map(candle => candle.high));
+    const candleMin = Math.min(...candles.map(candle => candle.low), ...averagePoints);
+    const candleMax = Math.max(...candles.map(candle => candle.high), ...averagePoints);
     // Stretch the scale to show the average-cost line when it's reasonably close; when it's far
     // away it gets a marker pinned to the edge instead, so the candles don't flatten into a line.
     const average = investment.averageCost > 0 ? investment.averageCost : null;
@@ -366,7 +392,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
         volumeY: volumeBottom - (((candle.volume || 0) / maximumVolume) * (volumeBottom - volumeTop)),
       })),
     };
-  }, [candles, investment.averageCost]);
+  }, [candles, investment.averageCost, averagePoints, chartSize]);
 
   const activeIndex = clamp(selectedCandleIndex ?? (candles.length - 1), 0, candles.length - 1);
   const activeCandle = candles[activeIndex];
@@ -449,6 +475,17 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
     : range === '5D'
       ? { weekday: 'short', hour: '2-digit', minute: '2-digit' }
       : { month: 'short', day: 'numeric', year: range === '1Y' || range === 'MAX' ? 'numeric' : undefined });
+
+  const selectPattern = (match: PatternMatch | null) => {
+    setFocusedPattern(match);
+    if (!match) { setSelectedCandleIndex(null); return; }
+    const index = candles.findIndex(c => c.sourceStart <= match.index && c.sourceEnd >= match.index);
+    if (index >= 0) {
+      setSelectedCandleIndex(index);
+      const viewport = chartViewportRef.current;
+      if (viewport) viewport.scrollLeft = chart.candles[index].x / chart.width * viewport.scrollWidth - viewport.clientWidth / 2;
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-background text-textMain animate-fade-in">
@@ -540,6 +577,31 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                 </div>
               </div>
     
+              <div className="border-b border-border px-4 py-3" data-testid="ticker-moving-averages">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs font-bold">Moving averages
+                    <select aria-label="Moving average type" value={averageType} onChange={e => setAverageType(e.target.value as AverageType)} className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-textMain">
+                      <option value="SMA">SMA</option><option value="EMA">EMA</option>
+                    </select>
+                  </label>
+                  <button type="button" aria-pressed={showPatterns} onClick={() => setShowPatterns(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showPatterns ? 'border-primary text-primary' : 'border-border text-secondary'}`}>Pattern markers</button>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                  {MA_PERIODS.map(period => {
+                    const value = technical.averages[period][activeCandle.sourceEnd];
+                    const enabled = enabledAverages.includes(period);
+                    return <button type="button" key={period} aria-label={`Toggle ${averageType} ${period}`} aria-pressed={enabled}
+                      onClick={() => setEnabledAverages(previous => enabled ? previous.filter(n => n !== period) : [...previous, period])}
+                      className={`min-w-0 rounded-lg border bg-background px-2 py-1.5 text-left ${enabled ? '' : 'opacity-60'}`} style={{ borderColor: enabled ? MA_COLORS[period] : undefined }}>
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold text-secondary"><span className="inline-block h-0.5 w-3" style={{ background: MA_COLORS[period] }} />{averageType} {period}</span>
+                      <span className="mt-0.5 block text-xs font-black tabular-nums" data-ma-value={period}>{value === null || value === undefined ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 4 : 2, minimumFractionDigits: 2 })}</span>
+                    </button>;
+                  })}
+                </div>
+                <p className="mt-2 text-[10px] text-secondary">{averageType === 'SMA' ? 'Simple' : 'Exponential'} averages of {INTERVAL_LABELS[interval].toLowerCase()} candles · {currency} · values follow the inspected candle. A dash means more history is needed.</p>
+                {warmupError && interval !== '1d' && interval !== '20s' && <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">{warmupError}</p>}
+                {rawCandles.length > candles.length && <p className="mt-1 text-[10px] text-secondary">Candles are grouped in this long view. Averages and pattern checks use the original {INTERVAL_LABELS[interval].toLowerCase()} candles; values are shown at each group's close.</p>}
+              </div>
               <div className="grid grid-cols-4 gap-px border-b border-border bg-border">
                 {[
                   ['O', activeCandle.open],
@@ -599,6 +661,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                 )}
                 <svg
                   viewBox={`0 0 ${chart.width} ${chart.height}`}
+                  preserveAspectRatio="none"
                   className="block h-[340px] select-none sm:h-[430px]"
                   style={{ width: `${zoom * 100}%`, minWidth: '100%', cursor: isDragging ? 'grabbing' : hasMouse && zoom > 1 ? 'grab' : 'crosshair' }}
                   role="img"
@@ -609,7 +672,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                   onPointerCancel={endDrag}
                   onPointerLeave={event => {
                     // Back to the latest candle once the mouse leaves, like most chart tools.
-                    if (event.pointerType === 'mouse' && !dragRef.current) setSelectedCandleIndex(null);
+                    if (event.pointerType === 'mouse' && !dragRef.current && !focusedPattern) setSelectedCandleIndex(null);
                   }}
                 >
                   {[0, 0.25, 0.5, 0.75, 1].map(fraction => {
@@ -661,6 +724,33 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                     );
                   })}
     
+                  <g pointerEvents="none" aria-label="Moving average overlays">
+                    {enabledAverages.map(period => {
+                      let path = '', pen = false;
+                      for (const candle of chart.candles) {
+                        const value = technical.averages[period][candle.sourceEnd];
+                        if (value === null || value === undefined) { pen = false; continue; }
+                        path += `${pen ? 'L' : 'M'}${candle.x.toFixed(2)},${chart.yForPrice(value).toFixed(2)} `; pen = true;
+                      }
+                      return path ? <path key={period} data-ma-line={period} d={path} fill="none" stroke={MA_COLORS[period]} strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round"><title>{averageType} {period}</title></path> : null;
+                    })}
+                    {focusedPattern && <rect x={chart.padding.left + Math.max(0, candles.findIndex(c => c.sourceEnd >= focusedPattern.start)) * chart.slotWidth}
+                      y={chart.padding.top} width={Math.max(1, candles.findIndex(c => c.sourceEnd >= focusedPattern.index) - Math.max(0, candles.findIndex(c => c.sourceEnd >= focusedPattern.start)) + 1) * chart.slotWidth}
+                      height={chart.priceBottom - chart.padding.top} fill="#3b82f6" opacity="0.1" data-testid="pattern-highlight" />}
+                  </g>
+                  {Array.from(patternGroups, ([index, matches]) => {
+                    const candle = chart.candles[index], definitions = matches.map(m => CANDLESTICK_PATTERNS.find(p => p.id === m.patternId)!);
+                    const signal = definitions.every(p => p.signal === definitions[0].signal) ? definitions[0].signal : 'neutral';
+                    const color = signal === 'bullish' ? '#10b981' : signal === 'bearish' ? '#f43f5e' : '#64748b';
+                    const y = clamp(signal === 'bullish' ? candle.lowY + 12 : candle.highY - 12, chart.padding.top + 7, chart.priceBottom - 7);
+                    return <g key={index} role="button" tabIndex={0} aria-label={`${definitions.map(p => p.name).join(', ')} at ${timeLabel(rawCandles[matches[0].index].timestamp)}`}
+                      onPointerDown={e => e.stopPropagation()} onClick={() => selectPattern(matches[0])}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPattern(matches[0]); } }} className="cursor-pointer" data-pattern-marker={index}>
+                      <title>{definitions.map(p => `${p.name} (${p.signal})`).join(' · ')}</title>
+                      <path d={signal === 'bullish' ? `M${candle.x},${y - 5}l5,8h-10Z` : signal === 'bearish' ? `M${candle.x},${y + 5}l5,-8h-10Z` : `M${candle.x},${y - 3}l3,3l-3,3l-3,-3Z`}
+                        fill={signal === 'neutral' ? 'none' : color} stroke={color} strokeWidth={signal === 'neutral' ? '0.9' : '1'} opacity={signal === 'neutral' ? 0.65 : 1} />
+                    </g>;
+                  })}
                   <g pointerEvents="none">
                     <line x1={chart.padding.left} x2={chart.width - chart.padding.right} y1={priceY} y2={priceY} stroke="#06b6d4" strokeWidth="1" opacity="0.8" />
                     <rect x={chart.width - chart.padding.right - 74} y={priceY - 9} width="74" height="18" rx="4" fill="#06b6d4" />
@@ -703,6 +793,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                 </svg>
               </div>
     
+              <TickerTechnicals candles={rawCandles} matches={technical.matches} selected={focusedPattern} onSelect={selectPattern} timeLabel={timeLabel} intervalLabel={INTERVAL_LABELS[interval]} live={interval === '20s'} loading={isLoading} />
               <div className="px-4 py-3 text-[10px] leading-relaxed text-secondary">
                 {error ? <p className="font-semibold text-rose-500">{error}</p> : interval === '20s'
                   ? <p><strong className="text-textMain">Live session:</strong> a new candle is collected every 20 seconds while this investment screen is open.</p>

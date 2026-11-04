@@ -4,6 +4,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { CityTextures, FacadeStyle } from './textures';
 import { expansionById } from '../../services/cityBuildingExpansion';
 import { buildExpansionModel } from './expansionModels';
+import { airportModel } from './aviation';
+import { dressUpgrade } from './upgradeDressing';
 
 // Building models, built from smooth primitives (rounded boxes, lathed towers, extruded roofs)
 // and textured facades. Each model faces +z, sits on y = 0 and is centred on its footprint.
@@ -20,6 +22,8 @@ export interface Prefab {
   parts: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material; anim?: { kind: 'rotor' | 'beam'; pivot: THREE.Vector3 } }>;
   height: number;
   smoke: THREE.Vector3[];
+  // A flat landing spot on the roof (building coordinates), if the building is tall enough.
+  pad: THREE.Vector3 | null;
 }
 
 type Builder = (c: ModelContext, level: number, size: number) => THREE.Group;
@@ -81,6 +85,7 @@ const WALLS = ['#f1e3c8', '#f3d2c4', '#d9e6ee', '#e8e1f0', '#f6efe0'];
 const ROOFS = ['#b8553d', '#6d4e44', '#4f6f8f', '#7c5a3e'];
 
 const MODELS: Record<string, Builder> = {
+  airport: (c, level, size) => airportModel(c, level, size),
   hall: c => {
     const g = new THREE.Group();
     const stone = c.std('#d8d2c4', { roughness: 0.7 });
@@ -472,11 +477,34 @@ const MODELS: Record<string, Builder> = {
 };
 
 // One geometry per material; animated parts stay separate, centred on their pivot.
+const findRoofPad = (group: THREE.Group, box: THREE.Box3) => {
+  if (box.max.y < 1.4) return { pad: null };
+  const raycaster = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), step = 0.06;
+  const reach = Math.min(box.max.x, -box.min.x, box.max.z, -box.min.z) - 0.1, n = Math.floor(reach / step);
+  const heights = new Map<string, number>();
+  const height = (i: number, j: number) => {
+    const key = `${i},${j}`; let y = heights.get(key);
+    if (y === undefined) { raycaster.set(new THREE.Vector3(i * step, box.max.y + 1, j * step), down); y = raycaster.intersectObject(group, true)[0]?.point.y ?? 0; heights.set(key, y); }
+    return y;
+  };
+  let best: THREE.Vector3 | null = null;
+  for (let i = -n + 2; i <= n - 2; i++) for (let j = -n + 2; j <= n - 2; j++) {
+    const y = height(i, j);
+    if (y < 1.2 || best && y <= best.y + 0.01) continue;
+    const ring = [[2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([a, b]) => height(i + a, j + b));
+    if (ring.every(h => Math.abs(h - y) < 0.02)) best = new THREE.Vector3(i * step, y, j * step);
+  }
+  return { pad: best };
+};
+
 export const bake = (group: THREE.Group): Prefab => {
   group.updateMatrixWorld(true);
   const staticParts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   const animated: Prefab['parts'] = [];
   const box = new THREE.Box3().setFromObject(group);
+  // Where a helicopter could land: the highest spot on a tall building's roof that is flat for
+  // a rotor's width all round. Spires, domes and rooftop plant don't count.
+  const roofPad = 'roofPad' in group.userData ? { pad: group.userData.roofPad as THREE.Vector3 | null } : findRoofPad(group, box);
   group.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
     const geometry = object.geometry.index ? object.geometry.toNonIndexed() : object.geometry.clone();
@@ -501,12 +529,20 @@ export const bake = (group: THREE.Group): Prefab => {
   const rotorGroups = new Map<string, Prefab['parts']>();
   animated.forEach(part => { const key = `${part.anim!.kind}:${part.material.uuid}`; rotorGroups.set(key, [...(rotorGroups.get(key) || []), part]); });
   rotorGroups.forEach(list => parts.push({ geometry: mergeGeometries(list.map(item => item.geometry), false)!, material: list[0].material, anim: list[0].anim }));
-  return { parts, height: box.max.y, smoke: (group.userData.smoke as THREE.Vector3[]) || [] };
+  return { parts, height: box.max.y, smoke: (group.userData.smoke as THREE.Vector3[]) || [], ...roofPad };
 };
 
+// Models have their own designs for levels 1-3; every upgrade from level 2 also adds the shared
+// dressing in upgradeDressing.ts, which is all that distinguishes levels 4 and 5.
 export const buildModel = (type: string, c: ModelContext, level: number, size: number) => {
-  const expansion = expansionById.get(type);
-  return expansion ? buildExpansionModel(expansion, c, level) : MODELS[type](c, level, size);
+  const expansion = expansionById.get(type), designed = Math.min(level, 3);
+  const model = expansion ? buildExpansionModel(expansion, c, designed) : MODELS[type](c, designed, size);
+  if (type === 'hall' || level < 2) return model;
+  model.updateMatrixWorld(true);
+  const { pad } = findRoofPad(model, new THREE.Box3().setFromObject(model));
+  const dressed = dressUpgrade(model, c, level, size, pad);
+  dressed.userData.roofPad = pad;
+  return dressed;
 };
 export const hasModel = (type: string) => Boolean(MODELS[type]) || expansionById.has(type);
 export { tree as treeModel };

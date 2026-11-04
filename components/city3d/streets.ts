@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { buildGraph, LANE, PAVEMENT_SURFACE, type ToWorld } from './traffic';
-import { surfaceHeight, PAVEMENT_INNER } from './pavement';
+import { surfaceHeight, PAVEMENT_INNER, VEHICLE_STOP_DISTANCE } from './pavement';
+import { CAR_SIZE, type VehicleSize } from './vehicleModels';
+export { CAR_SIZE, VEHICLE_STOP_DISTANCE, type VehicleSize };
 import { PedestrianCrowd, PERSONAL_SPACE } from './pedestrianCrowd';
 
 export type SignalPhase = 'cars' | 'amber' | 'all-red' | 'walk' | 'clearance';
@@ -10,6 +12,9 @@ export interface Crossing {
   vehicle: number | null;
   vehicleQueue: Map<number, number>;
 }
+// A junction with no signal. Adjacent junction tiles share one box, so cars inside it can't
+// each hold a tile the other needs next.
+export interface Junction { road: number; tiles: THREE.Vector3[]; vehicle: number | null; vehicleQueue: Map<number, number> }
 export interface SidewalkNode { id: number; road: number; position: THREE.Vector3; links: Array<{ to: number; crossing: number | null }> }
 interface Journey { target: THREE.Vector3; nodes: number[]; points: THREE.Vector3[]; next: number; crossing: number | null; clearedEdge: number; walking: boolean; stall: number; closest: number;
   // Turned back to the starting kerb after getting stuck on the road once the walk signal ended.
@@ -18,21 +23,20 @@ interface Journey { target: THREE.Vector3; nodes: number[]; points: THREE.Vector
   waited: number;
   // After leaving the car lanes, the crossing being finished along the road edge to the kerb.
   finishing: { road: number; from: THREE.Vector3; to: THREE.Vector3 } | null }
-export interface StreetVehicle { id: number; position: THREE.Vector3; heading?: number }
-export const vehicleOverlap = (a: THREE.Vector3, headingA: number, b: THREE.Vector3, headingB: number, padding = 0.005) => {
+export interface StreetVehicle { id: number; position: THREE.Vector3; heading?: number; size?: VehicleSize }
+export const vehicleOverlap = (a: THREE.Vector3, headingA: number, b: THREE.Vector3, headingB: number, padding = 0.005, sizeA = CAR_SIZE, sizeB = CAR_SIZE) => {
   const forwardA = [Math.sin(headingA), Math.cos(headingA)], sideA = [forwardA[1], -forwardA[0]];
   const forwardB = [Math.sin(headingB), Math.cos(headingB)], sideB = [forwardB[1], -forwardB[0]];
   const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1];
   const delta = [b.x - a.x, b.z - a.z];
-  return [forwardA, sideA, forwardB, sideB].every(axis => Math.abs(dot(delta, axis)) < (0.225 + padding) * (Math.abs(dot(forwardA, axis)) + Math.abs(dot(forwardB, axis))) + (0.09 + padding) * (Math.abs(dot(sideA, axis)) + Math.abs(dot(sideB, axis))));
+  return [forwardA, sideA, forwardB, sideB].every(axis => Math.abs(dot(delta, axis)) < (sizeA.half + padding) * Math.abs(dot(forwardA, axis)) + (sizeB.half + padding) * Math.abs(dot(forwardB, axis)) + (sizeA.side + padding) * Math.abs(dot(sideA, axis)) + (sizeB.side + padding) * Math.abs(dot(sideB, axis)));
 };
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 const CURB = (PAVEMENT_INNER + 0.5) / 2;
-// The outer walking lane is 0.46 from the tile centre. Allow the car's 0.225
-// front overhang plus pedestrian clearance, without extending into a turn on
-// the next tile (whose inside vehicle lane is 0.8 from this crossing).
-export const VEHICLE_STOP_DISTANCE = 0.76;
 const STOP_DISTANCE = VEHICLE_STOP_DISTANCE;
+// An unsignalled junction's box is its own tile plus a car's front overhang (car centres are
+// tested), so a car waiting to enter keeps its nose out of the turning path.
+const JUNCTION_ZONE = 0.72;
 // A walker this far across a road arm is beyond every car's side (lane centre + half a car + a
 // margin) and so no longer holds the signal, even before reaching the crowded kerb.
 const CLEAR_OF_LANES = LANE + 0.09 + 0.03;
@@ -46,10 +50,14 @@ export class StreetNetwork {
   readonly crowd = new PedestrianCrowd();
   readonly nodes = new Map<number, SidewalkNode>();
   readonly crossings = new Map<number, Crossing>();
+  readonly junctions: Junction[] = [];
   private nodeBuckets = new Map<string, SidewalkNode[]>();
   private pedestrianBuckets = new Map<string, THREE.Vector3[]>();
   private vehicles = new Map<number, THREE.Vector3>();
   private vehicleHeadings = new Map<number, number>();
+  private vehicleSizes = new Map<number, VehicleSize>();
+  // Junction zones are measured to a vehicle's centre; a longer vehicle stops that much earlier.
+  private reach(id: number) { return Math.max(0, (this.vehicleSizes.get(id)?.half ?? CAR_SIZE.half) - CAR_SIZE.half); }
   private vehicleBuckets = new Map<string, Set<number>>();
   private journeys = new Map<string, Journey>();
   private trees = new Map<number, Map<number, number>>();
@@ -58,6 +66,11 @@ export class StreetNetwork {
   completedCrossings = 0;
   stoppedCars = 0;
   readonly blockedVehicles = new Map<number, { reason: string; by?: number; crossing?: number }>();
+  // Cars let through a deadlock ignore other cars and junction turns for a moment. Signals and
+  // pedestrians still stop them. Traffic decides who is released.
+  readonly released = new Map<number, 1>();
+  // Wrecks remain physical barriers even while normal cars resolve a queue deadlock.
+  readonly solidVehicles = new Set<number>();
 
   constructor(readonly toWorld: ToWorld) {}
 
@@ -74,6 +87,15 @@ export class StreetNetwork {
       const position = this.toWorld(road);
       if ([...this.crossings.values()].some(c => c.position.distanceTo(position) < 2.6)) continue;
       this.crossings.set(road, { road, position, phase: 'cars', elapsed: 0, waiting: new Set(), active: new Set(), vehicle: null, vehicleQueue: new Map() });
+    }
+    // Junctions without a signal are still entered one car at a time, or crossing streams meet
+    // inside them. Tiles right next to a signal are already covered by its stop zone.
+    this.junctions.length = 0;
+    const free = new Set([...graph].filter(([id, links]) => links.length >= 3 && ![...this.crossings.values()].some(c => c.position.distanceTo(this.toWorld(id)) < 1.5)).map(([id]) => id));
+    for (const start of free) {
+      const group = [start]; free.delete(start);
+      for (let i = 0; i < group.length; i++) for (const n of graph.get(group[i]) || []) if (free.delete(n)) group.push(n);
+      this.junctions.push({ road: start, tiles: group.map(id => this.toWorld(id)), vehicle: null, vehicleQueue: new Map() });
     }
     for (const road of roads) {
       const centre = this.toWorld(road);
@@ -343,7 +365,7 @@ export class StreetNetwork {
       const greenTime = crossing.vehicleQueue.size > 1 ? 10 : 4;
       if (crossing.phase === 'cars' && crossing.elapsed >= greenTime && crossing.waiting.size) phase('amber');
       else if (crossing.phase === 'amber' && crossing.elapsed >= 1) phase('all-red');
-      else if (crossing.phase === 'all-red' && crossing.elapsed >= 0.5 && ![...this.vehicles.values()].some(p => near(p, crossing.position, STOP_DISTANCE))) phase('walk');
+      else if (crossing.phase === 'all-red' && crossing.elapsed >= 0.5 && ![...this.vehicles].some(([id, p]) => near(p, crossing.position, STOP_DISTANCE + this.reach(id)))) phase('walk');
       else if (crossing.phase === 'walk' && crossing.elapsed >= WALK_SECONDS) phase('clearance');
       else if (crossing.phase === 'clearance' && crossing.elapsed >= 0.5 && !crossing.active.size) phase('cars');
     }
@@ -354,43 +376,83 @@ export class StreetNetwork {
     for (const p of positions) { const key = keyAt(p.x, p.z); const bucket = this.pedestrianBuckets.get(key); if (bucket) bucket.push(p); else this.pedestrianBuckets.set(key, [p]); }
   }
   setVehicles(vehicles: StreetVehicle[]) {
-    this.vehicles.clear(); this.vehicleBuckets.clear(); this.vehicleHeadings.clear(); for (const v of vehicles) this.moveVehicle(v.id, v.position, v.heading);
+    this.vehicles.clear(); this.vehicleBuckets.clear(); this.vehicleHeadings.clear(); this.vehicleSizes.clear();
+    for (const v of vehicles) { if (v.size) this.vehicleSizes.set(v.id, v.size); this.moveVehicle(v.id, v.position, v.heading); }
     for (const crossing of this.crossings.values()) if (crossing.vehicle !== null && !this.vehicles.has(crossing.vehicle)) crossing.vehicle = null;
     for (const c of this.crossings.values()) for (const id of c.vehicleQueue.keys()) if (!this.vehicles.has(id)) c.vehicleQueue.delete(id);
+    for (const j of this.junctions) {
+      if (j.vehicle !== null && !this.vehicles.has(j.vehicle)) j.vehicle = null;
+      for (const id of j.vehicleQueue.keys()) if (!this.vehicles.has(id)) j.vehicleQueue.delete(id);
+    }
   }
+  // Cars still inside a junction whose light has gone red. The walk phase waits for them, and
+  // they may be queued behind cars held by that same light, so they are let through.
+  clearing() {
+    const ids: number[] = [];
+    for (const c of this.crossings.values()) if (c.phase === 'all-red' && c.elapsed > 1.5) for (const [id, p] of this.vehicles) if (near(p, c.position, STOP_DISTANCE + this.reach(id))) ids.push(id);
+    return ids;
+  }
+  // Whether a road tile is inside a junction box (signalled or not), where vehicles must not stop.
+  boxAt(index: number) { const p = this.toWorld(index); return this.crossings.has(index) || this.junctions.some(j => j.tiles.some(t => t.distanceToSquared(p) < 0.01)); }
+  private inJunction(j: Junction, p: THREE.Vector3, margin = 0) { return j.tiles.some(t => near(p, t, JUNCTION_ZONE + margin)); }
   moveVehicle(id: number, position: THREE.Vector3, heading?: number) {
     const previous = this.vehicles.get(id); if (previous) this.vehicleBuckets.get(keyAt(previous.x, previous.z))?.delete(id);
     const p = position.clone(), key = keyAt(p.x, p.z); this.vehicles.set(id, p);
     if (heading !== undefined) this.vehicleHeadings.set(id, heading);
     if (!this.vehicleBuckets.has(key)) this.vehicleBuckets.set(key, new Set()); this.vehicleBuckets.get(key)!.add(id);
-    for (const c of this.crossings.values()) if (c.vehicle === id && !near(p, c.position, STOP_DISTANCE)) c.vehicle = null;
-    for (const c of this.crossings.values()) if (near(p, c.position, STOP_DISTANCE) || !near(p, c.position, STOP_DISTANCE + 0.25)) c.vehicleQueue.delete(id);
+    const reach = this.reach(id);
+    for (const c of this.crossings.values()) if (c.vehicle === id && !near(p, c.position, STOP_DISTANCE + reach)) c.vehicle = null;
+    for (const c of this.crossings.values()) if (near(p, c.position, STOP_DISTANCE + reach) || !near(p, c.position, STOP_DISTANCE + reach + 0.25)) c.vehicleQueue.delete(id);
+    for (const j of this.junctions) {
+      const inside = this.inJunction(j, p, reach);
+      if (j.vehicle === id && !inside) j.vehicle = null;
+      if (inside || !this.inJunction(j, p, reach + 0.25)) j.vehicleQueue.delete(id);
+    }
   }
-  canSpawn(position: THREE.Vector3, heading?: number) {
-    return ![...this.crossings.values()].some(c => near(position, c.position, STOP_DISTANCE + 0.1)) && this.canDrive(-1, position, position, heading);
+  canSpawn(position: THREE.Vector3, heading?: number, size = CAR_SIZE) {
+    const reach = Math.max(0, size.half - CAR_SIZE.half);
+    this.vehicleSizes.set(-1, size);
+    const free = ![...this.crossings.values()].some(c => near(position, c.position, STOP_DISTANCE + reach + 0.1)) && !this.junctions.some(j => this.inJunction(j, position, reach + 0.1)) && this.canDrive(-1, position, position, heading);
+    this.vehicleSizes.delete(-1);
+    return free;
   }
   canDrive(id: number, current: THREE.Vector3, next: THREE.Vector3, heading = Math.atan2(next.x - current.x, next.z - current.z), exit?: THREE.Vector3) {
     this.blockedVehicles.delete(id);
     const stop = (reason: string, by?: number, crossing?: number) => { this.stoppedCars++; if (id >= 0) this.blockedVehicles.set(id, { reason, by, crossing }); return false; };
-    for (const c of this.crossings.values()) if (!near(current, c.position, STOP_DISTANCE) && near(next, c.position, STOP_DISTANCE)) {
-      if (id >= 0 && !c.vehicleQueue.has(id)) c.vehicleQueue.set(id, this.seconds);
-      if (c.phase !== 'cars') return stop('signal', undefined, c.road);
+    // Entering a junction box (signalled or not). Returns the reason to wait, if any.
+    const released = id >= 0 ? this.released.get(id) || 0 : 0;
+    const enter = (box: Crossing | Junction, centre: THREE.Vector3, inside: (p: THREE.Vector3, margin?: number) => boolean): [string, number | undefined] | null => {
+      if (id >= 0 && !box.vehicleQueue.has(id)) box.vehicleQueue.set(id, this.seconds);
+      if (id < 0) return null;
+      if (released) { box.vehicle = id; return null; }
       // Don't block the box: wait outside until the exit beyond the junction has room, or a
       // queue reaching back from the next junction gridlocks both signals.
-      if (exit && id >= 0) {
-        const exitHeading = Math.atan2(exit.x - c.position.x, exit.z - c.position.z);
-        if ([...this.vehicles].some(([other, p]) => other !== id && p.distanceTo(exit) < 0.5 && Math.cos((this.vehicleHeadings.get(other) ?? exitHeading) - exitHeading) > 0.5)) return stop('box', undefined, c.road);
+      if (exit) {
+        const exitHeading = Math.atan2(exit.x - centre.x, exit.z - centre.z);
+        const full = [...this.vehicles].find(([other, p]) => other !== id && p.distanceTo(exit) < 0.5 && Math.cos((this.vehicleHeadings.get(other) ?? exitHeading) - exitHeading) > 0.5);
+        if (full) return ['box', full[0]];
       }
-      // Reserve the junction before entering, so crossing vehicle streams cannot
-      // gridlock each other while a pedestrian signal is waiting for clearance.
-      if (id >= 0) {
-        if (c.vehicle !== null && c.vehicle !== id || [...this.vehicles].some(([other, p]) => other !== id && near(p, c.position, STOP_DISTANCE))) return stop('junction', c.vehicle ?? undefined, c.road);
-        // A car holding back because its exit is full gives up its turn, or it and the cars it
-        // waits for can block each other in a loop.
-        const first = [...c.vehicleQueue].filter(([other]) => { const p = this.vehicles.get(other); return p && near(p, c.position, STOP_DISTANCE + 0.2) && this.blockedVehicles.get(other)?.reason !== 'box'; }).sort((a, b) => a[1] - b[1] || a[0] - b[0])[0]?.[0];
-        if (first !== undefined && first !== id) return stop('queue', first, c.road);
-        c.vehicle = id;
-      }
+      // Reserve the junction before entering, so crossing vehicle streams cannot meet inside it
+      // or gridlock each other while a pedestrian signal is waiting for clearance.
+      if (box.vehicle !== null && box.vehicle !== id) return ['junction', box.vehicle];
+      const occupant = [...this.vehicles].find(([other, p]) => other !== id && inside(p));
+      if (occupant) return ['junction', occupant[0]];
+      // A car holding back because its exit is full gives up its turn, or it and the cars it
+      // waits for can block each other in a loop.
+      const first = [...box.vehicleQueue].filter(([other]) => { const p = this.vehicles.get(other); return p && inside(p, 0.2) && this.blockedVehicles.get(other)?.reason !== 'box'; }).sort((a, b) => a[1] - b[1] || a[0] - b[0])[0]?.[0];
+      if (first !== undefined && first !== id) return ['queue', first];
+      box.vehicle = id; return null;
+    };
+    const size = this.vehicleSizes.get(id) ?? CAR_SIZE, reach = this.reach(id);
+    for (const c of this.crossings.values()) if (!near(current, c.position, STOP_DISTANCE + reach) && near(next, c.position, STOP_DISTANCE + reach)) {
+      if (id >= 0 && !c.vehicleQueue.has(id)) c.vehicleQueue.set(id, this.seconds);
+      if (c.phase !== 'cars') return stop('signal', undefined, c.road);
+      const wait = enter(c, c.position, (p, margin = 0) => near(p, c.position, STOP_DISTANCE + margin));
+      if (wait) return stop(wait[0], wait[1], c.road);
+    }
+    for (const j of this.junctions) if (!this.inJunction(j, current, reach) && this.inJunction(j, next, reach)) {
+      const wait = enter(j, j.tiles.reduce((best, t) => t.distanceTo(next) < best.distanceTo(next) ? t : best), (p, margin = 0) => this.inJunction(j, p, margin));
+      if (wait) return stop(wait[0], wait[1], j.road);
     }
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
       const key = keyAt(next.x + dx, next.z + dz);
@@ -404,15 +466,19 @@ export class StreetNetwork {
         const nx = person.x - next.x, nz = person.z - next.z;
         const endForward = nx * forwardX + nz * forwardZ, endLateral = Math.abs(nx * forwardZ - nz * forwardX);
         // 0.115 matches what counts as touching; people just clear of the lanes (0.12) don't stop cars.
-        if (lateral < 0.115 && forward > -0.26 && forward < travel + 0.26 || endLateral < 0.115 && Math.abs(endForward) < 0.26) return stop('pedestrian');
+        // (Scaled for longer and wider vehicles.)
+        const side = size.side + 0.025, ends = size.half + 0.035;
+        if (lateral < side && forward > -ends && forward < travel + ends || endLateral < side && Math.abs(endForward) < ends) return stop('pedestrian');
       }
       for (const other of this.vehicleBuckets.get(key) || []) {
         if (other === id) continue;
+        if (released && !this.solidVehicles.has(other)) continue;
         const p = this.vehicles.get(other)!;
         const otherHeading = this.vehicleHeadings.get(other) ?? heading;
         const dx = p.x - next.x, dz = p.z - next.z, longitudinal = dx * forwardX + dz * forwardZ, lateral = Math.abs(dx * forwardZ - dz * forwardX);
         const sameDirection = Math.cos(heading - otherHeading) > 0.9;
-        if (vehicleOverlap(next, heading, p, otherHeading) || sameDirection && longitudinal > 0 && longitudinal < 0.5 && lateral < 0.18) return stop('vehicle', other);
+        const otherSize = this.vehicleSizes.get(other) ?? CAR_SIZE;
+        if (vehicleOverlap(next, heading, p, otherHeading, 0.005, size, otherSize) || sameDirection && longitudinal > 0 && longitudinal < size.half + otherSize.half + 0.05 && lateral < size.side + otherSize.side) return stop('vehicle', other);
       }
     }
     return true;

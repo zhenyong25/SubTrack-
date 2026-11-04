@@ -42,6 +42,21 @@ test('a car leaving a crossing can turn on the next tile while the previous ligh
   assert.equal(streets.canDrive(1, current, turned), true, 'a departing car must not be trapped by the light behind it');
 });
 
+test('cars enter a junction without a signal one at a time', () => {
+  // The junction at 52,50 is too close to the signal at 50,50 to get its own.
+  const roads = new Set<number>(); for (let i = 48; i <= 54; i++) roads.add(tile(i, 50)); for (let i = 48; i <= 52; i++) { roads.add(tile(50, i)); roads.add(tile(52, i)); }
+  const streets = new StreetNetwork(world); streets.setRoads(roads);
+  assert.equal(streets.crossings.has(tile(52, 50)), false);
+  const junction = streets.junctions.find(j => j.road === tile(52, 50)); assert.ok(junction);
+  const west = new THREE.Vector3(1.77, 0, 0.35), south = new THREE.Vector3(2.35, 0, -0.23);
+  streets.setVehicles([{ id: 1, position: west, heading: Math.PI / 2 }, { id: 2, position: south, heading: 0 }]);
+  assert.equal(streets.canDrive(1, west, new THREE.Vector3(1.79, 0, 0.35), Math.PI / 2), true);
+  assert.equal(junction.vehicle, 1);
+  assert.equal(streets.canDrive(2, south, new THREE.Vector3(2.35, 0, -0.21), 0), false, 'a crossing stream must wait for the car in the junction');
+  assert.equal(streets.blockedVehicles.get(2)?.reason, 'junction');
+  assert.equal(streets.canSpawn(new THREE.Vector3(2.65, 0, 0.6), 0), false, 'cars never appear inside a junction');
+});
+
 test('busy neighbourhood traffic continues moving through repeated pedestrian crossing phases', () => seeded(7, () => {
   const roads = neighbourhood(), scene = new THREE.Scene(), streets = new StreetNetwork(world);
   streets.setRoads(roads);
@@ -70,4 +85,27 @@ test('busy neighbourhood traffic continues moving through repeated pedestrian cr
   assert.ok(worstIdle < 60, 'A queue stopped permanently: ' + state);
   assert.ok(distance.every(n => n > 8), 'Every car should make progress: ' + state);
   people.dispose(); traffic.dispose();
+}));
+
+test('cars never stay deadlocked on wide roads, road plazas or dead ends', () => seeded(7, () => {
+  const layouts: Record<string, () => Set<number>> = {
+    wide: () => { const r = new Set(starterRoads()); for (let i = 41; i <= 58; i++) { r.add(tile(i, 52)); r.add(tile(52, i)); } return r; },
+    plaza: () => { const r = new Set(starterRoads()); for (let x = 53; x <= 55; x++) for (let z = 53; z <= 55; z++) r.add(tile(x, z)); for (let i = 51; i <= 53; i++) r.add(tile(i, 54)); return r; },
+    deadends: () => { const r = new Set(starterRoads()); for (let i = 52; i <= 56; i++) { r.add(tile(i, 45)); r.add(tile(45, i)); } r.add(tile(51, 45)); for (let i = 45; i <= 50; i++) r.add(tile(53, i)); return r; },
+  };
+  for (const [name, make] of Object.entries(layouts)) {
+    const roads = make(), streets = new StreetNetwork(world), traffic = new Traffic(new THREE.Scene(), 60, world, streets);
+    streets.setRoads(roads); traffic.setRoads(roads); traffic.setCount(50);
+    const count = traffic.meshes[0].count, matrix = new THREE.Matrix4(), last = Array.from({ length: count }, () => new THREE.Vector3()), movedAt = Array(count).fill(0);
+    let worstIdle = 0;
+    for (let frame = 0; frame < 20 * 150; frame++) {
+      const now = frame * 0.05; streets.update(0.05, true); traffic.update(0.05, true);
+      for (let id = 0; id < count; id++) {
+        traffic.meshes[0].getMatrixAt(id, matrix); const p = new THREE.Vector3().setFromMatrixPosition(matrix);
+        if (p.distanceTo(last[id]) > 0.0001) movedAt[id] = now; last[id].copy(p); worstIdle = Math.max(worstIdle, now - movedAt[id]);
+      }
+    }
+    assert.ok(worstIdle < 45, `${name}: a car waited ${worstIdle.toFixed(1)} s`);
+    traffic.dispose();
+  }
 }));

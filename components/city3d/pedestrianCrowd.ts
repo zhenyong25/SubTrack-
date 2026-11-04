@@ -4,7 +4,7 @@ import * as THREE from 'three';
 export const PERSONAL_SPACE = 0.078;
 const CELL = 0.2;
 const keyAt = (p: THREE.Vector3) => `${Math.floor(p.x / CELL)},${Math.floor(p.z / CELL)}`;
-const residentId = (id: string | number) => String(id).replace(/^(wander|building|recreation):/, '');
+const residentId = (id: string | number) => String(id).replace(/^(wander|building|recreation|transit):/, '');
 interface Occupant { position: THREE.Vector3; goal: THREE.Vector3 | null; waiting: number }
 const distanceToSegment = (start: THREE.Vector3, end: THREE.Vector3, point: THREE.Vector3) => {
   const dx = end.x - start.x, dz = end.z - start.z, length = dx * dx + dz * dz;
