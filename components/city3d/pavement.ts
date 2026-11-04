@@ -2,6 +2,10 @@
 export const ROAD_SURFACE = 0.03;
 export const PAVEMENT_SURFACE = 0.075;
 export const PAVEMENT_INNER = 0.3; // 2 m pavements beside two 3 m traffic lanes.
+// How far from a junction's centre a car's centre waits. The outer walking lane is 0.46 from the
+// tile centre. Allow the car's 0.225 front overhang plus pedestrian clearance, without extending
+// into a turn on the next tile (whose inside vehicle lane is 0.8 from this crossing).
+export const VEHICLE_STOP_DISTANCE = 0.76;
 export interface PavementRect { x: number; z: number; width: number; depth: number }
 const WIDTH = 0.5 - PAVEMENT_INNER;
 const CENTRE = PAVEMENT_INNER + WIDTH / 2;

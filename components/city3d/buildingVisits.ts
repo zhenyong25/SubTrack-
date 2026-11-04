@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ActivityPose } from './recreation';
+import type { HeldItem } from './activities';
 import type { StreetNetwork } from './streets';
 
 export interface BuildingEntrance {
@@ -11,6 +12,22 @@ export interface BuildingVisit {
   phase: 'departing' | 'outbound' | 'entering' | 'inside' | 'leaving' | 'returning' | 'home';
   position: THREE.Vector3; heading: number; walking: boolean; elapsed: number; duration: number;
 }
+// What a visitor comes back out with (or, for the post office, takes in).
+const CARRY: Record<string, HeldItem> = {};
+const carry = (item: HeldItem, types: string) => types.split(' ').forEach(type => { CARRY[type] = item; });
+carry('cup', 'cafe teahouse brewpub');
+carry('icecream', 'icecreamparlour');
+carry('bread', 'bakery');
+carry('parcel', 'noodleshop pizzeria sushibar foodcourt seafrontrestaurant banquethall');
+carry('bag', 'shop tailor electronicsstore departmentstore shoppinggalleria citymall antiquearcade bikeshop baitshop');
+carry('flowers', 'florist');
+carry('book', 'bookshop publiclibrary university');
+carry('basket', 'market farmersmarket fishauction');
+carry('suitcase', 'railwaystation interchange ferryterminal cruiseterminal airport');
+const carried = (visit: BuildingVisit): HeldItem | undefined => {
+  if (visit.destination.type === 'postoffice') return visit.phase === 'outbound' || visit.phase === 'entering' ? 'parcel' : undefined;
+  return visit.phase === 'leaving' || visit.phase === 'returning' || visit.phase === 'home' ? CARRY[visit.destination.type] : undefined;
+};
 const entranceKey = (p: BuildingEntrance) => `${p.id}:${p.type}:${p.door}:${p.online}:${p.curb.toArray()}:${p.threshold.toArray()}`;
 
 // Residents visit shops and public buildings or commute to their existing workplace.
@@ -101,6 +118,6 @@ export class BuildingVisits {
     }
   }
   pose(id: number): (ActivityPose & { visible: boolean }) | null {
-    const visit = this.visits.get(id); return visit ? { position: visit.position, heading: visit.heading, walking: visit.walking, scale: 1, visible: visit.phase !== 'inside' } : null;
+    const visit = this.visits.get(id); return visit ? { position: visit.position, heading: visit.heading, walking: visit.walking, scale: 1, visible: visit.phase !== 'inside', hold: carried(visit) } : null;
   }
 }

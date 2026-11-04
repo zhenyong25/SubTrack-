@@ -4,7 +4,11 @@ import { along, buildGraph, pickNext, spawnOnRoads, surfaceHeight, type ToWorld 
 import { RecreationVisits, type RecreationPlace, type RecreationResident } from './recreation';
 import { RecreationEquipment } from './recreationEquipment';
 import { BuildingVisits, type BuildingEntrance } from './buildingVisits';
+import { HeldItems } from './heldItems';
 import type { StreetNetwork } from './streets';
+import { RoadsideLife, type RoadsidePoint } from './roadside';
+import type { FlightLife } from './flights';
+import type { Traffic } from './traffic';
 
 // The residents. Every resident lives in one of the homes you built. They commute, visit
 // buildings, stroll on pavements, or take a recreation break. Indoor residents are hidden.
@@ -53,28 +57,39 @@ export class Pedestrians {
   private roads = new Set<number>();
   private parts: Record<string, THREE.InstancedMesh> = {};
   private far: THREE.InstancedMesh; private farHead: THREE.InstancedMesh;
-  private m = { base: new THREE.Matrix4(), joint: new THREE.Matrix4(), child: new THREE.Matrix4(), out: new THREE.Matrix4(), rot: new THREE.Matrix4(), head: new THREE.Matrix4() };
+  private m = { base: new THREE.Matrix4(), joint: new THREE.Matrix4(), child: new THREE.Matrix4(), out: new THREE.Matrix4(), rot: new THREE.Matrix4(), head: new THREE.Matrix4(), hand: new THREE.Matrix4() };
   private quat = new THREE.Quaternion(); private up = new THREE.Vector3(0, 1, 0); private scale = new THREE.Vector3(); private v = new THREE.Vector3();
   private materials: THREE.Material[] = [];
   readonly recreation: RecreationVisits;
   readonly buildings: BuildingVisits | null;
   private equipment: RecreationEquipment;
+  private held: HeldItems;
   private animationTime = 0;
+  readonly roadside: RoadsideLife | null;
+  // Residents on helicopter and plane trips (flights.ts), attached once the aviation exists.
+  flights: FlightLife | null = null;
+  private uniformColors = new Map<string, THREE.Color>();
+  private outdoors: readonly THREE.Vector3[] = [];
+  // Actual visible outdoor positions, including visitors, regardless of camera distance.
+  get outdoorPositions(): readonly THREE.Vector3[] { return this.outdoors; }
 
-  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private plaza: THREE.Vector3, private streets?: StreetNetwork) {
-    this.recreation = new RecreationVisits(toWorld, (id, road) => {
+  constructor(scene: THREE.Scene, private capacity: number, private toWorld: ToWorld, private plaza: THREE.Vector3, private streets?: StreetNetwork, traffic?: Traffic) {
+    this.recreation = new RecreationVisits(toWorld, (id, road, position) => {
       const person = this.people[id]; if (!person) return;
+      if (position) person.pos.copy(position);
       person.from = road; person.to = road < 0 ? -1 : pickNext(this.graph, road, -1); person.t = 0;
       person.wander = null;
       if (this.streets) { this.streets.crowd.release(id); person.streetVisible = false; }
       if (this.streets) { const node = this.streets.closest(person.pos); if (node) person.pos.copy(node.position); }
     }, streets);
+    this.roadside = traffic ? new RoadsideLife(scene, traffic, this.recreation, toWorld, streets) : null;
     this.buildings = streets ? new BuildingVisits(streets, (id, curb, road) => {
       const person = this.people[id]; if (!person) return;
       person.pos.copy(curb); person.from = road; person.to = road; person.wander = null;
       streets.crowd.release(id); person.streetVisible = false;
     }) : null;
     this.equipment = new RecreationEquipment(scene);
+    this.held = new HeldItems(scene);
     const cloth = new THREE.MeshStandardMaterial({ roughness: 0.85 });
     const skin = new THREE.MeshStandardMaterial({ roughness: 0.55 });
     const hairMaterial = new THREE.MeshStandardMaterial({ roughness: 0.75 });
@@ -164,6 +179,22 @@ export class Pedestrians {
   }
 
   setRecreation(places: RecreationPlace[]) { this.recreation.setPlaces(places); }
+  setRoadsidePlaces(places: RoadsidePoint[]) { this.roadside?.setPlaces(places); }
+
+  // Who is inside each building right now, for its lit windows. Visitors count where they are;
+  // residents out on the streets, at a facility or travelling count nowhere. Anyone else with a
+  // job is at work by day; at night most of them are home and one in five is on the night shift.
+  occupancy(night: boolean) {
+    const counts = new Map<string, number>(), add = (id: string) => counts.set(id, (counts.get(id) || 0) + 1);
+    this.people.forEach((person, id) => {
+      const visit = this.buildings?.visits.get(id);
+      if (visit) { if (visit.phase === 'inside') add(visit.destination.id); return; }
+      if (this.recreation.visits.has(id) || this.roadside?.has(id) || this.flights?.has(id)) return;
+      if (person.work && (!night || id % 5 === 0)) add(person.work.id);
+      else if (person.home && (person.work || !person.streetVisible)) add(person.home.id);
+    });
+    return counts;
+  }
   setEntrances(places: BuildingEntrance[]) { this.buildings?.setPlaces(places); }
 
   // Who lives where and who has a job. Jobs are spread across the city's residents rather than
@@ -241,8 +272,8 @@ export class Pedestrians {
     if (motion) this.animationTime += dt * 1000;
     time = this.animationTime;
     this.streets?.crowd.begin(this.people.flatMap((person, id) => {
-      const activity = this.recreation.pose(id), building = this.buildings?.pose(id);
-      if (building && !building.visible || person.work && !activity && !building || !person.streetVisible && !activity && !building) return [];
+      const activity = this.flights?.pose(id) || this.roadside?.pose(id) || this.recreation.pose(id), building = this.buildings?.pose(id);
+      if (activity?.visible === false || building && !building.visible || person.work && !activity && !building || !person.streetVisible && !activity && !building) return [];
       return [{ id, position: activity?.position || building?.position || person.pos }];
     }));
     const residents: RecreationResident[] = [];
@@ -265,16 +296,19 @@ export class Pedestrians {
           }
         } else { if (motion) this.advance(person, dt); this.locate(person, time, id); person.walking = true; }
       }
-      if ((person.streetVisible || person.work || !this.streets) && !this.buildings?.visits.has(id) && !this.streets?.isCrossing(`wander:${id}`)) residents.push({ id, employed: Boolean(person.work), road: person.from, door: person.work?.door ?? person.home?.door ?? null, position: person.pos });
+      if ((person.streetVisible || person.work || !this.streets || this.roadside?.has(id) || this.flights?.has(id)) && !this.buildings?.visits.has(id) && !this.streets?.isCrossing(`wander:${id}`)) residents.push({ id, employed: Boolean(person.work), road: person.from, door: person.work?.door ?? person.home?.door ?? null, position: person.pos });
     });
     this.recreation.update(dt, motion, residents);
+    this.roadside?.update(dt, motion);
+    this.flights?.update(dt, motion);
     this.buildings?.update(dt, motion, this.people.flatMap((person, id) => this.recreation.visits.has(id) || this.streets?.isCrossing(`wander:${id}`) || !person.streetVisible && !person.work && !this.buildings?.visits.has(id) ? [] : [{ id, home: person.home?.id || null, work: person.work?.id || null, position: person.pos }]), this.people.length);
     for (const id of [...this.recreation.visits.keys(), ...(this.buildings?.visits.keys() || [])]) this.streets?.cancel(`wander:${id}`);
     const counts: Record<string, number> = {};
     Object.keys(this.parts).forEach(name => { counts[name] = 0; });
     let farCount = 0;
     const cam = camera.position;
-    const { base, joint, child, out, rot, head: headMatrix } = this.m;
+    const { base, joint, child, out, rot, head: headMatrix, hand } = this.m;
+    this.held.begin();
     const put = (name: string, matrix: THREE.Matrix4, color: THREE.Color) => {
       const i = counts[name]++;
       this.parts[name].setMatrixAt(i, matrix);
@@ -285,7 +319,8 @@ export class Pedestrians {
     for (let i = 0; i < this.people.length; i += 1) {
       const p = this.people[i];
       const building = this.buildings?.pose(i);
-      const activity = this.recreation.pose(i) || building;
+      const activity = this.flights?.pose(i) || this.roadside?.pose(i) || this.recreation.pose(i) || building;
+      if (activity?.visible === false) { p.pos.copy(activity.position); p.streetVisible = false; continue; }
       if (building && !building.visible) { p.streetVisible = false; continue; }
       if (p.work && !activity) continue; // at work, indoors
       if (this.streets && !p.streetVisible && !activity) continue;
@@ -296,6 +331,8 @@ export class Pedestrians {
       if (distance > FAR_LIMIT) continue;
 
       const walking = motion && (activity ? activity.walking : p.walking);
+      let shirt = p.shirt;
+      if (activity?.shirt) { if (!this.uniformColors.has(activity.shirt)) this.uniformColors.set(activity.shirt, new THREE.Color(activity.shirt)); shirt = this.uniformColors.get(activity.shirt)!; }
       const cycle = walking ? time * 0.0062 * (p.speed / 0.145) + p.phase : 0; // about one stride a second
       this.quat.setFromAxisAngle(this.up, p.heading);
       const bob = walking ? Math.abs(Math.cos(cycle)) * 0.0025 : 0;
@@ -308,7 +345,7 @@ export class Pedestrians {
       const near = counts.torso < MAX_DETAILED && distance < NEAR_DISTANCE;
       if (!near) {
         this.far.setMatrixAt(farCount, base);
-        this.far.setColorAt(farCount, p.shirt);
+        this.far.setColorAt(farCount, shirt);
         this.farHead.setMatrixAt(farCount, base);
         this.farHead.setColorAt(farCount, p.skin);
         farCount += 1;
@@ -317,9 +354,9 @@ export class Pedestrians {
 
       // A slight hip sway as weight moves from foot to foot.
       if (walking) base.multiply(rot.makeRotationY(Math.sin(cycle) * 0.08));
-      put('pelvis', out.multiplyMatrices(base, joint.makeTranslation(0, 0.19, 0)), p.dress ? p.shirt : p.pants);
-      if (p.dress) put('dress', out.multiplyMatrices(base, joint.makeTranslation(0, 0.2, 0)), p.shirt);
-      put('torso', out.multiplyMatrices(base, joint.makeRotationX(activity?.torsoPitch ?? 0.03).setPosition(0, 0.205, 0)), p.shirt);
+      put('pelvis', out.multiplyMatrices(base, joint.makeTranslation(0, 0.19, 0)), p.dress ? shirt : p.pants);
+      if (p.dress) put('dress', out.multiplyMatrices(base, joint.makeTranslation(0, 0.2, 0)), shirt);
+      put('torso', out.multiplyMatrices(base, joint.makeRotationX(activity?.torsoPitch ?? 0.03).setPosition(0, 0.205, 0)), shirt);
       put('neck', out.multiplyMatrices(base, joint.makeTranslation(0, 0.343, 0)), p.skin);
       headMatrix.multiplyMatrices(base, joint.makeTranslation(0, 0.374, 0.003));
       put('head', headMatrix, p.skin);
@@ -348,10 +385,15 @@ export class Pedestrians {
         const swing = activity?.arms?.[side] ?? (walking ? -Math.sin(cycle + side * Math.PI) * 0.38 : 0);
         joint.multiplyMatrices(base, rot.makeRotationX(swing).setPosition(sign * 0.049, 0.318, 0));
         joint.multiply(rot.makeRotationZ(sign * (activity?.armSplay ?? 0.06)));
-        put('upperArm', joint, p.shirt);
+        put('upperArm', joint, shirt);
         child.multiplyMatrices(joint, rot.makeRotationX(activity?.elbows?.[side] ?? -(walking ? 0.2 + Math.max(0, -swing) * 0.5 : 0.12)).setPosition(0, -0.072, 0));
         put('forearm', child, p.skin);
+        if (side === 1) hand.copy(child);
       }
+      // Whatever the activity has them hold, wear or fish with, carried by the right hand.
+      if (activity?.hold) this.held.item(activity.hold, hand);
+      if (activity?.hat) this.held.hat(activity.hat, headMatrix);
+      if (activity?.rod) this.held.rod(activity.rod, hand, p.heading, time / 1000);
     }
 
     Object.values(this.parts).forEach(mesh => {
@@ -365,12 +407,17 @@ export class Pedestrians {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     });
+    this.held.end();
     this.equipment.update(this.recreation);
     this.streets?.setPedestrians(visiblePositions);
+    this.outdoors = visiblePositions;
   }
 
   dispose() {
+    this.roadside?.dispose();
+    this.flights?.dispose();
     this.equipment.dispose();
+    this.held.dispose();
     [...Object.values(this.parts), this.far, this.farHead].forEach(mesh => { mesh.geometry.dispose(); mesh.removeFromParent(); mesh.dispose(); });
     this.materials.forEach(material => material.dispose());
   }

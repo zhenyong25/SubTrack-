@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Anchor, ArrowRight, Building2, Check, Cloud, CloudOff, Coins, Droplets, Factory, Fish, Gift, Hammer, HeartPulse, House, Lamp, Landmark, LayoutGrid, Leaf, Lock, Map as MapIcon, Microscope, Move, Palette, Route, Shovel, Smile, Sparkles, Star, Store, Trash2, TrendingUp, Users, Utensils, Wheat, X, Zap,
+  Anchor, ArrowRight, Building2, BusFront, RotateCw, Check, Cloud, CloudOff, Coins, Droplets, Factory, Fish, Gift, Hammer, HeartPulse, House, Lamp, Landmark, LayoutGrid, Leaf, Lock, Map as MapIcon, Microscope, Move, Palette, Route, Shovel, Smile, Sparkles, Star, Store, Trash2, TrendingUp, Users, Utensils, Wheat, X, Zap,
 } from 'lucide-react';
 import type { Expense, Income, Loan, LoanPayment, Subscription } from '../types';
 import { loadSavingsGoals, type SavingsData } from '../services/savingsGoalService';
 import { todayDate } from '../services/savingsGoalMath';
 import { weeklyWorldActivity, worldWeek, type QuestId } from '../services/financeWorldService';
 import {
-  ALL_DONE_BONUS, BUILDINGS, HALL, LIGHT_COST, MAP, MAX_BUILDING_LEVEL, ROAD_COST, TIMBER_COINS, WEEKLY_REWARDS,
+  ALL_DONE_BONUS, BUILDINGS, HALL, LIGHT_COST, STOP_KINDS, TIER_UNLOCK, addStop, removeStop, type StopKind, MAP, MAX_BUILDING_LEVEL, ROAD_KINDS, ROAD_KIND_IDS, TIMBER_COINS, WEEKLY_REWARDS, roadKindAt, type RoadKind,
   addLights, build, buildRoads, buyChunk, clearTrees, chunkCost, cityStats, claimMission, claimWeekly, collect, dailyMissions, demolish, demolishRefund, financeActivity, getBuilding,
-  household, levelProgress, maxChunks, recordAgentReport, staffRoster, move, occupancy, pendingCoins, removeLight, removeRoad, terrainMap, tileIndex, treesAt, upgrade, upgradeCost,
+  household, levelProgress, maxChunks, recordAgentReport, staffRoster, move, rotate, frontQuarter, occupancy, pendingCoins, removeLight, removeRoad, terrainMap, tileIndex, treesAt, upgrade, upgradeCost,
   type BuildingCategory, type CityState, type Mission,
 } from '../services/cityGameService';
 import { loadCity, saveCityToCloud, writeLocal, type CloudStatus } from '../services/cityGameStore';
@@ -38,7 +38,8 @@ const buildingIcon = (id: string) => ICONS[id] || getBuilding(id)?.icon || '🏢
 const ALL_CATEGORIES = [...CATEGORIES, ...EXPANSION_CATEGORIES];
 const CATEGORY_ICONS = { all: LayoutGrid, homes: House, business: Store, industry: Factory, utilities: Zap, services: HeartPulse, advisors: Users, farming: Wheat, harbour: Anchor, fishing: Fish, highrise: Building2, shopping: Store, dining: Utensils, recreation: Smile, culture: Palette, transport: Route, civic: Landmark, science: Microscope, nature: Leaf };
 const CATEGORY_CHOICES = [{ id: 'all' as const, label: 'All buildings' }, ...ALL_CATEGORIES].map(item => ({ ...item, count: item.id === 'all' ? BUILDINGS.length : BUILDINGS.filter(type => type.category === item.id).length }));
-const TITLES = ['', 'Camp', 'Hamlet', 'Village', 'Village', 'Town', 'Town', 'City', 'City', 'Metropolis', 'Metropolis', 'Capital', 'Capital', 'Megacity', 'Megacity', 'World city'];
+const TITLES = ['', 'Camp', 'Hamlet', 'Village', 'Village', 'Town', 'Town', 'City', 'City', 'Metropolis', 'Metropolis', 'Capital', 'Capital', 'Megacity', 'Megacity', 'World city',
+  'Global city', 'Global city', 'Sky city', 'Sky city', 'Island nation', 'Island nation', 'Wonder city', 'Wonder city', 'Legend', 'Legend', 'Eco capital', 'Eco capital', 'Utopia', 'Utopia', 'Utopia prime'];
 const box = 'min-w-0 rounded-2xl border border-border bg-surface p-4';
 const coinText = (value: number) => Math.floor(value).toLocaleString();
 const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -79,7 +80,7 @@ const CityMap2D: React.FC<{ city: CityState; size: number; onPick: (x: number, z
       const index = z * MAP + x;
       const owned = city.chunks.includes(Math.floor(z / 10) * 10 + Math.floor(x / 10));
       let rgb = tiles[index] === 'water' ? [40, 126, 166] : tiles[index] === 'sand' ? [226, 211, 160] : [110, 170, 92];
-      if (roads.has(index)) rgb = [70, 74, 80];
+      if (roads.has(index)) rgb = ({ street: [70, 74, 80], avenue: [52, 64, 58], tram: [92, 84, 96], country: [150, 126, 90], cobble: [120, 104, 88] } as Record<RoadKind, number[]>)[roadKindAt(city, index)] as typeof rgb;
       const occupant = taken.get(index);
       if (occupant) { const type = occupant === 'hall' ? null : getBuilding(city.buildings.find(b => b.id === occupant)!.type); rgb = !type ? [240, 196, 80] : type.category === 'homes' ? [232, 140, 110] : type.category === 'business' ? [90, 150, 230] : type.category === 'industry' ? [190, 150, 90] : type.category === 'utilities' ? [250, 210, 70] : [60, 140, 70]; }
       if (!owned && tiles[index] !== 'water') rgb = rgb.map(v => v * 0.6 + 40);
@@ -165,6 +166,22 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
 
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 3500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setMode({ kind: 'idle' }); }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, []);
+  // A quarter turn for the building being placed or moved (R on a keyboard, or the turn button).
+  const turnPreview = useCallback(() => setMode(current => {
+    if (current.kind === 'place') return { ...current, rotation: ((current.rotation ?? -1) + 1) % 4 };
+    if (current.kind === 'move') {
+      const building = cityRef.current?.buildings.find(item => item.id === current.id);
+      const from = current.rotation ?? (building && cityRef.current ? frontQuarter(new Set(cityRef.current.roads), building, getBuilding(building.type)!.size) : 0);
+      return { ...current, rotation: (from + 1) % 4 };
+    }
+    return current;
+  }), []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.key === 'r' || event.key === 'R') && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement)) turnPreview();
+    };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, [turnPreview]);
 
   const activity = useMemo(() => financeActivity(expenses, incomes, savings.entries, today), [expenses, incomes, savings.entries, today]);
   const weeklyActivity = useMemo(() => weeklyWorldActivity(expenses, savings.entries, today), [expenses, savings.entries, today]);
@@ -204,15 +221,22 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
     if (mode.kind === 'place') {
       const type = getBuilding(mode.type)!;
       // Cheap greenery is usually planted in a row, so stay in place mode for it.
-      if (report(build(city, mode.type, x, z, Date.now(), today, newId()), `${type.name} built!`) && (type.cost > 20 || city.coins - type.cost < type.cost)) setMode({ kind: 'idle' });
+      if (report(build(city, mode.type, x, z, Date.now(), today, newId(), mode.rotation), `${type.name} built!`) && (type.cost > 20 || city.coins - type.cost < type.cost)) setMode({ kind: 'idle' });
       return;
     }
     if (mode.kind === 'move') {
-      if (report(move(city, mode.id, x, z, Date.now(), today), 'Moved.')) setMode({ kind: 'idle' });
+      if (report(move(city, mode.id, x, z, Date.now(), today, mode.rotation), 'Moved.')) setMode({ kind: 'idle' });
+      return;
+    }
+    if (mode.kind === 'stops') {
+      const kind = mode.stop || 'bus';
+      report(addStop(city, tileIndex(x, z), kind, Date.now(), today), `${STOP_KINDS[kind].name} built - ${kind === 'bus' ? 'buses' : 'taxis'} will stop here.`);
       return;
     }
     if (mode.kind === 'bulldoze') {
       const index = tileIndex(x, z);
+      // A stop on the pavement comes away before the road it stands on.
+      if (city.stops?.some(stop => stop.road === index)) { report(removeStop(city, index, Date.now(), today), 'Stop removed.'); return; }
       // One thing at a time: a street light first, then the road under it.
       if (city.lights.includes(index)) { report(removeLight(city, index, Date.now(), today), 'Street light removed.'); return; }
       if (city.roads.includes(index)) { report(removeRoad(city, index, Date.now(), today), 'Road removed.'); return; }
@@ -268,14 +292,15 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
     return { agent, building, name: building && staff > 0 ? staffRoster(building.id, building.type, staff)[0]?.name ?? null : null, record: city.agents?.[agent.id] };
   });
   const agentInput: AgentInput = { today, subscriptions, loans, payments: loanPayments, goals: savings.goals, entries: savings.entries };
-  const modeText = mode.kind === 'place' ? `${buildingIcon(mode.type)} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙${placingType?.coastal ? ' · Build beside water' : ''} - green has a road, yellow needs one`
-    : mode.kind === 'move' ? 'Tap where to move it'
-      : mode.kind === 'road' ? `Drag to draw a road · ${ROAD_COST} 🪙 per tile`
+  const modeText = mode.kind === 'place' ? `${buildingIcon(mode.type)} Tap to build ${placingType?.name} · ${placingType?.cost} 🪙${placingType?.coastal ? ' · Build beside water' : ''} - green has a road, yellow needs one · R or ⟳ to turn`
+    : mode.kind === 'move' ? 'Tap where to move it · R or ⟳ to turn it'
+      : mode.kind === 'road' ? `Drag to draw ${ROAD_KINDS[mode.road || 'street'].name.toLowerCase()} · ${ROAD_KINDS[mode.road || 'street'].cost} 🪙 per tile · drag over a road to convert it`
         : mode.kind === 'lights' ? `Drag along roads to put up street lights · ${LIGHT_COST} 🪙 each`
+        : mode.kind === 'stops' ? `Tap a road to put a ${STOP_KINDS[mode.stop || 'bus'].name.toLowerCase()} on its pavement · ${STOP_KINDS[mode.stop || 'bus'].cost} 🪙 · tap again for the other side`
         : mode.kind === 'bulldoze' ? `Tap trees to clear them (+${TIMBER_COINS} 🪙 a tree), or a light, road or building to remove it (part refunded)`
           : mode.kind === 'land' ? `Tap a highlighted plot to buy it · ${chunkCost(city)} 🪙 · ${city.chunks.length}/${maxChunks(level)} plots at level ${level}`
             : '';
-  const tool = (kind: 'road' | 'lights' | 'bulldoze' | 'land', label: string, Icon: React.ElementType) => (
+  const tool = (kind: 'road' | 'lights' | 'stops' | 'bulldoze' | 'land', label: string, Icon: React.ElementType) => (
     <button type="button" onClick={() => { setMode(mode.kind === kind ? { kind: 'idle' } : { kind }); setSelectedId(null); }}
       className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold ${mode.kind === kind ? 'border-primary bg-primary text-white' : 'border-border bg-background text-textMain hover:border-primary'}`}>
       <Icon size={14} /> {label}
@@ -356,7 +381,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
                 paused={accountantOpen || !!agentOpen}
                 city={city} residents={stats.residents} jobs={stats.jobs} status={stats.status} pending={pending} mode={mode} selectedId={selectedId} focus={focus}
                 onTile={handleTile}
-                onRoad={tiles => report(buildRoads(city, tiles, Date.now(), today), 'Road built.')}
+                onRoad={tiles => report(buildRoads(city, tiles, Date.now(), today, mode.kind === 'road' ? mode.road : 'street'), `${ROAD_KINDS[mode.kind === 'road' && mode.road || 'street'].name} built.`)}
                 onLights={tiles => report(addLights(city, tiles, Date.now(), today), 'Street lights on - residents feel safer.')}
                 onSelect={id => { setSelectedId(id); setConfirmDemolish(false); if (id === 'hall') setAccountantOpen(true); }}
                 onCollect={id => handleCollect(id)}
@@ -367,6 +392,7 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
             {mode.kind !== 'idle' && (
               <div className="absolute left-3 top-14 flex max-w-[calc(100%-24px)] items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2 text-xs font-bold text-white backdrop-blur sm:top-3 sm:max-w-[calc(100%-200px)]">
                 <span>{modeText}</span>
+                {(mode.kind === 'place' || mode.kind === 'move') && <button type="button" onClick={turnPreview} aria-label="Turn building" title="Turn a quarter (R)" className="rounded-md bg-white/15 p-1"><RotateCw size={12} /></button>}
                 <button type="button" onClick={() => setMode({ kind: 'idle' })} aria-label="Done" className="rounded-md bg-white/15 p-1"><X size={12} /></button>
               </div>
             )}
@@ -388,9 +414,38 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               <h2 className="mr-2 flex items-center gap-2 text-sm font-bold text-textMain"><Hammer size={16} className="text-primary" /> Build</h2>
               {tool('road', 'Roads', Route)}
               {tool('lights', 'Street lights', Lamp)}
+              {tool('stops', 'Stops', BusFront)}
               {tool('bulldoze', 'Bulldoze', Shovel)}
               {tool('land', 'Buy land', MapIcon)}
             </div>
+            {mode.kind === 'stops' && (
+              <div className="mt-3 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Stop type">
+                {(Object.keys(STOP_KINDS) as StopKind[]).map(kind => {
+                  const info = STOP_KINDS[kind], locked = level < info.unlock, active = (mode.stop || 'bus') === kind;
+                  return (
+                    <button key={kind} type="button" role="radio" aria-checked={active} disabled={locked} onClick={() => setMode({ kind: 'stops', stop: kind })}
+                      className={`rounded-xl border p-2 text-left ${active ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary'} disabled:cursor-not-allowed disabled:opacity-50`}>
+                      <span className="block text-xs font-bold text-textMain">{info.icon} {info.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-secondary">{locked ? `Unlocks at level ${info.unlock}` : `${info.cost} 🪙 · ${info.description}`}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {mode.kind === 'road' && (
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5" role="radiogroup" aria-label="Road type">
+                {ROAD_KIND_IDS.map(kind => {
+                  const info = ROAD_KINDS[kind], locked = level < info.unlock, active = (mode.road || 'street') === kind;
+                  return (
+                    <button key={kind} type="button" role="radio" aria-checked={active} disabled={locked} onClick={() => setMode({ kind: 'road', road: kind })}
+                      className={`rounded-xl border p-2 text-left ${active ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary'} disabled:cursor-not-allowed disabled:opacity-50`}>
+                      <span className="block text-xs font-bold text-textMain">{info.icon} {info.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-secondary">{locked ? `Unlocks at level ${info.unlock}` : `${info.cost} 🪙 · ${info.description}`}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <div className="city-category-panel mt-4 rounded-2xl border border-border p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <label htmlFor="city-building-category" className="text-xs font-bold text-textMain">Building categories</label>
@@ -455,6 +510,8 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               </div>
               <p className="mt-2 text-xs text-secondary">{selectedType?.description || 'The heart of your city. It also supplies a little power and water.'}</p>
               {selectedType?.category === 'recreation' && <p className="mt-2 rounded-lg bg-background px-3 py-2 text-[11px] text-secondary">Residents walk here to play and exercise when this facility has road access, power and water. Visits use your existing population, including short breaks for employed residents.</p>}
+              {selectedType && ['busstop', 'busdepot', 'interchange', 'tramstop', 'taxistand'].includes(selectedType.id) && <p className="mt-2 rounded-lg bg-background px-3 py-2 text-[11px] text-secondary">Residents queue beside the road, walk to a stopped vehicle and ride to another stop. Connect this stop to homes with roads. Taxis can also drop residents near shops and homes; trams need tram tracks.</p>}
+              {selectedType?.id === 'recyclingcentre' && <p className="mt-2 rounded-lg bg-background px-3 py-2 text-[11px] text-secondary">The collection truck picks up a resident crew here, visits roadside bins and returns. Collectors step out, load rubbish bags and get back into the cab. The Town Hall provides a crew when there is no operating recycling centre.</p>}
               {selected && agentForBuilding(selected.type) && (() => { const agent = agentForBuilding(selected.type)!; const name = advisors.find(item => item.agent.id === agent.id)?.name; return <button type="button" onClick={() => setAgentOpen(agent.id)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-white" style={{ background: agent.color }}><Users size={14} />{name ? `Visit ${name}, your ${agent.role}` : `Visit the ${agent.role}'s desk`}</button>; })()}
               {selectedId === 'hall' && <button type="button" onClick={() => setAccountantOpen(true)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white"><Users size={14} />Visit Jules in the Accountant office</button>}
               {selectedStatus && selectedId !== 'hall' && (
@@ -487,15 +544,16 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button type="button" disabled={(pending[selected?.id || 'hall'] || 0) < 1} onClick={() => handleCollect(selected?.id || 'hall')} className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950 disabled:opacity-40"><Coins size={13} /> Collect</button>
                 {selected && (() => {
-                  const cost = upgradeCost(selected);
+                  const cost = upgradeCost(selected), lockedUntil = cost !== null && level < TIER_UNLOCK[selected.level + 1] ? TIER_UNLOCK[selected.level + 1] : null;
                   return (
-                    <button type="button" disabled={cost === null || city.coins + (pending[selected.id] || 0) < cost} onClick={() => report(upgrade(city, selected.id, Date.now(), today), `${selectedType!.name} upgraded to level ${selected.level + 1}!`)}
+                    <button type="button" disabled={cost === null || lockedUntil !== null || city.coins + (pending[selected.id] || 0) < cost} onClick={() => report(upgrade(city, selected.id, Date.now(), today), `${selectedType!.name} upgraded to level ${selected.level + 1}!`)}
                       className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
-                      <Sparkles size={13} /> {cost === null ? 'Max level' : `Upgrade · ${cost} 🪙`}
+                      <Sparkles size={13} /> {cost === null ? 'Max level' : lockedUntil !== null ? `Level ${selected.level + 1} at city level ${lockedUntil}` : `Upgrade to ${selected.level + 1} · ${cost} 🪙`}
                     </button>
                   );
                 })()}
                 {selected && <button type="button" onClick={() => setMode({ kind: 'move', id: selected.id })} className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-textMain hover:border-primary"><Move size={13} /> Move</button>}
+                {selected && <button type="button" onClick={() => report(rotate(city, selected.id, Date.now(), today), `${selectedType!.name} turned.`)} aria-label="Rotate building" className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-textMain hover:border-primary"><RotateCw size={13} /> Rotate</button>}
                 {selected && (confirmDemolish
                   ? <button type="button" onClick={() => { if (report(demolish(city, selected.id, Date.now(), today), `Removed · +${demolishRefund(selected)} coins back`)) { setSelectedId(null); setConfirmDemolish(false); } }} className="rounded-xl bg-rose-500 px-3 py-2 text-xs font-bold text-white">Confirm · +{demolishRefund(selected)} 🪙</button>
                   : <button type="button" onClick={() => setConfirmDemolish(true)} className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold text-rose-500 hover:border-rose-500"><Trash2 size={13} /> Remove</button>)}

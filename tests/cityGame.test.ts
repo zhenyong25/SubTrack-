@@ -122,7 +122,7 @@ test('upgrades, moving and removing', () => {
   assert.equal(upgradeCost(city.buildings[0]), 60);
   city = ok(upgrade(city, 'c', T0, TODAY));
   city = ok(upgrade(city, 'c', T0, TODAY));
-  assert.equal(upgradeCost(city.buildings[0]), null);
+  assert.match(upgrade(city, 'c', T0, TODAY).error!, /city level 16/); // levels 4 and 5 come later
   city = ok(move(city, 'c', 46, 52, T0, TODAY));
   assert.deepEqual([city.buildings[0].x, city.buildings[0].z], [46, 52]);
   assert.match(move(city, 'c', 46, 51, T0, TODAY).error!, /road/);
@@ -185,7 +185,7 @@ test('weekly quests pay once per week; levels from XP', () => {
   assert.equal(levelForXp(79), 1);
   assert.equal(levelForXp(80), 2);
   assert.deepEqual(levelProgress(140), { level: 2, current: 60, needed: 120, ratio: 0.5 });
-  assert.equal(levelForXp(99999), 15);
+  assert.equal(levelForXp(99999), 30);
 });
 
 test('saves round-trip; old small-island cities are refunded onto the new map', () => {

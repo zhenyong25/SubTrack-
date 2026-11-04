@@ -879,6 +879,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
     <div className="desktop-layout investment-layout pb-24 animate-fade-in space-y-6">
       {tickerDetailInvestment && (
         <TickerDetail
+          key={`${tickerDetailInvestment.id}:${tickerDetailInvestment.symbol || ''}`}
           investment={tickerDetailInvestment}
           metrics={getBaseMetrics(tickerDetailInvestment)}
           baseCurrency={baseCurrency}

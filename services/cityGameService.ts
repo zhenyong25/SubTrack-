@@ -17,9 +17,45 @@ export const INCOME_CAP_HOURS = 8; // buildings stop filling after this long - v
 export const STARTING_COINS = 300;
 export const ROAD_COST = 5;
 export const ROAD_REFUND = 2;
+export const BRIDGE_COST = 20; // extra for each road tile laid over water
+
+// Kinds of road. A plain street is the default and isn't stored; other kinds are kept per tile
+// in `roadTypes`. Speed scales the traffic on that tile. Trams only run on tram lines.
+export type RoadKind = 'street' | 'avenue' | 'tram' | 'country' | 'cobble';
+export const ROAD_KINDS: Record<RoadKind, { name: string; icon: string; cost: number; refund: number; speed: number; unlock: number; description: string }> = {
+  street: { name: 'Street', icon: '🛣️', cost: ROAD_COST, refund: ROAD_REFUND, speed: 1, unlock: 1, description: 'Two lanes with a centre line.' },
+  country: { name: 'Country lane', icon: '🌾', cost: 3, refund: 1, speed: 0.8, unlock: 1, description: 'A cheap gravel lane with grass verges. Slower traffic.' },
+  cobble: { name: 'Cobbled lane', icon: '🧱', cost: 12, refund: 5, speed: 0.6, unlock: 3, description: 'Old-town cobbles. Cars take it slowly.' },
+  avenue: { name: 'Avenue', icon: '🌳', cost: 14, refund: 6, speed: 1.3, unlock: 4, description: 'A boulevard with a planted median. Faster traffic.' },
+  tram: { name: 'Tram line', icon: '🚋', cost: 20, refund: 8, speed: 1, unlock: 5, description: 'A street with tram rails. Trams run on connected lines.' },
+};
+export const ROAD_KIND_IDS = Object.keys(ROAD_KINDS) as RoadKind[];
+
+// Bus stops and taxi stands stand on a road tile's pavement, on one side: 0 +z, 1 +x, 2 -z, 3 -x
+// (the side with no road joining). They take no land. Buses and taxis driving with that kerb on
+// their left pull in there for the people waiting.
+export type StopKind = 'bus' | 'taxi';
+export interface StreetStop { road: number; kind: StopKind; side: number }
+export const STOP_KINDS: Record<StopKind, { name: string; icon: string; cost: number; refund: number; unlock: number; description: string }> = {
+  bus: { name: 'Bus stop', icon: '🚏', cost: 45, refund: 18, unlock: 2, description: 'A shelter and bench on the pavement. Buses call to pick people up.' },
+  taxi: { name: 'Taxi stand', icon: '🚕', cost: 35, refund: 14, unlock: 2, description: 'A taxi sign and kerb markings. Taxis wait there for fares.' },
+};
+export const STOP_SIDES: Array<[number, number]> = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+// The sides of a road tile with a pavement edge (no road joining there).
+export const pavementSides = (roads: Set<number>, index: number) => {
+  const { x, z } = tileXZ(index);
+  return STOP_SIDES.flatMap(([dx, dz], side) => {
+    const nx = x + dx, nz = z + dz;
+    return nx >= 0 && nz >= 0 && nx < MAP && nz < MAP && roads.has(tileIndex(nx, nz)) ? [] : [side];
+  });
+};
+export const roadKindAt = (state: Pick<CityState, 'roadTypes'>, index: number): RoadKind => state.roadTypes?.[index] || 'street';
 
 // ---------------------------------------------------------------------------------------------
-// Terrain: the same island for everyone - a coastline, a river and a lake - from seeded noise.
+// Terrain: the same islands for everyone - a coastline, a river valley between mountain ridges,
+// a lake, hills, and two smaller islands off the north-east and south-west corners - from
+// seeded noise. New land only ever replaces open sea, and mountains only rise where nothing is
+// built yet, so existing cities keep every tile they had.
 
 export type Terrain = 'water' | 'sand' | 'grass';
 
@@ -37,6 +73,20 @@ const valueNoise = (x: number, z: number) => {
 };
 const fbm = (x: number, z: number) => valueNoise(x / 14, z / 14) * 0.6 + valueNoise(x / 6, z / 6) * 0.3 + valueNoise(x / 3, z / 3) * 0.1;
 
+// The outer islands sit beyond a channel at least 3 tiles wide off the main coast. The north-east
+// one has a volcano; the south-west one is low and sandy, good for building.
+const ISLANDS = [{ x: 88, z: 10, rx: 11, rz: 8.5, peak: 3.6 }, { x: 11.5, z: 89, rx: 10.5, rz: 10, peak: 0.3 }];
+const islandAt = (x: number, z: number) => {
+  for (const island of ISLANDS) {
+    const r = Math.hypot((x - island.x) / island.rx, (z - island.z) / island.rz) + (fbm(x + 90, z + 30) - 0.5) * 0.35;
+    if (r < 1) return { island, r };
+  }
+  return null;
+};
+const mainShore = (x: number, z: number) => 0.82 + (fbm(x, z) - 0.5) * 0.28;
+const riverAt = (z: number) => 27 + Math.sin(z / 9) * 5 + Math.sin(z / 23) * 4;
+const smoothstep = (a: number, b: number, v: number) => smooth(Math.min(1, Math.max(0, (v - a) / (b - a))));
+
 let terrainCache: Terrain[] | null = null;
 export const terrainMap = (): Terrain[] => {
   if (terrainCache) return terrainCache;
@@ -53,12 +103,38 @@ export const terrainMap = (): Terrain[] => {
       let terrain: Terrain = d > shore || river || lake ? 'water' : d > shore - 0.035 ? 'sand' : 'grass';
       if (!start && terrain === 'grass' && (Math.abs(x - riverX) < 2.6 || Math.hypot(x - 73, z - 28) < 8)) terrain = 'sand';
       if (start) terrain = 'grass';
+      if (d > shore + 0.07) { const found = islandAt(x + 0.5, z + 0.5); if (found) terrain = found.r > 0.8 ? 'sand' : 'grass'; }
       tiles[z * MAP + x] = terrain;
     }
   }
   terrainCache = tiles;
   return tiles;
 };
+// Ground height in world units (a tile is ~10 m) at a point in tile coordinates, where tile (x, z)
+// spans x..x+1. The river runs down a valley between two ridges; hills roll in the south-east;
+// the first plots stay level.
+export const elevationAt = (x: number, z: number) => {
+  const center = MAP / 2, d = Math.hypot(x - center, z - center) / center, inland = (mainShore(x - 0.5, z - 0.5) - d) * center;
+  let h = 0;
+  if (inland > 0) {
+    const off = Math.abs(x - 0.5 - riverAt(z - 0.5));
+    const ridge = smoothstep(3.5, 7, off) * (1 - smoothstep(12, 18, off)) * smoothstep(6, 14, z) * (1 - smoothstep(32, 42, z));
+    const peaks = 0.55 + 0.45 * valueNoise(x / 5, z / 5) + 0.35 * valueNoise(x / 2.3 + 11, z / 2.3);
+    const hills = smoothstep(0.55, 0.85, valueNoise(x / 9 + 50, z / 9 + 20)) * smoothstep(60, 68, x) * smoothstep(60, 68, z);
+    // Away from the lake shore, as well as the coast.
+    const lake = smoothstep(8, 11, Math.hypot(x - 73.5, z - 28.5));
+    h = (ridge * peaks * 3.6 + hills * 1.4) * smoothstep(1, 6, inland) * lake;
+  } else {
+    const found = d > mainShore(x - 0.5, z - 0.5) + 0.07 ? islandAt(x, z) : null;
+    // A cone with a shallow crater on the volcano; a gentle rise on the low island.
+    if (found) h = found.island.peak * Math.pow(Math.max(0, 1 - found.r / 0.75), 1.5) * (found.island.peak > 1 ? 1 - 0.3 * Math.max(0, 1 - found.r / 0.12) : 1);
+  }
+  const fromStart = Math.max(Math.abs(x - center) - 13, Math.abs(z - center) - 13);
+  return h * smoothstep(0, 6, fromStart);
+};
+// Too steep to build on or lay a road across.
+export const STEEP = 0.2;
+export const isSteep = (x: number, z: number) => [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]].some(([dx, dz]) => elevationAt(x + dx, z + dz) > STEEP);
 export const terrainAt = (x: number, z: number): Terrain => (x < 0 || z < 0 || x >= MAP || z >= MAP ? 'water' : terrainMap()[z * MAP + x]);
 export const tileIndex = (x: number, z: number) => z * MAP + x;
 export const tileXZ = (index: number) => ({ x: index % MAP, z: Math.floor(index / MAP) });
@@ -107,7 +183,7 @@ export interface BuildingType {
   id: string;
   name: string;
   category: BuildingCategory;
-  size: 1 | 2;
+  size: 1 | 2 | 4;
   cost: number;
   unlock: number; // city level
   income: number; // coins per hour at level 1, before staffing, utilities and happiness
@@ -150,16 +226,21 @@ export const BUILDINGS: BuildingType[] = [
   { id: 'vault', name: 'Savings Vault', category: 'advisors', size: 1, cost: 140, unlock: 2, income: 4, jobs: 2, happiness: 3, power: 1, water: 1, description: 'Your Savings Coach works here - keeps every goal on track with a monthly amount.' },
   { id: 'creditunion', name: 'Credit Union', category: 'advisors', size: 1, cost: 160, unlock: 3, income: 5, jobs: 3, happiness: 2, power: 1, water: 1, description: 'Your Debt Advisor works here - what to pay off first, and how much sooner you could be free.' },
   { id: 'lighthouse', name: 'Lighthouse', category: 'services', size: 1, cost: 500, unlock: 8, income: 15, happiness: 10, power: 1, coastal: true, noRoad: true, description: 'Guides ships - and visitors. Build it by the water.' },
+  { id: 'airport', name: 'Airport', icon: '✈️', category: 'transport', size: 4, cost: 2400, unlock: 8, income: 180, jobs: 50, happiness: 2, power: 16, water: 6, description: 'A runway, terminal and control tower on a 4×4 plot. Airliners take off and land; helicopters fly between helipads on your tallest roofs.' },
   ...EXPANSION_BUILDINGS,
 ];
 
 export const HALL = { id: 'hall', name: 'Town Hall', x: 49, z: 49, size: 2, income: 6, happiness: 5, powerSupply: 10, waterSupply: 10 } as const;
-export const MAX_BUILDING_LEVEL = 3;
-const LEVEL_MULTIPLIER = [0, 1, 1.7, 2.6];
-const UPGRADE_COST_FACTOR = [0, 0, 1.5, 2.5];
+// Buildings upgrade to level 5; levels 4 and 5 open up later in the game.
+export const MAX_BUILDING_LEVEL = 5;
+export const TIER_UNLOCK = [0, 1, 1, 1, 16, 22]; // city level needed to upgrade a building to each level
+const LEVEL_MULTIPLIER = [0, 1, 1.7, 2.6, 3.7, 5];
+const UPGRADE_COST_FACTOR = [0, 0, 1.5, 2.5, 4, 6];
 
 // Cumulative XP per city level (index = level).
-export const LEVEL_XP = [0, 0, 80, 200, 380, 620, 920, 1300, 1760, 2300, 3000, 3800, 4800, 6000, 7500, 9300];
+// City levels 1-30. Past 15 each level takes longer, and opens building tiers 4 (16) and 5 (22).
+export const LEVEL_XP = [0, 0, 80, 200, 380, 620, 920, 1300, 1760, 2300, 3000, 3800, 4800, 6000, 7500, 9300,
+  11400, 13800, 16500, 19500, 22800, 26400, 30300, 34500, 39000, 43800, 48900, 54300, 60000, 66000, 72300];
 export const MAX_LEVEL = LEVEL_XP.length - 1;
 export const START_CHUNKS = [44, 45, 54, 55];
 export const maxChunks = (level: number) => START_CHUNKS.length + (level - 1) * 3;
@@ -171,7 +252,28 @@ export interface PlacedBuilding {
   z: number;
   level: number;
   collectedAt: number; // ms; production since then is waiting to be collected
+  // Which way the front faces, in quarter turns: 0 south (+z), 1 east (+x), 2 north (-z),
+  // 3 west (-x). Unset: towards the nearest road, as buildings always did.
+  rotation?: number;
 }
+
+// The tiles just outside one side of a footprint, by quarter turn (as `rotation`).
+const sideTiles = (x: number, z: number, size: number, quarter: number): Array<[number, number]> =>
+  Array.from({ length: size }, (_, i): [number, number] => quarter === 0 ? [x + i, z + size] : quarter === 1 ? [x + size, z + i] : quarter === 2 ? [x + i, z - 1] : [x - 1, z + i]);
+const hasRoadOn = (roads: Set<number>, tiles: Array<[number, number]>) => tiles.find(([tx, tz]) => tx >= 0 && tz >= 0 && tx < MAP && tz < MAP && roads.has(tileIndex(tx, tz)));
+// Without a chosen rotation a building faces a road: front, then the east and west sides, then the back.
+const AUTO_ORDER = [0, 1, 3, 2];
+export const frontQuarter = (roads: Set<number>, building: { x: number; z: number; rotation?: number }, size: number) =>
+  building.rotation ?? AUTO_ORDER.find(q => hasRoadOn(roads, sideTiles(building.x, building.z, size, q))) ?? 0;
+// The road a building's door opens onto: the one it faces, or else any road beside it.
+export const doorTile = (roads: Set<number>, building: { x: number; z: number; rotation?: number }, size: number) => {
+  const front = frontQuarter(roads, building, size);
+  for (const quarter of [front, ...AUTO_ORDER.filter(q => q !== front)]) {
+    const tile = hasRoadOn(roads, sideTiles(building.x, building.z, size, quarter));
+    if (tile) return tileIndex(tile[0], tile[1]);
+  }
+  return null;
+};
 
 export interface CityState {
   accountantReport?: AccountantReport;
@@ -181,6 +283,8 @@ export interface CityState {
   xp: number;
   buildings: PlacedBuilding[];
   roads: number[]; // tile indexes
+  roadTypes?: Record<string, Exclude<RoadKind, 'street'>>; // road tile index -> kind, plain streets omitted
+  stops?: StreetStop[]; // bus stops and taxi stands on the pavement
   lights: number[]; // road tiles with a street light
   cleared: number[]; // tiles whose wild trees were cut down
   chunks: number[]; // owned 10×10 plots
@@ -270,11 +374,17 @@ export const parseCity = (raw: string | null): CityState | null => {
   }
   const chunks = Array.isArray(data.chunks) ? [...new Set<number>(data.chunks.filter((c: unknown) => Number.isInteger(c) && (c as number) >= 0 && (c as number) < CHUNKS * CHUNKS))] : [...START_CHUNKS];
   const roads = Array.isArray(data.roads) ? [...new Set<number>(data.roads.filter((r: unknown) => Number.isInteger(r) && (r as number) >= 0 && (r as number) < MAP * MAP))] : starterRoads();
-  const buildings = data.buildings.filter((b: any) => b && typeof b.id === 'string' && getBuilding(b.type) && Number.isInteger(b.x) && Number.isInteger(b.z) && Number.isInteger(b.level) && b.level >= 1 && b.level <= MAX_BUILDING_LEVEL && finite(b.collectedAt));
+  const buildings = data.buildings.filter((b: any) => b && typeof b.id === 'string' && getBuilding(b.type) && Number.isInteger(b.x) && Number.isInteger(b.z) && Number.isInteger(b.level) && b.level >= 1 && b.level <= MAX_BUILDING_LEVEL && finite(b.collectedAt))
+    .map((b: any) => { const { rotation, ...rest } = b; return Number.isInteger(rotation) && rotation >= 0 && rotation <= 3 ? { ...rest, rotation } : rest; });
   const tileList = (value: unknown) => (Array.isArray(value) ? [...new Set<number>(value.filter((r: unknown) => Number.isInteger(r) && (r as number) >= 0 && (r as number) < MAP * MAP))] : []);
   const roadSet = new Set(roads);
   const lights = tileList(data.lights).filter(index => roadSet.has(index));
-  return { version: 2, coins: Math.max(0, Math.floor(data.coins)), buildings, roads, lights, cleared: tileList(data.cleared), chunks, ...base };
+  const stops = (Array.isArray(data.stops) ? data.stops : []).filter((stop: any, i: number, all: any[]) => stop && roadSet.has(stop.road) && Object.hasOwn(STOP_KINDS, stop.kind)
+    && Number.isInteger(stop.side) && pavementSides(roadSet, stop.road).includes(stop.side) && all.findIndex((other: any) => other?.road === stop.road && other?.side === stop.side) === i)
+    .map((stop: any): StreetStop => ({ road: stop.road, kind: stop.kind, side: stop.side }));
+  const roadTypes = Object.fromEntries(Object.entries(data.roadTypes && typeof data.roadTypes === 'object' ? data.roadTypes : {})
+    .filter(([index, kind]) => roadSet.has(Number(index)) && typeof kind === 'string' && kind !== 'street' && Object.hasOwn(ROAD_KINDS, kind))) as CityState['roadTypes'];
+  return { version: 2, coins: Math.max(0, Math.floor(data.coins)), buildings, roads, lights, cleared: tileList(data.cleared), chunks, ...(Object.keys(roadTypes!).length ? { roadTypes } : {}), ...(stops.length ? { stops } : {}), ...base };
 };
 
 // Players of the earlier island keep what they earned: its coins (including what decorations
@@ -330,6 +440,7 @@ export const canPlace = (state: CityState, typeId: string, x: number, z: number,
   for (const [tx, tz] of footprint(x, z, type.size)) {
     if (!ownsTile(state, tx, tz)) return { ok: false, reason: 'You don\'t own that land yet - buy the plot first.' };
     if (terrainAt(tx, tz) === 'water') return { ok: false, reason: 'You can\'t build on water.' };
+    if (isSteep(tx, tz)) return { ok: false, reason: 'Too steep: mountains can\'t be built on.' };
     if (roads.has(tileIndex(tx, tz))) return { ok: false, reason: 'There\'s a road there.' };
     const occupant = taken.get(tileIndex(tx, tz));
     if (occupant && occupant !== ignoreId) return { ok: false, reason: 'That spot is taken.' };
@@ -470,7 +581,7 @@ export const collect = (state: CityState, now: number, today: string, id?: strin
 
 export type BuildResult = { state: CityState; error?: undefined } | { state?: undefined; error: string };
 
-export const build = (state: CityState, typeId: string, x: number, z: number, now: number, today: string, id: string): BuildResult => {
+export const build = (state: CityState, typeId: string, x: number, z: number, now: number, today: string, id: string, rotation?: number): BuildResult => {
   const type = getBuilding(typeId);
   if (!type) return { error: 'Unknown building.' };
   if (levelForXp(state.xp) < type.unlock) return { error: `${type.name} unlocks at city level ${type.unlock}.` };
@@ -478,7 +589,7 @@ export const build = (state: CityState, typeId: string, x: number, z: number, no
   if (!place.ok) return { error: place.reason! };
   if (state.coins < type.cost) return { error: `You need ${type.cost - state.coins} more coins.` };
   const cleared = harvest(state, footprint(x, z, type.size).map(([tx, tz]) => tileIndex(tx, tz)));
-  return { state: markBuilt(touch({ ...cleared, coins: cleared.coins - type.cost, xp: cleared.xp + Math.ceil(type.cost / 4), buildings: [...cleared.buildings, { id, type: typeId, x, z, level: 1, collectedAt: now }] }, now, today)) };
+  return { state: markBuilt(touch({ ...cleared, coins: cleared.coins - type.cost, xp: cleared.xp + Math.ceil(type.cost / 4), buildings: [...cleared.buildings, { id, type: typeId, x, z, level: 1, collectedAt: now, ...(isQuarter(rotation) ? { rotation } : {}) }] }, now, today)) };
 };
 
 export const upgradeCost = (building: PlacedBuilding) => {
@@ -492,6 +603,8 @@ export const upgrade = (state: CityState, id: string, now: number, today: string
   if (!building) return { error: 'That building is gone.' };
   const cost = upgradeCost(building);
   if (cost === null) return { error: 'Already at the top level.' };
+  const needed = TIER_UNLOCK[building.level + 1];
+  if (levelForXp(state.xp) < needed) return { error: `Level ${building.level + 1} upgrades unlock at city level ${needed}.` };
   const { state: collected } = collect(state, now, today, id);
   if (collected.coins < cost) return { error: `You need ${cost - collected.coins} more coins.` };
   return { state: markBuilt(touch({
@@ -502,13 +615,23 @@ export const upgrade = (state: CityState, id: string, now: number, today: string
   }, now, today)) };
 };
 
-export const move = (state: CityState, id: string, x: number, z: number, now: number, today: string): BuildResult => {
+export const move = (state: CityState, id: string, x: number, z: number, now: number, today: string, rotation?: number): BuildResult => {
   const building = state.buildings.find(item => item.id === id);
   if (!building) return { error: 'That building is gone.' };
   const place = canPlace(state, building.type, x, z, id);
   if (!place.ok) return { error: place.reason! };
   const cleared = harvest(state, footprint(x, z, getBuilding(building.type)!.size).map(([tx, tz]) => tileIndex(tx, tz)));
-  return { state: touch({ ...cleared, buildings: cleared.buildings.map(item => (item.id === id ? { ...item, x, z } : item)) }, now, today) };
+  const turned = isQuarter(rotation) ? { rotation } : {};
+  return { state: touch({ ...cleared, buildings: cleared.buildings.map(item => (item.id === id ? { ...item, x, z, ...turned } : item)) }, now, today) };
+};
+
+// Turning a building a quarter turn clockwise (seen from above) costs nothing.
+const isQuarter = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 3;
+export const rotate = (state: CityState, id: string, now: number, today: string): BuildResult => {
+  const building = state.buildings.find(item => item.id === id);
+  if (!building) return { error: 'That building is gone.' };
+  const rotation = (frontQuarter(new Set(state.roads), building, getBuilding(building.type)!.size) + 1) % 4;
+  return { state: touch({ ...state, buildings: state.buildings.map(item => (item.id === id ? { ...item, rotation } : item)) }, now, today) };
 };
 
 export const demolishRefund = (building: PlacedBuilding) => {
@@ -544,34 +667,77 @@ export const roadPath = (from: { x: number; z: number }, to: { x: number; z: num
   return [...new Set(tiles)];
 };
 
-// Which tiles of a planned road can be built, and what the new ones cost.
-export const planRoads = (state: CityState, tiles: number[]) => {
+// Which tiles of a planned road can be built (new road, or an existing road of another kind
+// to convert), and what they cost.
+const nearOwned = (state: CityState, x: number, z: number) => {
+  const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+  return [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => state.chunks.includes((cz + dz) * CHUNKS + cx + dx) && cx + dx >= 0 && cx + dx < CHUNKS);
+};
+export const planRoads = (state: CityState, tiles: number[], kind: RoadKind = 'street') => {
   const roads = new Set(state.roads);
   const taken = occupancy(state);
-  const fresh: number[] = [];
+  const fresh: number[] = [], converted: number[] = [];
   let blocked = 0;
   tiles.forEach(index => {
-    if (roads.has(index)) return;
+    if (roads.has(index)) { if (roadKindAt(state, index) !== kind) converted.push(index); return; }
     const { x, z } = tileXZ(index);
-    if (!ownsTile(state, x, z) || terrainAt(x, z) === 'water' || taken.has(index)) { blocked += 1; return; }
+    // A road over water is a bridge. Water belongs to no plot, so a bridge may also cross water
+    // next to land you own (to reach an island). Mountains are too steep.
+    const water = terrainAt(x, z) === 'water';
+    if (!(water ? nearOwned(state, x, z) : ownsTile(state, x, z)) || isSteep(x, z) || taken.has(index)) { blocked += 1; return; }
     fresh.push(index);
   });
-  return { fresh, blocked, cost: fresh.length * ROAD_COST };
+  const bridges = fresh.filter(index => { const { x, z } = tileXZ(index); return terrainAt(x, z) === 'water'; }).length;
+  // Converting pays the new kind's price less what the old surface is worth.
+  const cost = fresh.length * ROAD_KINDS[kind].cost + bridges * BRIDGE_COST + converted.reduce((sum, index) => sum + Math.max(1, ROAD_KINDS[kind].cost - ROAD_KINDS[roadKindAt(state, index)].refund), 0);
+  return { fresh: [...fresh, ...converted], blocked, cost, built: fresh.length, converted: converted.length };
 };
 
-export const buildRoads = (state: CityState, tiles: number[], now: number, today: string): BuildResult => {
-  const plan = planRoads(state, tiles);
-  if (plan.fresh.length === 0) return { error: plan.blocked ? 'Roads can only go on empty land you own.' : 'There\'s already a road there.' };
+const withKinds = (state: CityState, tiles: number[], kind: RoadKind) => {
+  const roadTypes = { ...(state.roadTypes || {}) };
+  for (const index of tiles) { if (kind === 'street') delete roadTypes[index]; else roadTypes[index] = kind; }
+  const { roadTypes: _old, ...rest } = state;
+  return Object.keys(roadTypes).length ? { ...rest, roadTypes } : rest;
+};
+
+export const buildRoads = (state: CityState, tiles: number[], now: number, today: string, kind: RoadKind = 'street'): BuildResult => {
+  if (levelForXp(state.xp) < ROAD_KINDS[kind].unlock) return { error: `${ROAD_KINDS[kind].name}s unlock at level ${ROAD_KINDS[kind].unlock}.` };
+  const plan = planRoads(state, tiles, kind);
+  if (plan.fresh.length === 0) return { error: plan.blocked ? 'Roads can only go on empty land you own.' : "There's already a road there." };
   if (state.coins < plan.cost) return { error: `You need ${plan.cost - state.coins} more coins for ${plan.fresh.length} road tiles.` };
-  const cleared = harvest(state, plan.fresh);
-  return { state: markBuilt(touch({ ...cleared, coins: cleared.coins - plan.cost, xp: cleared.xp + plan.fresh.length, roads: [...cleared.roads, ...plan.fresh].sort((a, b) => a - b) }, now, today)) };
+  const added = plan.fresh.slice(0, plan.built);
+  const cleared = harvest(state, added);
+  return { state: markBuilt(touch(withKinds({ ...cleared, coins: cleared.coins - plan.cost, xp: cleared.xp + plan.fresh.length, roads: [...cleared.roads, ...added].sort((a, b) => a - b) }, plan.fresh, kind), now, today)) };
 };
 
 // Removing a road takes its street light with it.
 export const removeRoad = (state: CityState, index: number, now: number, today: string): BuildResult => {
   if (!state.roads.includes(index)) return { error: 'No road there.' };
-  const lit = state.lights.includes(index);
-  return { state: touch({ ...state, coins: state.coins + ROAD_REFUND + (lit ? LIGHT_REFUND : 0), roads: state.roads.filter(road => road !== index), lights: state.lights.filter(light => light !== index) }, now, today) };
+  const lit = state.lights.includes(index), refund = ROAD_KINDS[roadKindAt(state, index)].refund;
+  const stops = (state.stops || []).filter(stop => stop.road === index), stopRefund = stops.reduce((sum, stop) => sum + STOP_KINDS[stop.kind].refund, 0);
+  const { stops: _stops, ...rest } = state, remaining = (state.stops || []).filter(stop => stop.road !== index);
+  return { state: touch(withKinds({ ...rest, ...(remaining.length ? { stops: remaining } : {}), coins: state.coins + refund + stopRefund + (lit ? LIGHT_REFUND : 0), roads: state.roads.filter(road => road !== index), lights: state.lights.filter(light => light !== index) }, [index], 'street'), now, today) };
+};
+
+// A stop on the first free pavement side of a road tile (or the side asked for); tapping the
+// same tile again puts one on the other side of the street.
+export const addStop = (state: CityState, index: number, kind: StopKind, now: number, today: string, side?: number): BuildResult => {
+  const info = STOP_KINDS[kind];
+  if (levelForXp(state.xp) < info.unlock) return { error: `${info.name}s unlock at level ${info.unlock}.` };
+  const roads = new Set(state.roads);
+  if (!roads.has(index)) return { error: `${info.name}s go on the pavement beside a road.` };
+  const taken = new Set((state.stops || []).filter(stop => stop.road === index).map(stop => stop.side));
+  const free = pavementSides(roads, index).filter(s => !taken.has(s));
+  if (!free.length) return { error: taken.size ? 'Both pavements here already have a stop.' : 'There\'s no pavement here - try a straight stretch of road.' };
+  const chosen = side !== undefined && free.includes(side) ? side : free[0];
+  if (state.coins < info.cost) return { error: `You need ${info.cost - state.coins} more coins.` };
+  return { state: markBuilt(touch({ ...state, coins: state.coins - info.cost, xp: state.xp + Math.ceil(info.cost / 5), stops: [...(state.stops || []), { road: index, kind, side: chosen }] }, now, today)) };
+};
+export const removeStop = (state: CityState, index: number, now: number, today: string): BuildResult => {
+  const stop = (state.stops || []).find(item => item.road === index);
+  if (!stop) return { error: 'No stop there.' };
+  const remaining = (state.stops || []).filter(item => item !== stop), { stops: _stops, ...rest } = state;
+  return { state: touch({ ...rest, ...(remaining.length ? { stops: remaining } : {}), coins: state.coins + STOP_KINDS[stop.kind].refund }, now, today) };
 };
 
 // Street lights go on road tiles: one lamp per tile, dragged along like roads.

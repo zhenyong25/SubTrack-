@@ -1,23 +1,41 @@
 import * as THREE from 'three';
 import type { ToWorld } from './traffic';
 import type { StreetNetwork } from './streets';
+import { ACTIVITY_TYPES, activityCapacity, activityFinished, activityPath, activityReady, boatKind, boatTripDuration, leisurePose, type BoatTrip, type HeldItem, type RodLine, type WaterAccess } from './activities';
 
 export const RECREATION_TYPES = new Set(['playground', 'skatepark', 'basketballcourt', 'tennisclub', 'publicpool', 'bowlinghall', 'sportscentre', 'amusementpark', 'footballground', 'citystadium']);
 export interface RecreationPlace {
   id: string; type: string; size: number; door: number | null; center: THREE.Vector3; rotation: number; online: boolean;
+  water?: WaterAccess; // waterfront facilities: their jetty and boat loop
+  // A tall building's roof: residents take the lift up and wait here for a helicopter.
+  helipad?: { pad: THREE.Vector3; hatch: THREE.Vector3 };
+  // A bus stop or taxi stand on the pavement: `center` is on the pavement, facing the road.
+  pavementStop?: boolean;
+  boatTrip?: BoatTrip; // transient voyage clock shared by the boat and all its passengers
+  serviceRole?: 'sanitation';
 }
 export interface RecreationResident { id: number; employed: boolean; road: number; door: number | null; position: THREE.Vector3 }
 export interface ActivityPose {
   position: THREE.Vector3; heading: number; walking: boolean; scale: number;
   rootPitch?: number; rootRoll?: number; torsoPitch?: number;
   thighs?: [number, number]; knees?: [number, number]; arms?: [number, number]; elbows?: [number, number]; armSplay?: number;
+  hold?: HeldItem; hat?: string; rod?: RodLine; // drawn by people.ts in the hand, on the head, from the hand
+  visible?: boolean; shirt?: string;
 }
 export interface Visit {
   resident: number; place: RecreationPlace; slot: number; phase: 'outbound' | 'entering' | 'playing' | 'leaving' | 'returning';
   position: THREE.Vector3; route: number[]; next: number; origin: number; elapsed: number; heading: number; duration: number;
   originPosition?: THREE.Vector3; walking?: boolean;
+  // Waypoints still to walk inside the plot (round the building, along a jetty), and how long
+  // the current step has made no progress.
+  path?: THREE.Vector3[]; stuck?: number;
+  transporting?: boolean;
+  // Seconds still out of sight (in a lift), and whether the visitor has gone up to the roof.
+  hidden?: number; lifted?: boolean;
 }
-const capacity = (type: string) => type === 'tennisclub' || type === 'bowlinghall' ? 2 : type === 'playground' ? 3 : type === 'citystadium' ? 8 : type === 'footballground' ? 6 : 4;
+const capacity = (place: RecreationPlace) => RECREATION_TYPES.has(place.type) ? sportsCapacity(place.type) : activityCapacity(place);
+const sportsCapacity = (type: string) => type === 'tennisclub' || type === 'bowlinghall' ? 2 : type === 'playground' ? 3 : type === 'citystadium' ? 8 : type === 'footballground' ? 6 : 4;
+const waterKey = (p: RecreationPlace) => p.water ? `${p.water.dock.x}:${p.water.dock.z}:${p.water.loop?.length || 0}` : '';
 const lerp = (a: number, b: number, value: number) => a + (b - a) * value;
 export function facilityPoint(place: RecreationPlace, x: number, y: number, z: number): THREE.Vector3 {
   const sin = Math.sin(place.rotation), cos = Math.cos(place.rotation);
@@ -80,6 +98,7 @@ export function activityPose(place: RecreationPlace, slot: number, seconds: numb
       pose.arms = [-0.2, -0.4 + Math.sin(seconds * 2) * 1.3]; pose.elbows = [-0.2, -0.3]; pose.torsoPitch = slot ? 0 : Math.max(0, Math.sin(seconds * 2)) * 0.25; break;
     case 'amusementpark':
       x = -0.04 + (slot % 2) * 0.17; z = 0.1 + Math.floor(slot / 2) * 0.15; heading = Math.PI; pose.scale = slot % 2 ? 0.75 : 1; pose.arms = [-0.3, -1.8 + wave * 0.3]; break;
+    default: return leisurePose(place, slot, seconds);
   }
   return { ...pose, position: facilityPoint(place, x, y, z), heading: heading + place.rotation };
 }
@@ -107,19 +126,29 @@ export class RecreationVisits {
   private placeKey = '';
   private nextAssignment = 0;
   seconds = 0;
-  constructor(private toWorld: ToWorld, private release: (resident: number, road: number) => void, private streets?: StreetNetwork) {}
+  constructor(private toWorld: ToWorld, private release: (resident: number, road: number, position?: THREE.Vector3) => void, private streets?: StreetNetwork) {}
+  finishTransport(id: number, road: number, position: THREE.Vector3) {
+    this.streets?.cancel(`recreation:${id}`); this.streets?.cancel(`transit:${id}`); this.streets?.crowd.release(id);
+    this.visits.delete(id); this.cooldown.set(id, this.seconds + 22); this.release(id, road, position);
+  }
   setRoads(graph: Map<number, number[]>) { this.graph = graph; this.routeTrees.clear(); this.placeKey = ''; this.cancelAll(); }
   residentChanged(id: number) { this.cancel(id); }
   setPlaces(places: RecreationPlace[]) {
-    const key = places.map(p => `${p.id}:${p.type}:${p.door}:${p.online}:${p.center.x}:${p.center.z}:${p.size}:${p.rotation}`).join('|');
+    const key = places.map(p => `${p.id}:${p.type}:${p.door}:${p.online}:${p.center.x}:${p.center.z}:${p.size}:${p.rotation}:${waterKey(p)}`).join('|');
     if (key === this.placeKey) return;
-    this.placeKey = key; this.places = places.filter(p => p.online && p.door != null && this.graph.has(p.door)); this.routeTrees.clear(); this.nextAssignment = this.seconds;
+    const previous = new Map(this.places.map(p => [p.id, p]));
+    this.placeKey = key; this.places = places.filter(p => p.online && p.door != null && this.graph.has(p.door)).map(p => {
+      if (!boatKind(p.type)) return p;
+      const old = previous.get(p.id), same = old && old.type === p.type && old.door === p.door && old.center.equals(p.center) && old.rotation === p.rotation && old.size === p.size && waterKey(old) === waterKey(p);
+      return { ...p, boatTrip: same ? old.boatTrip : { elapsed: 0, active: false, unloading: false, completed: 0 } };
+    }); this.routeTrees.clear(); this.nextAssignment = this.seconds;
     for (const [id, visit] of this.visits) {
       const live = this.places.find(p => p.id === visit.place.id);
-      if (!live || live.door !== visit.place.door || !live.center.equals(visit.place.center) || live.rotation !== visit.place.rotation || live.type !== visit.place.type || live.size !== visit.place.size) this.cancel(id);
+      if (!live || live.door !== visit.place.door || !live.center.equals(visit.place.center) || live.rotation !== visit.place.rotation || live.type !== visit.place.type || live.size !== visit.place.size || waterKey(live) !== waterKey(visit.place)) this.cancel(id);
       else visit.place = live;
     }
   }
+  get placeList(): readonly RecreationPlace[] { return this.places; }
   private nearestRoad(position: THREE.Vector3, fallback: number) {
     if (this.graph.has(fallback)) return fallback;
     let best = -1, distance = Infinity;
@@ -131,27 +160,39 @@ export class RecreationVisits {
   private tree(place: RecreationPlace) { let next = this.routeTrees.get(place.id); if (!next) { next = routesTo(this.graph, place.door!); this.routeTrees.set(place.id, next); } return next; }
   private startVisits(residents: RecreationResident[]) {
     const budget = Math.min(192, residents.length, Math.max(2, Math.ceil(residents.length * 0.35)));
-    // Residents without jobs get first choice. Employed residents may take a short break.
-    const candidates = [...residents].sort((a, b) => Number(a.employed) - Number(b.employed));
+    // Residents nearby come first, and residents without jobs before those taking a short
+    // break from work, so people use their local facilities rather than crossing the city.
+    const free = residents.filter(person => !this.visits.has(person.id) && (this.cooldown.get(person.id) || 0) <= this.seconds);
     const first = Math.floor(this.seconds / 20) % Math.max(1, this.places.length);
     const places = [...this.places.slice(first), ...this.places.slice(0, first)];
     // Give each destination a visitor before filling extra slots; periodically rotate
     // priority so a large city cannot permanently starve its later-built facilities.
     for (let slot = 0; slot < 8 && this.visits.size < budget; slot++) {
       for (const place of places) {
-        if (slot >= capacity(place.type) || this.visits.size >= budget) continue;
+        if (slot >= capacity(place) || this.visits.size >= budget || !free.length) continue;
         const occupied = new Set([...this.visits.values()].filter(v => v.place.id === place.id).map(v => v.slot));
         if (occupied.has(slot)) continue;
-        for (const person of candidates) {
-          if (this.visits.has(person.id) || (this.cooldown.get(person.id) || 0) > this.seconds) continue;
+        const tried = new Set<number>();
+        for (let attempt = 0; attempt < 6; attempt++) {
+          let best = -1, score = Infinity;
+          free.forEach((person, i) => {
+            if (tried.has(i)) return;
+            const value = person.position.distanceToSquared(place.center) + (person.employed ? 400 : 0);
+            if (value < score) { score = value; best = i; }
+          });
+          if (best < 0) break;
+          tried.add(best);
+          const person = free[best];
           const origin = person.employed ? person.door : this.graph.has(person.road) ? person.road : person.door;
           if (origin == null) continue;
           const route = roadRoute(this.tree(place), origin, place.door!);
-          if (!route || route.length > 32) continue;
+          // Residents walk further for a day by the water or in the park than to a local court.
+          if (!route || route.length > (RECREATION_TYPES.has(place.type) ? 32 : 80)) continue;
           const position = person.employed && !this.streets ? this.toWorld(origin) : person.position.clone();
           if (this.streets && !this.streets.route(position, this.streets.curb(place.door!, place.center))) continue;
           if (this.streets && !this.streets.crowd.has(person.id) && !this.streets.crowd.spawn(person.id, position)) continue;
           this.visits.set(person.id, { resident: person.id, place, slot, phase: 'outbound', position, originPosition: position.clone(), route, next: 0, origin, elapsed: 0, heading: 0, duration: 35 + slot * 3, walking: true });
+          free.splice(best, 1);
           break;
         }
       }
@@ -162,11 +203,24 @@ export class RecreationVisits {
     for (const id of [...this.visits.keys()]) if (!live.has(id)) { this.streets?.cancel(`recreation:${id}`); this.visits.delete(id); this.cooldown.delete(id); }
     if (!motion) return;
     this.seconds += dt;
+    for (const place of this.places) {
+      const trip = place.boatTrip; if (!trip) continue;
+      const passengers = [...this.visits.values()].filter(v => v.place.id === place.id && (v.phase === 'playing' || v.phase === 'leaving'));
+      if (!passengers.length) { trip.active = false; trip.unloading = false; trip.elapsed = 0; }
+      else if (trip.active && !trip.unloading) {
+        trip.elapsed += dt;
+        if (trip.elapsed >= boatTripDuration(place)) { trip.elapsed = boatTripDuration(place); trip.unloading = true; trip.completed++; }
+      }
+    }
     if (this.seconds >= this.nextAssignment) { this.startVisits(residents); this.nextAssignment = this.seconds + 0.75; }
     const step = (visit: Visit, target: THREE.Vector3, speed = 0.32) => {
       if (this.streets) {
-        const result = this.streets.stepResident(visit.resident, visit.position, target, dt, speed);
+        const before = visit.position.clone(), result = this.streets.stepResident(visit.resident, visit.position, target, dt, speed);
         visit.walking = result.walking; if (result.walking) visit.heading = result.heading;
+        // Two visitors meeting head-on on a narrow jetty or plot edge can block each other for
+        // good; after a few seconds without progress the step is simply completed.
+        visit.stuck = result.arrived || visit.position.distanceToSquared(before) > 1e-8 ? 0 : (visit.stuck || 0) + dt;
+        if (visit.stuck > 4) { visit.position.copy(target); visit.stuck = 0; return true; }
         return result.arrived;
       }
       const delta = target.clone().sub(visit.position), distance = delta.length();
@@ -176,13 +230,18 @@ export class RecreationVisits {
       visit.position.addScaledVector(delta, speed * dt / distance); return false;
     };
     for (const [id, visit] of this.visits) {
-      const entrance = facilityPoint(visit.place, 0, 0.045, 0.46);
+      if (visit.transporting) continue;
+      if (visit.hidden && visit.hidden > 0) { visit.hidden -= dt; visit.walking = false; continue; }
+      // A pavement stop has no plot to cross: its queue is the way in.
+      const entrance = visit.place.pavementStop ? activityPose(visit.place, visit.slot, this.seconds).position : facilityPoint(visit.place, 0, 0.045, 0.46);
       if (visit.phase === 'outbound' || visit.phase === 'returning') {
         if (this.streets) {
           const target = visit.phase === 'outbound' ? this.streets.curb(visit.place.door!, visit.place.center) : visit.originPosition!;
-          const result = this.streets.walk(`recreation:${id}`, visit.position, target, dt);
+          const before = visit.position.clone(), result = this.streets.walk(`recreation:${id}`, visit.position, target, dt);
           visit.walking = result.walking; if (result.walking) visit.heading = result.heading;
-          if (result.blocked) { this.cancel(id); continue; }
+          // A long trip that stops getting anywhere (caught in a knot of people) is given up.
+          visit.stuck = visit.position.distanceToSquared(before) > 1e-8 ? 0 : (visit.stuck || 0) + dt;
+          if (result.blocked || visit.stuck > 30) { this.cancel(id); continue; }
           if (result.arrived) {
             if (visit.phase === 'outbound') { visit.phase = 'entering'; visit.next = visit.route.length; }
             else { this.release(id, visit.origin); this.visits.delete(id); this.cooldown.set(id, this.seconds + 22); }
@@ -198,18 +257,33 @@ export class RecreationVisits {
           }
         }
       } else if (visit.phase === 'entering') {
-        if (visit.next === visit.route.length) { if (step(visit, entrance)) visit.next++; }
-        else if (step(visit, activityPose(visit.place, visit.slot, this.seconds).position)) { visit.phase = 'playing'; visit.elapsed = 0; }
+        if (visit.next === visit.route.length) { if (step(visit, entrance)) { visit.next++; if (ACTIVITY_TYPES.has(visit.place.type) || visit.place.helipad) visit.path = activityPath(visit.place, visit.slot, this.seconds); } }
+        else if (visit.path?.length) { if (step(visit, visit.path[0])) visit.path.shift(); }
+        // Boat passengers wait on the jetty for the boat; everyone else walks to their spot.
+        else if (!activityReady(visit.place, this.seconds)) visit.walking = false;
+        // Up in the lift: out of sight for a moment, then out of the roof hatch.
+        else if (visit.place.helipad && !visit.lifted) { visit.lifted = true; visit.hidden = 2.5; visit.walking = false; visit.position.copy(activityPose(visit.place, visit.slot, this.seconds).position); }
+        else if (boatKind(visit.place.type) || step(visit, activityPose(visit.place, visit.slot, this.seconds).position)) {
+          visit.phase = 'playing'; visit.elapsed = 0;
+          if (visit.place.boatTrip) visit.place.boatTrip.active = true;
+          const pose = activityPose(visit.place, visit.slot, this.seconds); visit.position.copy(pose.position); visit.heading = pose.heading;
+        }
       } else if (visit.phase === 'playing') {
         visit.elapsed += dt; const pose = activityPose(visit.place, visit.slot, this.seconds); visit.position.copy(pose.position); visit.heading = pose.heading;
-        if (visit.elapsed >= visit.duration) visit.phase = 'leaving';
+        if (activityFinished(visit.place, this.seconds, visit.elapsed, visit.duration)) {
+          visit.phase = 'leaving';
+          if (visit.place.helipad) { visit.position.copy(activityPath(visit.place, visit.slot, this.seconds)[0]); visit.hidden = 2.5; visit.path = []; }
+          else if (ACTIVITY_TYPES.has(visit.place.type)) { visit.path = activityPath(visit.place, visit.slot, this.seconds).reverse(); }
+        }
       } else if (visit.phase === 'leaving') {
-        if (step(visit, entrance)) { visit.phase = 'returning'; visit.route.reverse(); visit.next = 0; }
+        if (visit.path?.length) { if (step(visit, visit.path[0])) visit.path.shift(); }
+        else if (step(visit, entrance)) { visit.phase = 'returning'; visit.route.reverse(); visit.next = 0; }
       }
     }
   }
   pose(id: number): ActivityPose | null {
     const visit = this.visits.get(id); if (!visit) return null;
+    if (visit.hidden && visit.hidden > 0) return { position: visit.position, heading: visit.heading, walking: false, scale: 1, visible: false };
     return visit.phase === 'playing' ? activityPose(visit.place, visit.slot, this.seconds) : { position: visit.position, heading: visit.heading, walking: visit.walking ?? true, scale: 1 };
   }
   get attendance() { const counts = new Map<string, number>(); for (const visit of this.visits.values()) if (visit.phase === 'playing') counts.set(visit.place.id, (counts.get(visit.place.id) || 0) + 1); return counts; }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { activityPose, facilityPoint, type RecreationVisits } from './recreation';
+import { ActivityProps } from './activityProps';
 
 // Equipment shares a few instanced meshes with per-instance colours, regardless of
 // the number of courts. Empty facilities have no floating balls or boards.
@@ -7,7 +8,9 @@ export class RecreationEquipment {
   private meshes: Record<string, THREE.InstancedMesh> = {};
   private material = new THREE.MeshStandardMaterial({ roughness: 0.6 });
   private matrix = new THREE.Matrix4(); private q = new THREE.Quaternion(); private axis = new THREE.Vector3(0, 1, 0);
+  private activities: ActivityProps;
   constructor(scene: THREE.Scene, private capacity = 256) {
+    this.activities = new ActivityProps(scene);
     const geometries: Record<string, THREE.BufferGeometry> = {
       ball: new THREE.SphereGeometry(1, 10, 8),
       board: new THREE.BoxGeometry(0.05, 0.012, 0.13),
@@ -66,6 +69,8 @@ export class RecreationEquipment {
       }
     }
     for (const [name, mesh] of Object.entries(this.meshes)) { mesh.count = counts[name]; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; }
+    this.activities.update(visits);
   }
-  dispose() { for (const mesh of Object.values(this.meshes)) { mesh.geometry.dispose(); mesh.removeFromParent(); mesh.dispose(); } this.material.dispose(); }
+  dispose() {
+    this.activities.dispose(); for (const mesh of Object.values(this.meshes)) { mesh.geometry.dispose(); mesh.removeFromParent(); mesh.dispose(); } this.material.dispose(); }
 }

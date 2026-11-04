@@ -44,6 +44,8 @@ const speckle = (ctx: CanvasRenderingContext2D, size: number, base: string, dots
 export interface CityTextures {
   grass: THREE.Texture;
   asphalt: THREE.Texture;
+  cobble: THREE.Texture; // setts for cobbled lanes
+  gravel: THREE.Texture; // country lanes
   pavement: THREE.Texture;
   roof: THREE.Texture;
   brick: THREE.Texture;
@@ -71,6 +73,16 @@ export const createTextures = (): CityTextures => {
 
   const grass = keep(toTexture(canvas(512, (ctx, size) => speckle(ctx, size, '#d9dcd2', [['#ffffff', 2200], ['#9aa596', 3200], ['#c6cfbd', 2400]], 7, 1.4)), 1));
   const asphalt = keep(toTexture(canvas(256, (ctx, size) => speckle(ctx, size, '#5d6166', [['#7a7e83', 1800], ['#3f4246', 1600], ['#8d9195', 400]], 11, 0.9)), 1));
+  const cobble = keep(toTexture(canvas(256, (ctx, size) => {
+    ctx.fillStyle = '#6f675e'; ctx.fillRect(0, 0, size, size);
+    const random = rand(23), rows = 16, cols = 12;
+    for (let row = 0; row < rows; row += 1) for (let col = -1; col <= cols; col += 1) {
+      const w = size / cols, h = size / rows, x = (col + (row % 2) * 0.5) * w, y = row * h, shade = 120 + Math.floor(random() * 50);
+      ctx.fillStyle = `rgb(${shade + 18},${shade + 8},${shade - 6})`;
+      ctx.beginPath(); ctx.roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 3); ctx.fill();
+    }
+  }), 1));
+  const gravel = keep(toTexture(canvas(256, (ctx, size) => speckle(ctx, size, '#a8916c', [['#c7b28c', 2600], ['#7d6a4f', 2200], ['#d9cbb0', 700]], 29, 1.1)), 1));
   const pavement = keep(toTexture(canvas(256, (ctx, size) => {
     speckle(ctx, size, '#d2d0ca', [['#e7e5df', 900], ['#b4b1aa', 900]], 13, 0.9);
     ctx.strokeStyle = 'rgba(120,115,105,0.55)';
@@ -150,8 +162,9 @@ export const createTextures = (): CityTextures => {
     if (cached) return cached;
     const size = 512;
     const random = rand(style.seed ?? 3);
-    const lit = new Set<number>();
-    for (let i = 0; i < style.cols * style.rows; i += 1) if (random() < 0.55) lit.add(i);
+    // Every window can light up; which ones are on is decided per building by who is inside
+    // (CityScene3D's window shader). Each window's warm tone varies a little.
+    const lit = { has: (_i: number) => true };
     const cellW = size / style.cols, cellH = size / style.rows;
     const drawWindows = (ctx: CanvasRenderingContext2D, night: boolean) => {
       for (let row = 0; row < style.rows; row += 1) {
@@ -224,5 +237,5 @@ export const createTextures = (): CityTextures => {
     ctx.fillRect(0, 0, size, size);
   }), 1));
 
-  return { grass, asphalt, pavement, roof, brick, waterNormal, glow, facade, label, dispose: () => owned.forEach(texture => texture.dispose()) };
+  return { grass, asphalt, cobble, gravel, pavement, roof, brick, waterNormal, glow, facade, label, dispose: () => owned.forEach(texture => texture.dispose()) };
 };
