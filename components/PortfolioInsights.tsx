@@ -389,9 +389,14 @@ const PortfolioInsights: React.FC<PortfolioInsightsProps> = ({ baseCurrency, pos
                     return (
                       <tr key={row.holding.id}>
                         <td className="px-3 py-2">
-                          <span className="font-semibold text-textMain">{row.holding.name}</span>
-                          {!row.consistent && <span className="ml-1 text-secondary" title="Trade logs don't fully explain this holding">≈</span>}
-                          {row.holding.positionSide === 'Short' && <span className="ml-1.5 text-[10px] font-bold text-rose-500">Short</span>}
+                          <div className="flex items-center gap-2">
+                            <InvestmentLogo investment={row.holding} className="h-6 w-6 shrink-0 rounded-md !p-0.5 text-[9px]" />
+                            <span>
+                              <span className="font-semibold text-textMain">{row.holding.name}</span>
+                              {!row.consistent && <span className="ml-1 text-secondary" title="Trade logs don't fully explain this holding">≈</span>}
+                              {row.holding.positionSide === 'Short' && <span className="ml-1.5 text-[10px] font-bold text-rose-500">Short</span>}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-secondary">{formatMoney(row.invested, baseCurrency)}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-textMain">{formatMoney(row.value, baseCurrency)}</td>
