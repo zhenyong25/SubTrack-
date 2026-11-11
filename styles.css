@@ -302,9 +302,11 @@
   .investment-controls > .flex-wrap { align-self: end; }
   .investment-controls > .border-t { margin-top: 0; padding-top: 0; padding-left: 12px; border-top-width: 0; border-left-width: 1px; }
   .investment-layout > .investment-chart { grid-column: span 8; }
+  /* Recent Entries takes the portfolio card's height and scrolls inside it: `contain: size`
+     keeps its list from setting the row height, so the two cards always end level. */
   .investment-layout > .investment-recent {
     grid-column: span 4;
-    max-height: 680px;
+    contain: size;
     overflow-y: auto;
     scrollbar-width: thin;
   }
@@ -478,7 +480,8 @@
   .expense-layout > :is(.expense-categories, .expense-year) { order: 1; }
   .expense-layout > .expense-ledger { order: 0; }
   .investment-layout > .investment-chart { grid-column: 1 / -1; }
-  .investment-layout > .investment-recent { grid-column: 1 / -1; }
+  /* Stacked under the chart here, so it sizes to its entries again. */
+  .investment-layout > .investment-recent { grid-column: 1 / -1; contain: none; max-height: 680px; }
   .cashflow-layout > :is(.cashflow-summary, .cashflow-trend, .cashflow-accounts, .retirement-panel) { grid-column: span 6; }
   .cashflow-layout .accounts-collection { grid-template-columns: minmax(0, 1fr); }
   .income-layout > :is(.income-hero, .income-stats, .income-year, .income-categories) { grid-column: span 6; }
