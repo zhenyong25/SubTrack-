@@ -1,3 +1,9 @@
+// Keep the existing theme variables usable with Tailwind opacity modifiers.
+// A bare var(--color-*) cannot be parsed into channels for classes such as bg-primary/10.
+const themeColor = variable => ({ opacityValue }) => opacityValue === undefined
+  ? `var(${variable})`
+  : `color-mix(in srgb, var(${variable}) calc(${opacityValue} * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
@@ -12,16 +18,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: 'var(--color-background)',
-        surface: 'var(--color-surface)',
-        primary: 'var(--color-primary)',
-        secondary: 'var(--color-secondary)',
-        textMain: 'var(--color-text-main)',
-        border: 'var(--color-border)',
-        success: 'var(--color-success)',
+        background: themeColor('--color-background'),
+        surface: themeColor('--color-surface'),
+        primary: themeColor('--color-primary'),
+        secondary: themeColor('--color-secondary'),
+        textMain: themeColor('--color-text-main'),
+        border: themeColor('--color-border'),
+        success: themeColor('--color-success'),
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
       },
     },
   },

@@ -798,7 +798,7 @@ const CashFlowTab: React.FC<CashFlowTabProps> = ({
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={rangeMode === 'Daily' ? Math.ceil(BUCKET_COUNTS.Daily / 10) - 1 : 0} />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval="preserveStartEnd" minTickGap={10} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} width={40} />
               <Tooltip cursor={{ fill: 'var(--color-border)', opacity: 0.3 }} content={renderChartTooltip} />
               {chartSeries.map((series, index) => (

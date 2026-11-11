@@ -11,6 +11,7 @@ import CashbackPanel from './CashbackPanel';
 import StatementsList from './StatementsList';
 import StatementReconcilePanel from './StatementReconcilePanel';
 import { AlertTriangle, ArrowLeft, Pencil, Plus, Trash2, TrendingUp, CalendarDays, ChevronLeft, ChevronRight, Edit3, HandCoins } from 'lucide-react';
+import { formatAmount } from '../services/formatting';
 
 interface CardDetailProps {
   card: PaymentCard;
@@ -394,8 +395,8 @@ const CardDetail: React.FC<CardDetailProps> = ({
                         </p>
                         <p className="text-xl font-black text-textMain mt-1">
                             {isCreditCard
-                              ? `${computedCreditDebt.toFixed(2)} ${baseCurrency}`
-                              : `${(card.currentBalance ?? 0).toFixed(2)} ${baseCurrency}`}
+                              ? `${formatAmount(computedCreditDebt)} ${baseCurrency}`
+                              : `${formatAmount((card.currentBalance ?? 0))} ${baseCurrency}`}
                         </p>
                     </div>
                     <div className="rounded-xl border border-border bg-background p-4">
@@ -404,8 +405,8 @@ const CardDetail: React.FC<CardDetailProps> = ({
                         </p>
                         <p className="text-xl font-black text-textMain mt-1">
                             {isCreditCard
-                              ? `${availableCredit.toFixed(2)} ${baseCurrency}`
-                              : `${monthlySpend.toFixed(2)} ${baseCurrency}`}
+                              ? `${formatAmount(availableCredit)} ${baseCurrency}`
+                              : `${formatAmount(monthlySpend)} ${baseCurrency}`}
                         </p>
                     </div>
                 </div>
@@ -420,13 +421,13 @@ const CardDetail: React.FC<CardDetailProps> = ({
                                 {linkedLoan && debt ? (
                                     <>
                                         <p className="text-xl font-black text-textMain mt-1">
-                                            {debt.status.outstanding.toFixed(2)} {linkedLoan.currency}
+                                            {formatAmount(debt.status.outstanding)} {linkedLoan.currency}
                                             <span className="ml-1.5 text-xs font-semibold text-secondary">{debt.status.cleared ? 'paid in full' : 'left to pay'}</span>
                                         </p>
                                         <p className={`mt-1 text-xs ${debt.due?.overdue ? 'font-semibold text-red-500' : 'text-secondary'}`}>
                                             {debt.status.statement
-                                              ? `${debt.status.statement.amount.toFixed(2)} ${linkedLoan.currency} statement on ${formatDay(debt.status.statement.date)}`
-                                              : `Started at ${linkedLoan.principal.toFixed(2)} ${linkedLoan.currency} on ${formatDay(dateKeyToUtc(linkedLoan.startDate))}`}
+                                              ? `${formatAmount(debt.status.statement.amount)} ${linkedLoan.currency} statement on ${formatDay(debt.status.statement.date)}`
+                                              : `Started at ${formatAmount(linkedLoan.principal)} ${linkedLoan.currency} on ${formatDay(dateKeyToUtc(linkedLoan.startDate))}`}
                                             {debt.due && ` · ${debt.due.overdue ? 'overdue since' : 'due'} ${formatDay(debt.due.nextDue)}`}
                                         </p>
                                     </>

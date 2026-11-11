@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, Lock, Pencil, Phone, Plus, Search, ShieldAlert, Trash2, X } from 'lucide-react';
 import { SELLER_PLATFORMS, matchSellers, type FlaggedSeller, type PokemonExtras } from '../services/pokemonExtrasService';
 import { singaporeDate } from '../services/pokemonEventService';
+import { formatShortDate } from '../services/formatting';
 
 // Your private scam watchlist: sellers or buyers you've had trouble with, a quick check before a
 // trade, the warning signs common in card deals, and where to report. Nothing here is shared -
@@ -133,7 +134,7 @@ export default function PokemonScamPanel({ extras, busy, baseCurrency, onSave }:
                 </div>
                 <p className="mt-0.5 text-xs text-secondary">{[seller.name && seller.handle, seller.contact].filter(Boolean).join(' · ')}</p>
                 {seller.reason && <p className="mt-1 text-xs">{seller.reason}</p>}
-                <p className="mt-1 text-[11px] text-secondary">{new Date(`${seller.date}T00:00:00`).toLocaleDateString()}{seller.amountLost ? ` · lost ${seller.amountLost.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${seller.currency}` : ''}{seller.reportRef && ` · report ${seller.reportRef}`}</p>
+                <p className="mt-1 text-[11px] text-secondary">{formatShortDate(`${seller.date}T00:00:00`)}{seller.amountLost ? ` · lost ${seller.amountLost.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${seller.currency}` : ''}{seller.reportRef && ` · report ${seller.reportRef}`}</p>
                 <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-bold">
                   {seller.evidenceUrl && <a href={seller.evidenceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Evidence <ExternalLink size={10} /></a>}
                   <button type="button" onClick={() => setDraft(seller)} className="inline-flex items-center gap-1 text-secondary hover:text-textMain"><Pencil size={11} /> Edit</button>

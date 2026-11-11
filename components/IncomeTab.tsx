@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from 'react';
 import Payslips from './Payslips';
+import { useReducedMotion } from './useReducedMotion';
 import {
   BarChart3,
   ChevronLeft,
@@ -16,6 +17,7 @@ import {
 import { Cell, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts';
 import { CURRENCIES, Income } from '../types';
 import { getCurrencySymbol, getIncomeDistribution, getIncomeValueForMonth, getYearlyIncomeData } from '../services/storageService';
+import { formatAmount, formatShortDate } from '../services/formatting';
 
 interface IncomeTabProps {
   incomes: Income[];
@@ -62,24 +64,24 @@ const IncomeYearTooltip = ({ active, payload, label, baseCurrency }: {
     <div className="rounded-xl border border-border bg-surface px-3 py-2 shadow-xl min-w-[220px]">
       <p className="text-xs font-bold text-textMain">{label}</p>
       <p className="mt-1 text-sm font-extrabold text-primary">
-        {point.total.toFixed(2)} {baseCurrency}
+        {formatAmount(point.total)} {baseCurrency}
       </p>
       <div className="mt-2 space-y-1 text-[11px] text-secondary">
         <div className="flex items-center justify-between gap-3">
           <span>Recurring</span>
-          <span className="font-semibold text-textMain">{point.recurringTotal.toFixed(2)} {baseCurrency}</span>
+          <span className="font-semibold text-textMain">{formatAmount(point.recurringTotal)} {baseCurrency}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span>One-time</span>
-          <span className="font-semibold text-textMain">{point.oneTimeTotal.toFixed(2)} {baseCurrency}</span>
+          <span className="font-semibold text-textMain">{formatAmount(point.oneTimeTotal)} {baseCurrency}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span>Active</span>
-          <span className="font-semibold text-textMain">{point.activeTotal.toFixed(2)} {baseCurrency}</span>
+          <span className="font-semibold text-textMain">{formatAmount(point.activeTotal)} {baseCurrency}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span>Passive</span>
-          <span className="font-semibold text-textMain">{point.passiveTotal.toFixed(2)} {baseCurrency}</span>
+          <span className="font-semibold text-textMain">{formatAmount(point.passiveTotal)} {baseCurrency}</span>
         </div>
       </div>
       {topEntries.length > 0 && (
@@ -89,7 +91,7 @@ const IncomeYearTooltip = ({ active, payload, label, baseCurrency }: {
             {topEntries.map(entry => (
               <div key={`${entry.name}-${entry.amount}`} className="flex items-center justify-between gap-3 text-[11px]">
                 <span className="truncate text-textMain">{entry.name}</span>
-                <span className="font-semibold text-secondary">{entry.amount.toFixed(2)} {baseCurrency}</span>
+                <span className="font-semibold text-secondary">{formatAmount(entry.amount)} {baseCurrency}</span>
               </div>
             ))}
           </div>
@@ -100,6 +102,7 @@ const IncomeYearTooltip = ({ active, payload, label, baseCurrency }: {
 };
 
 const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrencyChange, onAddIncome, onEditIncome, onDeleteIncome }) => {
+  const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const today = new Date();
@@ -172,7 +175,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
             <TrendingUp size={12} className="mr-1" /> Income Snapshot
           </p>
-          <h2 className="text-2xl font-bold">{displayTotal.toFixed(2)} {baseCurrency}</h2>
+          <h2 className="text-2xl font-bold">{formatAmount(displayTotal)} {baseCurrency}</h2>
           <p className="text-xs mt-2 opacity-80 font-medium">
             {viewMode} income across active sources
           </p>
@@ -184,7 +187,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
       </div>
 
       <p className="income-note text-xs text-secondary -mt-2">
-        Top source: {stats.topIncome ? `${stats.topIncome.name} - ${getIncomeValueForMonth(stats.topIncome, baseCurrency, currentYear, currentMonth).toFixed(2)} ${baseCurrency}/mo` : 'No active income yet'}
+        Top source: {stats.topIncome ? `${stats.topIncome.name} - ${formatAmount(getIncomeValueForMonth(stats.topIncome, baseCurrency, currentYear, currentMonth))} ${baseCurrency}/mo` : 'No active income yet'}
       </p>
 
       <div className="income-controls flex justify-between items-center gap-3">
@@ -221,7 +224,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
             <Wallet size={18} className="text-emerald-500" />
             <span className="text-xs font-bold uppercase tracking-wider">Avg. Active</span>
           </div>
-          <p className="text-2xl font-bold text-textMain">{stats.activeAverageMonthly.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-textMain">{formatAmount(stats.activeAverageMonthly)}</p>
           <p className="text-[10px] text-secondary mt-1">Annual active income divided by 12</p>
         </div>
 
@@ -230,7 +233,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
             <ListFilter size={18} className="text-teal-500" />
             <span className="text-xs font-bold uppercase tracking-wider">Avg. Passive</span>
           </div>
-          <p className="text-2xl font-bold text-textMain">{stats.passiveAverageMonthly.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-textMain">{formatAmount(stats.passiveAverageMonthly)}</p>
           <p className="text-[10px] text-secondary mt-1">Annual passive income divided by 12</p>
         </div>
 
@@ -239,7 +242,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
             <BarChart3 size={18} className="text-primary" />
             <span className="text-xs font-bold uppercase tracking-wider">Daily Avg.</span>
           </div>
-          <p className="text-2xl font-bold text-textMain">{stats.dailyTotal.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-textMain">{formatAmount(stats.dailyTotal)}</p>
           <p className="text-[10px] text-secondary mt-1">Average daily income</p>
         </div>
 
@@ -254,16 +257,16 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
       </div>
 
       <div className="income-year bg-surface p-6 rounded-xl shadow-sm border border-border">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Income Progression</h3>
           <div className="flex items-center space-x-2 bg-background border border-border rounded-lg px-2 py-1">
-            <button onClick={() => setSelectedYear(year => year - 1)} className="p-1 hover:text-primary"><ChevronLeft size={16} /></button>
+            <button type="button" aria-label="Previous year" onClick={() => setSelectedYear(year => year - 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronLeft size={16} /></button>
             <span className="text-xs font-bold w-12 text-center">{selectedYear}</span>
-            <button onClick={() => setSelectedYear(year => year + 1)} className="p-1 hover:text-primary"><ChevronRight size={16} /></button>
+            <button type="button" aria-label="Next year" onClick={() => setSelectedYear(year => year + 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronRight size={16} /></button>
           </div>
         </div>
         <div className="h-56 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart data={yearlyData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={0} />
@@ -272,7 +275,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
                 cursor={{ fill: 'var(--color-text-main)', opacity: 0.05 }}
                 content={<IncomeYearTooltip baseCurrency={baseCurrency} />}
               />
-              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary)" />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary)" isAnimationActive={!reducedMotion} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -282,9 +285,10 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Income by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
+                  isAnimationActive={!reducedMotion}
                   data={categoryData}
                   cx="50%"
                   cy="50%"
@@ -302,7 +306,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-main)', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   itemStyle={{ color: 'var(--color-text-main)', fontSize: '12px', fontWeight: 'bold' }}
-                  formatter={(value: number) => [`${value.toFixed(2)} ${baseCurrency}`, 'Monthly']}
+                  formatter={(value: number) => [`${formatAmount(value)} ${baseCurrency}`, 'Monthly']}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -328,7 +332,7 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
             <CircleDollarSign className="text-primary" size={18} />
             <h3 className="text-sm font-bold text-textMain uppercase tracking-wide truncate">Income Sources</h3>
           </div>
-          <button onClick={onAddIncome} className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors shrink-0">
+          <button type="button" aria-label="Add income" onClick={onAddIncome} className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors shrink-0">
             <Plus size={18} />
           </button>
         </div>
@@ -379,17 +383,17 @@ const IncomeTab: React.FC<IncomeTabProps> = ({ incomes, baseCurrency, onCurrency
 
                     <div className="text-right shrink-0">
                       <p className="text-sm sm:text-[15px] font-bold text-textMain leading-tight">
-                        {isOneTime ? `${income.amount.toFixed(2)} ${baseCurrency}` : `${monthlyValue.toFixed(2)} ${baseCurrency}/mo`}
+                        {isOneTime ? `${formatAmount(income.amount)} ${baseCurrency}` : `${formatAmount(monthlyValue)} ${baseCurrency}/mo`}
                       </p>
                       <p className="text-[9px] text-secondary">
-                        {isOneTime ? `Date: ${new Date(entryDate).toLocaleDateString()}` : `Next: ${new Date(entryDate).toLocaleDateString()}`}
+                        {isOneTime ? `Date: ${formatShortDate(entryDate)}` : `Next: ${formatShortDate(entryDate)}`}
                       </p>
                     </div>
                   </div>
 
                   <div className="mt-1.5 flex items-center justify-between gap-2">
                     <p className="min-w-0 text-[10px] sm:text-xs text-secondary truncate">
-                      {isOneTime ? 'One-time income' : isFutureRecurringStart ? `Recurring • starts ${recurringStart.toLocaleDateString()}` : `Recurring • per ${income.incomeCycle?.toLowerCase() ?? 'month'}`}
+                      {isOneTime ? 'One-time income' : isFutureRecurringStart ? `Recurring • starts ${formatShortDate(recurringStart)}` : `Recurring • per ${({ Daily: 'day', Weekly: 'week', Monthly: 'month', Yearly: 'year' } as Record<string, string>)[income.incomeCycle] ?? 'month'}`}
                     </p>
                     <div className="flex items-center gap-3 shrink-0">
                       <button onClick={() => onEditIncome(income)} className="text-primary text-[11px] font-bold flex items-center">

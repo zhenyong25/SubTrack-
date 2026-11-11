@@ -75,19 +75,19 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
         className="sticky top-0 bg-background/95 backdrop-blur z-10 px-4 pb-4 flex justify-between items-center border-b border-border"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
       >
-        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
+        <button type="button" aria-label="Close income form" onClick={onCancel} disabled={isSaving} className="flex h-10 w-10 items-center justify-center rounded-xl text-secondary hover:bg-surface hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Income' : 'New Income'}</h2>
-        <div className="w-6" />
+        <div className="w-10" />
       </div>
 
       <div className="p-4 space-y-6 max-w-lg mx-auto animate-slide-up">
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Income Name</label>
-              <input
+              <label htmlFor="income-name" className="block text-xs font-semibold text-secondary uppercase mb-1">Income Name</label>
+              <input id="income-name"
                 required
                 type="text"
                 value={name}
@@ -97,8 +97,8 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Type</label>
-              <select
+              <label htmlFor="income-income-type" className="block text-xs font-semibold text-secondary uppercase mb-1">Type</label>
+              <select id="income-income-type"
                 value={incomeType}
                 onChange={e => setIncomeType(e.target.value as IncomeKind)}
                 className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
@@ -130,10 +130,10 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
 
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Amount</label>
+              <label htmlFor="income-amount" className="block text-xs font-semibold text-secondary uppercase mb-1">Amount</label>
               <div className="relative">
                 <span className="absolute left-3 top-3 text-secondary"><CircleDollarSign size={16} /></span>
-                <input
+                <input id="income-amount"
                   required
                   type="number"
                   step="0.01"
@@ -145,8 +145,8 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
-              <select
+              <label htmlFor="income-currency" className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
+              <select id="income-currency"
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
                 className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
@@ -157,10 +157,10 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">
+            <label htmlFor="income-date" className="block text-xs font-semibold text-secondary uppercase mb-1">
               {incomeMode === 'One-time' ? 'Income Date' : status === 'Past' ? 'Ended On' : 'Start Date'}
             </label>
-            <input
+            <input id="income-date"
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
@@ -170,8 +170,8 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
 
           {incomeMode === 'Recurring' && (
             <div>
-              <label className="block text-xs font-semibold text-secondary uppercase mb-1">Income Cycle</label>
-              <select
+              <label htmlFor="income-income-cycle" className="block text-xs font-semibold text-secondary uppercase mb-1">Income Cycle</label>
+              <select id="income-income-cycle"
                 value={incomeCycle}
                 onChange={e => setIncomeCycle(e.target.value as IncomeCycle)}
                 className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none appearance-none"
@@ -184,10 +184,10 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Category</label>
+            <label htmlFor="income-category" className="block text-xs font-semibold text-secondary uppercase mb-1">Category</label>
             <div className="relative mb-2">
               <span className="absolute left-3 top-3 text-secondary"><Tag size={16} /></span>
-              <input
+              <input id="income-category"
                 type="text"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
@@ -217,7 +217,9 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
                   key={c}
                   type="button"
                   onClick={() => setSelectedColor(c)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform ${selectedColor === c ? 'scale-110 ring-2 ring-primary shadow-lg' : 'opacity-70'}`}
+                  aria-label={`Use color ${c}`}
+                  aria-pressed={selectedColor === c}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform ${selectedColor === c ? 'scale-110 ring-2 ring-primary shadow-lg' : 'opacity-70'}`}
                   style={{ backgroundColor: c }}
                 >
                   {selectedColor === c && <Check size={14} className="text-white" />}
@@ -227,8 +229,8 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Status</label>
-            <select
+            <label htmlFor="income-status" className="block text-xs font-semibold text-secondary uppercase mb-1">Status</label>
+            <select id="income-status"
               value={status}
               onChange={e => setStatus(e.target.value as 'Active' | 'Past')}
               className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none"
@@ -239,8 +241,8 @@ const AddIncome: React.FC<AddIncomeProps> = ({ onSave, onCancel, initialData }) 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Notes</label>
-            <textarea
+            <label htmlFor="income-notes" className="block text-xs font-semibold text-secondary uppercase mb-1">Notes</label>
+            <textarea id="income-notes"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={4}

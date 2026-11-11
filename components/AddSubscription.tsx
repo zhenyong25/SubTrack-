@@ -170,11 +170,11 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
         className="sticky top-0 bg-background/95 backdrop-blur z-10 px-4 pb-4 flex justify-between items-center border-b border-border"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
       >
-        <button onClick={onCancel} disabled={isSaving} className="text-secondary hover:text-textMain disabled:opacity-40">
+        <button type="button" aria-label="Close subscription form" onClick={onCancel} disabled={isSaving} className="flex h-10 w-10 items-center justify-center rounded-xl text-secondary hover:bg-surface hover:text-textMain disabled:opacity-40">
           <X size={24} />
         </button>
         <h2 className="text-lg font-bold text-textMain">{initialData ? 'Edit Subscription' : 'New Subscription'}</h2>
-        <div className="w-6" />
+        <div className="w-10" />
       </div>
 
       <div className="p-4 space-y-6 max-w-lg mx-auto animate-slide-up">
@@ -191,12 +191,12 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
 
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <div>
-                <label className="block text-xs font-semibold text-secondary uppercase mb-1">
+                <label htmlFor="subscription-price" className="block text-xs font-semibold text-secondary uppercase mb-1">
                   {cycle === BillingCycle.FreeTrial ? 'Future Cost' : 'Cost'}
                 </label>
                 <div className="relative">
                     <span className="absolute left-3 top-3 text-secondary"><DollarSign size={16} /></span>
-                    <input 
+                    <input id="subscription-price"
                     required
                     type="number" 
                     step="0.01"
@@ -208,8 +208,8 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                 </div>
             </div>
             <div>
-                 <label className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
-                 <select 
+                 <label htmlFor="subscription-currency" className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
+                 <select id="subscription-currency"
                    value={currency}
                    onChange={e => setCurrency(e.target.value)}
                    className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none text-sm"
@@ -220,8 +220,8 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
           </div>
 
           <div>
-             <label className="block text-xs font-semibold text-secondary uppercase mb-1">Cycle</label>
-             <select 
+             <label htmlFor="subscription-cycle" className="block text-xs font-semibold text-secondary uppercase mb-1">Cycle</label>
+             <select id="subscription-cycle"
                value={cycle}
                onChange={e => setCycle(e.target.value as BillingCycle)}
                className="w-full bg-surface border border-border rounded-xl p-3 text-textMain focus:border-primary outline-none appearance-none"
@@ -234,11 +234,11 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
 
           {/* Payment Card Section - Updated for Card Management */}
           <div className="bg-surface border border-border rounded-xl p-4">
-            <label className="block text-xs font-semibold text-secondary uppercase mb-2">Payment Method</label>
+            <label htmlFor="subscription-selected-card-id" className="block text-xs font-semibold text-secondary uppercase mb-2">Payment Method</label>
             
             {/* Card Selector */}
             <div className="mb-3">
-                 <select 
+                 <select id="subscription-selected-card-id"
                     value={selectedCardId}
                     onChange={e => setSelectedCardId(e.target.value)}
                     className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none"
@@ -310,7 +310,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                     <span className="text-sm font-medium text-textMain">Split Bill?</span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={isShared} onChange={e => setIsShared(e.target.checked)} className="sr-only peer" />
+                    <input type="checkbox" aria-label="Split this subscription" checked={isShared} onChange={e => setIsShared(e.target.checked)} className="sr-only peer" />
                     <div className="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                   </label>
               </div>
@@ -321,7 +321,7 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                           {sharedWith.map((person, idx) => (
                               <div key={idx} className="flex justify-between items-center bg-background p-2 rounded-lg border border-border">
                                   <span className="text-sm text-textMain">{person}</span>
-                                  <button type="button" onClick={() => removeSharePerson(idx)} className="text-secondary hover:text-red-500">
+                                  <button type="button" aria-label={`Remove ${person} from split`} onClick={() => removeSharePerson(idx)} className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-red-500/10 hover:text-red-500">
                                       <X size={14} />
                                   </button>
                               </div>
@@ -339,11 +339,13 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                                 }
                             }}
                             placeholder="Add name"
+                            aria-label="Person to split with"
                             className="flex-1 bg-background border border-border rounded-lg p-2 text-textMain text-sm focus:border-primary outline-none"
                           />
                           <button 
                             type="button" 
                             onClick={addSharePerson}
+                            aria-label="Add person to split"
                             className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors"
                           >
                               <Plus size={18} />
@@ -354,10 +356,10 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">
+            <label htmlFor="subscription-date" className="block text-xs font-semibold text-secondary uppercase mb-1">
                {cycle === BillingCycle.FreeTrial ? 'Trial Ends On' : 'First Payment'}
             </label>
-            <input
+            <input id="subscription-date"
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
@@ -366,10 +368,10 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-secondary uppercase mb-1">Category</label>
+            <label htmlFor="subscription-category" className="block text-xs font-semibold text-secondary uppercase mb-1">Category</label>
             <div className="relative mb-2">
               <span className="absolute left-3 top-3 text-secondary"><Tag size={16} /></span>
-              <input 
+              <input id="subscription-category"
                 type="text" 
                 value={category}
                 onChange={e => setCategory(e.target.value)}
@@ -399,7 +401,9 @@ const AddSubscription: React.FC<AddSubscriptionProps> = ({ onSave, onCancel, ini
                   key={c}
                   type="button"
                   onClick={() => setSelectedColor(c)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform ${selectedColor === c ? 'scale-110 ring-2 ring-primary shadow-lg' : 'opacity-70'}`}
+                  aria-label={`Use color ${c}`}
+                  aria-pressed={selectedColor === c}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform ${selectedColor === c ? 'scale-110 ring-2 ring-primary shadow-lg' : 'opacity-70'}`}
                   style={{ backgroundColor: c }}
                 >
                   {selectedColor === c && <Check size={14} className="text-white" />}

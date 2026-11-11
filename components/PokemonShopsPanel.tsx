@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatShortDate } from '../services/formatting';
 import { AlertTriangle, Loader2, LocateFixed, Map as MapIcon, MapPin, Navigation, RefreshCw, Search, Store, Trophy, X } from 'lucide-react';
 import {
   SHOPS_STALE_AFTER_MS, SHOP_TYPES, SHOP_TYPE_COLOR, SHOP_TYPE_LABEL, countByType, distanceKm, fetchPokemonShops, filterShops, inSingapore,
@@ -117,7 +118,7 @@ export default function PokemonShopsPanel() {
           <p className="mt-1 text-sm text-secondary">Every official Pokémon TCG store: Pokémon Card Gyms for playing, card shops and retailers for buying.</p>
           <p className="mt-1 text-xs text-secondary">
             {list
-              ? <>{shops.length - sevenElevens} stores, including {gyms} gyms{sevenElevens > 0 && <> · plus {sevenElevens} 7-Elevens</>} · from the <a href={list.sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">official shop map</a> · updated {new Date(list.fetchedAt).toLocaleDateString()}</>
+              ? <>{shops.length - sevenElevens} stores, including {gyms} gyms{sevenElevens > 0 && <> · plus {sevenElevens} 7-Elevens</>} · from the <a href={list.sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">official shop map</a> · updated {formatShortDate(list.fetchedAt)}</>
               : loading ? 'Loading the official shop list…' : 'No list loaded yet.'}
           </p>
         </div>

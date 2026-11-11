@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatShortDate } from '../services/formatting';
 import { AlertTriangle, BadgeCheck, ChevronDown, ExternalLink, Gift, Loader2, RefreshCw, Search } from 'lucide-react';
 import CardFace from './CardFace';
 import {
@@ -16,7 +17,7 @@ const ago = (iso: string) => {
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours}h ago` : new Date(iso).toLocaleDateString();
+  return hours < 48 ? `${hours}h ago` : formatShortDate(iso);
 };
 
 interface Props {
@@ -179,7 +180,7 @@ const MarketCardTile: React.FC<{ card: MarketCard; source: string; owned: boolea
       {card.promotion && (
         <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">
           <Gift size={13} className="mt-0.5 shrink-0" />
-          <span>{card.promotion}{card.promotionEnds && <span className="text-amber-700/70 dark:text-amber-300/70"> · until {new Date(`${card.promotionEnds}T00:00:00`).toLocaleDateString()}</span>}</span>
+          <span>{card.promotion}{card.promotionEnds && <span className="text-amber-700/70 dark:text-amber-300/70"> · until {formatShortDate(`${card.promotionEnds}T00:00:00`)}</span>}</span>
         </p>
       )}
 

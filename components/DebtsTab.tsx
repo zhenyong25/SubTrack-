@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { formatAmount } from '../services/formatting';
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, FileText, HandCoins, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { CURRENCIES } from '../types';
 import type { AccountStatement, Loan, LoanEntryType, LoanInterestMethod, LoanKind, LoanPayment, PaymentCard } from '../types';
@@ -655,10 +656,10 @@ const DebtsTab: React.FC<DebtsTabProps> = ({ baseCurrency, loans, payments, onSa
                       {(showAllSchedule ? schedule : schedule.slice(0, 12)).map(row => (
                         <tr key={row.date}>
                           <td className="px-2.5 py-1.5 text-textMain">{formatDate(row.date)}</td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-textMain">{row.payment.toFixed(2)}</td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-secondary">{row.interest.toFixed(2)}</td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-secondary">{row.principal.toFixed(2)}</td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums text-textMain">{row.balance.toFixed(2)}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-textMain">{formatAmount(row.payment)}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-secondary">{formatAmount(row.interest)}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-secondary">{formatAmount(row.principal)}</td>
+                          <td className="px-2.5 py-1.5 text-right tabular-nums text-textMain">{formatAmount(row.balance)}</td>
                         </tr>
                       ))}
                     </tbody>

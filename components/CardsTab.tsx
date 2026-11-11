@@ -7,6 +7,7 @@ import { CardBenefit, CardPointTransaction, Expense, PaymentCard, Subscription }
 import { getCardExpiryStatus, getCardMonthlySpend } from '../services/storageService';
 import CardLogo from './CardLogo';
 import { getCardMilesSummary, getCardPointsSummary } from '../services/cardBenefitsService';
+import { formatAmount } from '../services/formatting';
 
 interface CardsTabProps {
   ownerKey?: string;
@@ -88,7 +89,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-bold text-white">{totalMonthlySpend.toFixed(2)} {baseCurrency}</h2>
+              <h2 className="text-2xl font-bold text-white">{formatAmount(totalMonthlySpend)} {baseCurrency}</h2>
               <p className="text-xs text-white/70 mt-1">
                 Current month linked expenses across {filter === 'All' ? 'all cards' : `${filter.toLowerCase()} cards`}
               </p>
@@ -149,6 +150,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
               tabIndex={0}
               onClick={() => onViewCard(card)}
               onKeyDown={e => {
+                if (e.target !== e.currentTarget) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onViewCard(card);
@@ -156,17 +158,17 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
               }}
               className="bg-surface border border-border rounded-2xl p-4 shadow-sm cursor-pointer hover:border-primary/40 transition-colors"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white mr-3 shrink-0"
+                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0"
                     style={{ backgroundColor: card.color || '#1e293b' }}
                   >
                     <CardLogo type={card.type} name={card.name} />
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-textMain truncate">{card.name}</h3>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <h3 className="w-full break-words font-bold text-textMain">{card.name}</h3>
                       <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-secondary">
                         {card.kind === 'Credit' ? 'Credit' : card.kind === 'Debit' ? 'Debit' : 'Multi-currency'}
                       </span>
@@ -190,13 +192,13 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex w-full shrink-0 items-center justify-end gap-3 border-t border-border pt-2">
                   <button
                     onClick={e => {
                       e.stopPropagation();
                       onEditCard(card);
                     }}
-                    className="text-primary text-xs font-bold flex items-center"
+                    className="flex min-h-8 items-center rounded-lg px-2 text-xs font-bold text-primary hover:bg-primary/10"
                     aria-label={`Edit ${card.name}`}
                   >
                     <Pencil size={14} className="mr-1" />
@@ -207,7 +209,7 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
                       e.stopPropagation();
                       void onDeleteCard(card);
                     }}
-                    className="text-red-500 text-xs font-bold flex items-center hover:text-red-600"
+                    className="flex min-h-8 items-center rounded-lg px-2 text-xs font-bold text-red-500 hover:bg-red-500/10 hover:text-red-600"
                     aria-label={`Delete ${card.name}`}
                   >
                     <Trash2 size={14} className="mr-1" />
@@ -223,8 +225,8 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
                   </p>
                   <p className="text-lg font-bold text-textMain mt-1">
                     {isCreditCard
-                      ? `${(debt ?? 0).toFixed(2)} ${baseCurrency}`
-                      : `${currentBalance.toFixed(2)} ${baseCurrency}`}
+                      ? `${formatAmount((debt ?? 0))} ${baseCurrency}`
+                      : `${formatAmount(currentBalance)} ${baseCurrency}`}
                   </p>
                 </div>
                 <div className="bg-background rounded-xl p-3 border border-border">
@@ -233,17 +235,17 @@ const CardsTab: React.FC<CardsTabProps> = ({ ownerKey = 'local', cards, subscrip
                   </p>
                   <p className="text-lg font-bold text-textMain mt-1">
                     {isCreditCard
-                      ? `${(available ?? 0).toFixed(2)} ${baseCurrency}`
-                      : `${monthlySpend.toFixed(2)} ${baseCurrency}`}
+                      ? `${formatAmount((available ?? 0))} ${baseCurrency}`
+                      : `${formatAmount(monthlySpend)} ${baseCurrency}`}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-secondary">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-secondary">
                 <span>{linkedCount} linked subscription{linkedCount === 1 ? '' : 's'}</span>
                 <span>
                   {limitOrBalance > 0
-                    ? `${isCreditCard ? 'Limit' : 'Balance'}: ${limitOrBalance.toFixed(2)} ${baseCurrency}`
+                    ? `${isCreditCard ? 'Limit' : 'Balance'}: ${formatAmount(limitOrBalance)} ${baseCurrency}`
                     : 'Set balance or limit in Edit'}
                 </span>
               </div>

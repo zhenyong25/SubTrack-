@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import { Cell, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts';
 import { BudgetPlan, CURRENCIES, Expense, Subscription } from '../types';
-import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getExpenseCategoryColor, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
+import { convertCurrency, getCurrencySymbol, getExpenseCalendarDays, getExpenseCategoryColor, chartCategoryColors, getMonthlyExpense, getYearlyExpenseData, getYearlyExpenseDataFromExpenses } from '../services/storageService';
 import BudgetPanel from './BudgetPanel';
 import { expenseMatchesSearch, splitSearchTerms } from '../services/expenseSearch';
+import { useReducedMotion } from './useReducedMotion';
+import { formatAmount } from '../services/formatting';
 
 interface ExpenseTabProps {
   expenses: Expense[];
@@ -155,13 +157,13 @@ const ExpenseLedgerRow: React.FC<{
               </div>
               <p className="mt-0.5 truncate text-[10px] text-secondary">
                 {showDate ? `${formatResultDate(entry.nextDate)} · ` : ''}{entry.category}
-                {entry.originalCurrency !== baseCurrency ? ` · ${entry.originalAmount.toFixed(2)} ${entry.originalCurrency}` : ''}
+                {entry.originalCurrency !== baseCurrency ? ` · ${formatAmount(entry.originalAmount)} ${entry.originalCurrency}` : ''}
                 {entry.linkedCardName ? ` · ${entry.linkedCardName}` : ''}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <div className="whitespace-nowrap text-sm font-bold text-textMain">{entry.amount.toFixed(2)}</div>
+            <div className="whitespace-nowrap text-sm font-bold text-textMain">{formatAmount(entry.amount)}</div>
             {canSwipe && (
               <div
                 className="hidden items-center gap-1 sm:flex"
@@ -231,7 +233,7 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
     <div className="rounded-xl border border-border bg-surface px-3 py-2 shadow-xl min-w-[220px]">
       <p className="text-xs font-bold text-textMain">{label}</p>
       <p className="mt-1 text-sm font-extrabold text-primary">
-        {point.total.toFixed(2)} {baseCurrency}
+        {formatAmount(point.total)} {baseCurrency}
       </p>
       {topCategories.length > 0 && (
         <div className="mt-2 border-t border-border pt-2">
@@ -240,7 +242,7 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
             {topCategories.map(([category, amount]) => (
               <div key={category} className="flex items-center justify-between gap-3 text-[11px]">
                 <span className="truncate text-textMain">{category}</span>
-                <span className="font-semibold text-secondary">{amount.toFixed(2)} {baseCurrency}</span>
+                <span className="font-semibold text-secondary">{formatAmount(amount)} {baseCurrency}</span>
               </div>
             ))}
           </div>
@@ -256,6 +258,7 @@ const ExpenseYearTooltip = ({ active, payload, label, baseCurrency }: {
 };
 
 const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budgetPlans = [], baseCurrency, onCurrencyChange, onEditExpense, onDeleteExpense, onSaveBudgetPlan }) => {
+  const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -366,6 +369,8 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
 
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [calendarDays, baseCurrency]);
+  // One distinct color per category in the chart and its legend.
+  const categoryColors = useMemo(() => chartCategoryColors(categoryData.map(entry => entry.name)), [categoryData]);
 
   const budgetMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
   const previousBudgetDate = new Date(selectedYear, selectedMonth - 1, 1);
@@ -567,7 +572,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
           <p className="text-xs font-medium opacity-80 uppercase tracking-wide mb-1 flex items-center">
             <TrendingDown size={12} className="mr-1" /> {viewLabel}
           </p>
-          <h2 className="text-2xl font-bold">{displayTotal.toFixed(2)} {baseCurrency}</h2>
+          <h2 className="text-2xl font-bold">{formatAmount(displayTotal)} {baseCurrency}</h2>
           <p className="text-xs mt-2 opacity-80 font-medium">
             {viewLabel} {viewSpendLabel} from your logged expenses and synced subscription payments
           </p>
@@ -579,7 +584,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
       </div>
 
       <p className="expense-note text-xs text-secondary -mt-2">
-        Top spend: {stats.topExpense ? `${stats.topExpense.name} - ${stats.topExpense.value.toFixed(2)} ${baseCurrency}/mo` : 'No expenses yet'}
+        Top spend: {stats.topExpense ? `${stats.topExpense.name} - ${formatAmount(stats.topExpense.value)} ${baseCurrency}/mo` : 'No expenses yet'}
       </p>
 
       <div className="expense-search relative">
@@ -615,7 +620,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                 <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Search results</h3>
                 <p className="mt-0.5 text-[10px] text-secondary">
                   {searchResults.length} match{searchResults.length === 1 ? '' : 'es'} across all months
-                  {searchResults.length > 0 ? ` · ${searchTotal.toFixed(2)} ${baseCurrency} total` : ''}
+                  {searchResults.length > 0 ? ` · ${formatAmount(searchTotal)} ${baseCurrency} total` : ''}
                 </p>
               </div>
             </div>
@@ -717,7 +722,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
             <Wallet size={16} className="text-rose-500" />
             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">{expenseBucketLabel}</span>
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-textMain">{expenseBucketValue.toFixed(2)}</p>
+          <p className="text-xl sm:text-2xl font-bold text-textMain">{formatAmount(expenseBucketValue)}</p>
           <p className="text-[9px] sm:text-[10px] text-secondary mt-1 leading-snug">{expenseBucketSubtitle}</p>
         </div>
 
@@ -726,7 +731,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
             <ListFilter size={16} className="text-orange-500" />
             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Synced Bills</span>
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-textMain">{stats.subscriptionMonthly.toFixed(2)}</p>
+          <p className="text-xl sm:text-2xl font-bold text-textMain">{formatAmount(stats.subscriptionMonthly)}</p>
           <p className="text-[9px] sm:text-[10px] text-secondary mt-1 leading-snug">From subscriptions and renewal dates</p>
         </div>
 
@@ -735,7 +740,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
             <BarChart3 size={16} className="text-primary" />
             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Daily Avg.</span>
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-textMain">{stats.dailyAverage.toFixed(2)}</p>
+          <p className="text-xl sm:text-2xl font-bold text-textMain">{formatAmount(stats.dailyAverage)}</p>
             <p className="text-[9px] sm:text-[10px] text-secondary mt-1 leading-snug">Average daily spend</p>
           </div>
 
@@ -792,7 +797,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                     </div>
                     {hasEntries && (
                       <div className="mt-2">
-                        <p className="text-[10px] font-bold text-textMain">{cell.total?.toFixed(2)}</p>
+                        <p className="text-[10px] font-bold text-textMain">{formatAmount(cell.total)}</p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {cell.entries!.slice(0, 2).map(entry => (
                             <span key={`${entry.id}-${entry.source}`} className="text-[9px] px-1.5 py-0.5 rounded-full text-white truncate max-w-full" style={{ backgroundColor: entry.color }}>
@@ -823,9 +828,10 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         <h3 className="text-sm font-bold text-textMain uppercase mb-4 tracking-wide">Monthly Category Split</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
+                  isAnimationActive={!reducedMotion}
                   data={categoryData}
                   cx="50%"
                   cy="50%"
@@ -837,13 +843,13 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                   strokeWidth={2}
                 >
                   {categoryData.map(entry => (
-                    <Cell key={`expense-cell-${entry.name}`} fill={getExpenseCategoryColor(entry.name)} />
+                    <Cell key={`expense-cell-${entry.name}`} fill={categoryColors[entry.name]} />
                   ))}
                 </Pie>
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-main)', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   itemStyle={{ color: 'var(--color-text-main)', fontSize: '12px', fontWeight: 'bold' }}
-                  formatter={(value: number) => [`${value.toFixed(2)} ${baseCurrency}`, 'Monthly']}
+                  formatter={(value: number) => [`${formatAmount(value)} ${baseCurrency}`, 'Monthly']}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -860,7 +866,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
             return (
               <div key={entry.name} className="flex items-center justify-between gap-3 bg-background px-3 py-2 rounded-xl border border-border">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getExpenseCategoryColor(entry.name) }} />
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: categoryColors[entry.name] }} />
                   <span className="text-xs font-medium text-secondary truncate">{entry.name}</span>
                 </div>
                 <span className="text-[10px] font-bold text-textMain whitespace-nowrap">{percent}%</span>
@@ -878,7 +884,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
               <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Expense Ledger</h3>
               <p className="mt-0.5 text-[10px] text-secondary">
                 {selectedDateLabel || monthLabel}
-                {selectedDay != null && visibleLedgerDays[0] ? ` · ${visibleLedgerDays[0].entries.length} item${visibleLedgerDays[0].entries.length === 1 ? '' : 's'} · ${visibleLedgerDays[0].total.toFixed(2)} ${baseCurrency}` : ''}
+                {selectedDay != null && visibleLedgerDays[0] ? ` · ${visibleLedgerDays[0].entries.length} item${visibleLedgerDays[0].entries.length === 1 ? '' : 's'} · ${formatAmount(visibleLedgerDays[0].total)} ${baseCurrency}` : ''}
               </p>
             </div>
           </div>
@@ -910,7 +916,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                       <p className="text-[10px] text-secondary">{dayGroup.entries.length} item{dayGroup.entries.length === 1 ? '' : 's'}</p>
                     </div>
                     <div className="text-xs font-bold text-textMain">
-                      {dayGroup.total.toFixed(2)}
+                      {formatAmount(dayGroup.total)}
                     </div>
                   </div>
                 )}
@@ -943,13 +949,13 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expense Progression</h3>
           <div className="flex items-center justify-between gap-2 bg-background border border-border rounded-lg px-2 py-1 w-full sm:w-auto">
-            <button onClick={() => setSelectedYear(year => year - 1)} className="p-1 hover:text-primary"><ChevronLeft size={16} /></button>
+              <button type="button" aria-label="Previous year" onClick={() => setSelectedYear(year => year - 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronLeft size={16} /></button>
             <span className="text-xs font-bold w-12 text-center flex-1">{selectedYear}</span>
-            <button onClick={() => setSelectedYear(year => year + 1)} className="p-1 hover:text-primary"><ChevronRight size={16} /></button>
+              <button type="button" aria-label="Next year" onClick={() => setSelectedYear(year => year + 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronRight size={16} /></button>
           </div>
         </div>
         <div className="h-56 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart data={yearlyExpenseData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-secondary)', fontSize: 10 }} interval={0} />
@@ -958,7 +964,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                 cursor={{ fill: 'var(--color-text-main)', opacity: 0.05 }}
                 content={<ExpenseYearTooltip baseCurrency={baseCurrency} />}
               />
-              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="#ef4444" />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="#ef4444" isAnimationActive={!reducedMotion} />
             </BarChart>
           </ResponsiveContainer>
         </div>

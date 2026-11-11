@@ -5,6 +5,7 @@ import { calculateNextPayment } from '../services/storageService';
 import { generateNaughtyReminder } from '../services/geminiService';
 import { ArrowLeft, Trash2, CheckCircle2, Circle, MessageCircle, AlertTriangle, ChevronLeft, ChevronRight, Share2, Copy, CreditCard, Tag, Users, Edit, Plus, Bell, RotateCcw, PlayCircle } from 'lucide-react';
 import SubscriptionLogo from './SubscriptionLogo';
+import { formatAmount, formatShortDate } from '../services/formatting';
 
 interface SubscriptionDetailProps {
   subscription: Subscription;
@@ -149,10 +150,10 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                 >
                     {subscription.status === 'Active' ? 'ACTIVE' : 'PAST / CANCELLED'}
                 </button>
-                <button onClick={() => onEdit(subscription)} className="p-2 text-secondary hover:text-primary">
+                <button type="button" aria-label="Edit subscription" onClick={() => onEdit(subscription)} className="p-2 text-secondary hover:text-primary">
                     <Edit size={20} />
                 </button>
-                <button onClick={() => onDelete(subscription.id)} className="p-2 text-secondary hover:text-red-500">
+                <button type="button" aria-label="Delete subscription" onClick={() => onDelete(subscription.id)} className="p-2 text-secondary hover:text-red-500">
                     <Trash2 size={20} />
                 </button>
             </div>
@@ -169,12 +170,12 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                 </div>
                 <h2 className="text-2xl font-bold text-textMain">{subscription.name}</h2>
                 <div className="flex items-baseline mt-1">
-                    <span className="text-3xl font-bold text-textMain">{subscription.price.toFixed(2)}</span>
+                    <span className="text-3xl font-bold text-textMain">{formatAmount(subscription.price)}</span>
                     <span className="text-sm font-semibold text-secondary ml-1">{subscription.currency} / {subscription.billingCycle}</span>
                 </div>
                 {subscription.status === 'Past' && subscription.cancellationDate && (
                     <p className="text-xs text-red-500 mt-1 font-medium">
-                        Ended on {new Date(subscription.cancellationDate).toLocaleDateString()}
+                        Ended on {formatShortDate(subscription.cancellationDate)}
                     </p>
                 )}
                 <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm text-secondary">
@@ -227,11 +228,11 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                 <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
                     {/* Month Navigator Header */}
                     <div className="bg-background/50 p-3 flex items-center justify-between border-b border-border">
-                        <button onClick={handlePrevMonth} className="p-1 text-secondary hover:text-primary transition-colors">
+                        <button type="button" aria-label="Previous payment month" onClick={handlePrevMonth} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors">
                             <ChevronLeft size={24} />
                         </button>
                         <span className="font-bold text-textMain select-none">{formatMonth(currentHistoryDate)}</span>
-                        <button onClick={handleNextMonth} className="p-1 text-secondary hover:text-primary transition-colors">
+                        <button type="button" aria-label="Next payment month" onClick={handleNextMonth} className="flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors">
                             <ChevronRight size={24} />
                         </button>
                     </div>
@@ -254,6 +255,8 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                                 <div className="flex items-center space-x-2">
                                      <button 
                                         onClick={() => togglePaymentStatus('ME')}
+                                        aria-label={currentMonthHistory['ME'] ? 'Mark my payment unpaid' : 'Mark my payment paid'}
+                                        aria-pressed={Boolean(currentMonthHistory['ME'])}
                                         className={`p-1 rounded-full transition-colors ${currentMonthHistory['ME'] ? 'text-emerald-500' : 'text-secondary hover:text-textMain'}`}
                                     >
                                         {currentMonthHistory['ME'] ? <CheckCircle2 size={24} /> : <Circle size={24} />}
@@ -296,6 +299,8 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                                             )}
                                             <button 
                                                 onClick={() => togglePaymentStatus(person)}
+                                                aria-label={`Mark ${person}'s payment ${isPaid ? 'unpaid' : 'paid'}`}
+                                                aria-pressed={Boolean(isPaid)}
                                                 className={`p-1 rounded-full transition-colors ${isPaid ? 'text-emerald-500' : 'text-secondary hover:text-textMain'}`}
                                             >
                                                 {isPaid ? <CheckCircle2 size={24} /> : <Circle size={24} />}
@@ -354,11 +359,13 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription, f
                     <div className="bg-background p-4 rounded-xl border border-border mb-4 relative group">
                         <p className="text-textMain font-medium italic">"{nudgeMessage}"</p>
                         <button 
+                           type="button"
+                           aria-label="Copy reminder"
                            onClick={() => {
                                navigator.clipboard.writeText(nudgeMessage);
                                onShowToast("Copied to clipboard!");
                            }}
-                           className="absolute top-2 right-2 p-1 bg-surface rounded text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                           className="absolute top-2 right-2 p-2 bg-surface rounded-lg text-secondary hover:text-primary focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         >
                             <Copy size={14} />
                         </button>

@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:ui:browser": "node scripts/test-ui-browser.mjs",
     "test:city:movement:browser": "node scripts/test-city-expansion-browser.mjs --movement",
     "test:cards:planner": "node scripts/test-card-planner.mjs",
     "test:cards:planner:browser": "node scripts/test-card-planner-browser.mjs",

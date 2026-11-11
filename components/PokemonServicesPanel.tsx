@@ -6,6 +6,7 @@ import {
 } from '../services/pokemonExtrasService';
 import { openPokemonCardStore } from '../services/pokemonCardStorage';
 import { singaporeDate } from '../services/pokemonEventService';
+import { formatShortDate } from '../services/formatting';
 
 // Cards you've sent out - to a grader, or for pressing, cleaning or repair - and where each one is.
 
@@ -72,10 +73,10 @@ export default function PokemonServicesPanel({ extras, busy, baseCurrency, onSav
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[item.status]}`}>{item.status}</span>
         </div>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-secondary">
-          {item.sentDate && <span>Sent {new Date(`${item.sentDate}T00:00:00`).toLocaleDateString()}</span>}
+          {item.sentDate && <span>Sent {formatShortDate(`${item.sentDate}T00:00:00`)}</span>}
           {timing && <span>{timing.out} day{timing.out === 1 ? '' : 's'} out</span>}
-          {timing?.overdue ? <span className="font-bold text-red-500">{timing.overdue} day{timing.overdue === 1 ? '' : 's'} past expected</span> : item.expectedDate && item.status !== 'Returned' ? <span>Expected {new Date(`${item.expectedDate}T00:00:00`).toLocaleDateString()}</span> : null}
-          {item.returnedDate && <span>Back {new Date(`${item.returnedDate}T00:00:00`).toLocaleDateString()}</span>}
+          {timing?.overdue ? <span className="font-bold text-red-500">{timing.overdue} day{timing.overdue === 1 ? '' : 's'} past expected</span> : item.expectedDate && item.status !== 'Returned' ? <span>Expected {formatShortDate(`${item.expectedDate}T00:00:00`)}</span> : null}
+          {item.returnedDate && <span>Back {formatShortDate(`${item.returnedDate}T00:00:00`)}</span>}
           {item.tracking && <span>Tracking {item.tracking}</span>}
           {item.result && <span className="font-bold text-textMain">Result: {item.result}</span>}
         </div>

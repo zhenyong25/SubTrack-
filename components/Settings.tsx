@@ -142,9 +142,10 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                 </div>
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-xs font-semibold text-secondary uppercase mb-1">Display Name</label>
+                        <label htmlFor="settings-name" className="block text-xs font-semibold text-secondary uppercase mb-1">Display Name</label>
                         <input 
                             type="text" 
+                            id="settings-name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none"
@@ -152,9 +153,10 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         />
                     </div>
                     <div>
-                         <label className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
+                         <label htmlFor="settings-currency" className="block text-xs font-semibold text-secondary uppercase mb-1">Currency</label>
                          <div className="relative">
                             <select 
+                                id="settings-currency"
                                 value={currency}
                                 onChange={(e) => setCurrency(e.target.value)}
                                 className="w-full bg-background border border-border rounded-lg p-3 text-textMain focus:border-primary outline-none appearance-none"
@@ -164,10 +166,11 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                          </div>
                     </div>
                      <div>
-                         <label className="block text-xs font-semibold text-secondary uppercase mb-1">Notification Threshold (Days)</label>
+                         <label htmlFor="settings-notification-days" className="block text-xs font-semibold text-secondary uppercase mb-1">Notification Threshold (Days)</label>
                          <div className="flex items-center space-x-3">
                             <input 
                                 type="range" 
+                                id="settings-notification-days"
                                 min="1" max="30" 
                                 value={notificationDays} 
                                 onChange={(e) => setNotificationDays(parseInt(e.target.value))}
@@ -182,6 +185,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         <span className="text-sm font-medium text-textMain">Theme Mode</span>
                         <button 
                             onClick={onToggleTheme}
+                            aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
                             className="bg-background border border-border p-2 rounded-lg text-secondary hover:text-textMain transition-colors flex items-center"
                         >
                             {isDark ? <><Moon size={16} className="mr-2" /> Dark</> : <><Sun size={16} className="mr-2" /> Light</>}
@@ -212,6 +216,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                         <input 
                             type="text" 
                             value={friendInput}
+                            aria-label="Friend username or email"
                             onChange={e => setFriendInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddFriend()}
                             placeholder="Username or Email"
@@ -226,6 +231,7 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                     </div>
                     <button 
                         onClick={handleAddFriend}
+                        aria-label="Add friend"
                         disabled={isSearchingFriend || !friendInput.trim()}
                         className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors disabled:opacity-50"
                     >
@@ -237,13 +243,16 @@ const Settings: React.FC<SettingsProps> = ({ currentProfile, onUpdateProfile, on
                     {friends.map(friend => (
                         <div key={friend.id} className="flex items-center justify-between bg-background p-2 rounded-lg border border-border animate-fade-in">
                             <div className="flex items-center">
-                                <img src={friend.avatar} alt={friend.name} className="w-8 h-8 rounded-full mr-3 border border-border" />
+                                {/* Initials drawn here: the stored avatar is an external image that breaks offline or when missing. */}
+                                <span aria-hidden="true" className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-primary/10 text-[11px] font-bold uppercase text-primary">
+                                    {friend.name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('') || '?'}
+                                </span>
                                 <div>
                                     <p className="text-sm font-bold text-textMain">{friend.name}</p>
                                     <p className="text-[10px] text-secondary">{friend.email}</p>
                                 </div>
                             </div>
-                            <button onClick={() => removeFriend(friend.id)} className="text-secondary hover:text-red-500 p-1">
+                            <button type="button" aria-label={`Remove ${friend.name}`} onClick={() => removeFriend(friend.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-red-500/10 hover:text-red-500">
                                 <X size={16} />
                             </button>
                         </div>

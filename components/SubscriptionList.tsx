@@ -5,6 +5,7 @@ import { getUrgencyLevel, convertCurrency } from '../services/storageService';
 import { CalendarClock, ChevronRight, Tag } from 'lucide-react';
 import CardLogo from './CardLogo';
 import SubscriptionLogo from './SubscriptionLogo';
+import { formatAmount } from '../services/formatting';
 
 interface SubscriptionListProps {
   subscriptions: Subscription[];
@@ -77,7 +78,7 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
   };
 
   return (
-    <div className="pb-24 animate-fade-in relative px-1">
+    <div className="pb-1 animate-fade-in relative px-1">
       
       {/* Slim Sticky Header with Currency Selector */}
       <div className="sticky top-[72px] z-10 py-2 -mx-5 px-5 transition-all bg-gradient-to-b from-background via-background/95 to-transparent flex justify-between items-center">
@@ -151,7 +152,17 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
             return (
             <div 
                 key={sub.id} 
+                role="button"
+                tabIndex={0}
+                aria-label={`View ${sub.name} subscription`}
                 onClick={() => onSelect(sub)}
+                onKeyDown={event => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelect(sub);
+                    }
+                }}
                 className="group relative bg-surface hover:bg-surface/80 rounded-xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-200 cursor-pointer overflow-hidden"
             >
                 <div className="flex items-center px-3 py-3">
@@ -165,10 +176,10 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
 
                     {/* Middle: Name & Meta */}
                     <div className="flex-1 min-w-0 mr-2">
-                        <h3 className={`font-bold text-sm truncate leading-snug ${sub.status === 'Past' ? 'text-secondary line-through' : 'text-textMain'}`}>{sub.name}</h3>
+                        <h3 className={`font-bold text-sm line-clamp-2 break-words leading-snug ${sub.status === 'Past' ? 'text-secondary line-through' : 'text-textMain'}`}>{sub.name}</h3>
                         <div className="flex items-center gap-2 mt-0.5">
                              {sub.cardName && sub.cardName !== 'Cash' && (
-                                <div className="flex items-center text-[10px] text-secondary bg-background px-1.5 py-0.5 rounded border border-border/50 truncate max-w-[100px]">
+                                <div className="flex items-center text-[10px] text-secondary bg-background px-1.5 py-0.5 rounded border border-border/50 truncate max-w-[160px]">
                                     <CardLogo type={sub.cardType} name={sub.cardName} />
                                     <span className="truncate">{sub.cardName}</span>
                                 </div>
@@ -182,13 +193,13 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
                     </div>
 
                     {/* Right: Price, Cycle Tag & Date */}
-                    <div className="text-right flex-shrink-0 min-w-[130px] flex flex-col items-end justify-center">
+                    <div className="text-right flex-shrink-0 sm:min-w-[130px] flex flex-col items-end justify-center">
                         <div className="flex items-center justify-end mb-0.5 w-full">
                              {isTrial ? (
                                 <span className="text-lg font-extrabold text-emerald-500 leading-none">Free</span>
                              ) : (
                                 <span className={`text-lg font-extrabold leading-none tracking-tight ${sub.status === 'Past' ? 'text-secondary' : 'text-textMain'}`}>
-                                     {displayPrice.toFixed(2)}
+                                     {formatAmount(displayPrice)}
                                 </span>
                              )}
                              {getCycleBadge(sub.billingCycle)}
@@ -199,7 +210,7 @@ const SubscriptionList: React.FC<SubscriptionListProps> = ({ subscriptions, base
                     </div>
 
                     {/* Arrow */}
-                    <ChevronRight size={16} className="text-border ml-2 group-hover:text-primary transition-colors" />
+                    <ChevronRight size={16} className="hidden sm:block text-border ml-2 group-hover:text-primary transition-colors" />
                 </div>
 
                 {/* Slim Progress Line - Uses Custom Color */}

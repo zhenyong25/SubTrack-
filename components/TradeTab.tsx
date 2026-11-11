@@ -76,11 +76,11 @@ const TradeTab: React.FC<TradeTabProps> = ({ holdingSymbols, onNotify }) => {
   return (
     <div className="desktop-layout trade-layout space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1" role="tablist" aria-label="Trade view">
+        <div className="grid w-full grid-cols-4 gap-1 rounded-xl border border-border bg-surface p-1 sm:flex sm:w-auto sm:flex-wrap" role="tablist" aria-label="Trade view">
           {VIEWS.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold ${view === id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>
-              <Icon size={14} /> {label}
+              className={`flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs ${view === id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>
+              <Icon size={14} className="hidden sm:block" /> {label}
             </button>
           ))}
         </div>

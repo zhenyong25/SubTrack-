@@ -9,8 +9,11 @@ export const DEFAULT_EXPENSE_CATEGORIES = ['Food', 'Bills', 'Groceries', 'Rent',
 const EXPENSE_CATEGORIES_STORAGE_KEY = 'subtrack_expense_categories_v1';
 const EXPENSE_CATEGORY_COLORS_STORAGE_KEY = 'subtrack_expense_category_colors_v1';
 
-export const EXPENSE_COLOR_PALETTE = ['#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#64748b'];
+// Distinct hues, so categories side by side in a chart can always be told apart.
+export const EXPENSE_COLOR_PALETTE = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#16a34a', '#14b8a6', '#0ea5e9', '#2563eb', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899', '#a16207', '#64748b'];
+export const EXPENSE_COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Lime', 'Green', 'Teal', 'Sky', 'Blue', 'Indigo', 'Purple', 'Magenta', 'Pink', 'Brown', 'Slate'];
 
+// One color each: groceries/health, rent/education and transport/subscriptions used to share.
 const DEFAULT_EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   food: '#f97316',
   bills: '#ef4444',
@@ -19,10 +22,10 @@ const DEFAULT_EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   transport: '#0ea5e9',
   dining: '#eab308',
   shopping: '#ec4899',
-  health: '#16a34a',
+  health: '#14b8a6',
   insurance: '#64748b',
-  education: '#8b5cf6',
-  subscriptions: '#0ea5e9',
+  education: '#6366f1',
+  subscriptions: '#2563eb',
 };
 
 const normalizeExpenseCategory = (category: string) => category.trim().toLowerCase();
@@ -51,6 +54,20 @@ export const getExpenseCategoryColor = (category: string): string => {
     hash = (hash * 31 + normalized.charCodeAt(index)) >>> 0;
   }
   return EXPENSE_COLOR_PALETTE[hash % EXPENSE_COLOR_PALETTE.length];
+};
+
+// Colors for the categories shown together in one chart: each keeps its own color unless an
+// earlier one already uses it, then takes the first palette color the chart hasn't used.
+export const chartCategoryColors = (categories: string[]): Record<string, string> => {
+  const colors: Record<string, string> = {}, used = new Set<string>();
+  for (const category of categories) {
+    if (colors[category]) continue;
+    let color = getExpenseCategoryColor(category);
+    if (used.has(color.toLowerCase())) color = EXPENSE_COLOR_PALETTE.find(option => !used.has(option)) ?? color;
+    colors[category] = color;
+    used.add(color.toLowerCase());
+  }
+  return colors;
 };
 
 export const saveExpenseCategoryColor = (category: string, color: string): string => {

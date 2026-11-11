@@ -5,6 +5,7 @@ import { computeCashback, getProgramForCycle, getStatementCycle, isCashbackCard 
 import {
   DEFAULT_EXPENSE_CATEGORIES as DEFAULT_CATEGORIES,
   deleteExpenseCategoryColor,
+  EXPENSE_COLOR_NAMES,
   EXPENSE_COLOR_PALETTE,
   getCurrencySymbol,
   getExpenseCategories,
@@ -23,7 +24,7 @@ interface AddExpenseProps {
   cashbackPrograms?: CashbackProgram[];
 }
 
-const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Slate'];
+
 const FIELD_CLASS = 'w-full min-w-0 h-12 bg-surface border border-border rounded-xl px-3 text-sm text-textMain placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors';
 const LABEL_CLASS = 'mb-2 block text-xs font-semibold text-secondary';
 
@@ -414,15 +415,15 @@ const AddExpense: React.FC<AddExpenseProps> = ({ onSave, onCancel, initialData, 
 
           <fieldset>
             <legend className={LABEL_CLASS}>Category color</legend>
-            <div className="grid grid-cols-8 gap-2">
+            <div className="grid grid-cols-7 gap-2">
               {EXPENSE_COLOR_PALETTE.map((c, index) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => selectCategoryColor(c)}
-                  aria-label={COLOR_NAMES[index]}
+                  aria-label={EXPENSE_COLOR_NAMES[index]}
                   aria-pressed={selectedColor === c}
-                  title={COLOR_NAMES[index]}
+                  title={EXPENSE_COLOR_NAMES[index]}
                   className={`h-11 w-full min-w-0 rounded-xl flex items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${selectedColor === c ? 'ring-2 ring-textMain ring-offset-2 ring-offset-background shadow-sm' : 'hover:-translate-y-0.5'}`}
                   style={{ backgroundColor: c }}
                 >

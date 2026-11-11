@@ -2,10 +2,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Subscription, BillingCycle, CURRENCIES, PaymentCard } from '../types';
-import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol, getExpenseCategoryColor } from '../services/storageService';
+import { getMonthlyCost, getYearlyExpenseData, convertCurrency, getCurrencySymbol, getExpenseCategoryColor, chartCategoryColors } from '../services/storageService';
 import { CreditCard, Calendar, TrendingUp, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Clock, PlusCircle } from 'lucide-react';
 import CardLogo from './CardLogo';
 import SubscriptionList from './SubscriptionList';
+import { useReducedMotion } from './useReducedMotion';
+import { formatAmount } from '../services/formatting';
 
 interface DashboardProps {
   subscriptions: Subscription[];
@@ -21,6 +23,7 @@ interface DashboardProps {
 type ViewMode = 'Daily' | 'Monthly' | 'Yearly';
 
 const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrency, onCurrencyChange, onAddCard, onViewCard, onDeleteSubscription, onSelectSubscription }) => {
+  const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<ViewMode>('Monthly');
   const [cardFilterDate, setCardFilterDate] = useState(new Date());
 
@@ -101,6 +104,8 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [subscriptions, baseCurrency]);
+  // One distinct color per category in the chart and its legend.
+  const categoryColors = useMemo(() => chartCategoryColors(categoryData.map(entry => entry.name)), [categoryData]);
 
   const yearlyChartData = useMemo(() => getYearlyExpenseData(subscriptions, selectedYear, baseCurrency), [subscriptions, selectedYear, baseCurrency]);
 
@@ -218,7 +223,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                 <h2 className="text-2xl font-bold">{stats.nextUpSub.name}</h2>
                 <div className="flex items-center mt-2 space-x-2">
                      <span className="text-3xl font-bold">
-                        {stats.nextUpSub.billingCycle === BillingCycle.FreeTrial ? 'Free' : (stats.nextUpSub.price / (stats.nextUpSub.sharedCount || 1)).toFixed(2)}
+                        {stats.nextUpSub.billingCycle === BillingCycle.FreeTrial ? 'Free' : formatAmount((stats.nextUpSub.price / (stats.nextUpSub.sharedCount || 1)))}
                      </span>
                      <span className="text-sm opacity-90">{stats.nextUpSub.currency}</span>
                 </div>
@@ -264,12 +269,12 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
       </div>
 
       {/* Summary */}
-      <div className="dashboard-summary bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col items-center text-center">
+      <div className="dashboard-summary bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col items-center justify-center text-center">
              <p className="text-sm font-medium text-secondary uppercase tracking-wide mb-2">
                  Total {viewMode} Spending
              </p>
              <div className="flex items-baseline space-x-2 text-textMain">
-                 <span className="text-4xl font-bold tracking-tight">{displayTotal.toFixed(2)}</span>
+                 <span className="text-4xl font-bold tracking-tight">{formatAmount(displayTotal)}</span>
                  <span className="text-lg font-medium text-secondary">{baseCurrency}</span>
              </div>
       </div>
@@ -283,7 +288,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
           </div>
           <div>
             <div className="flex items-baseline space-x-1">
-                <p className="text-2xl font-bold text-textMain">{stats.currentMonthBill.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-textMain">{formatAmount(stats.currentMonthBill)}</p>
                 <span className="text-xs font-medium text-secondary">{baseCurrency}</span>
             </div>
             <p className="text-[10px] text-secondary mt-1">Actual bill payments</p>
@@ -298,7 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
             <div>
                 <p className="text-lg font-bold text-textMain truncate">{stats.mostExpensiveSub.name}</p>
                 <div className="flex items-center space-x-1 mt-1">
-                     <span className="text-sm font-semibold text-secondary">{stats.mostExpensiveSub.amount.toFixed(2)}</span>
+                     <span className="text-sm font-semibold text-secondary">{formatAmount(stats.mostExpensiveSub.amount)}</span>
                      <span className="text-[10px] text-secondary">{baseCurrency}/mo</span>
                 </div>
             </div>
@@ -310,7 +315,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                 <span className="text-xs font-bold uppercase tracking-wider">Avg. Cost</span>
             </div>
              <div>
-                <p className="text-2xl font-bold text-textMain">{stats.averageCost.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-textMain">{formatAmount(stats.averageCost)}</p>
                 <p className="text-[10px] text-secondary mt-1">Per subscription</p>
             </div>
         </div>
@@ -331,16 +336,16 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
 
       {/* Yearly Expense Chart */}
       <div className="dashboard-year bg-surface p-6 rounded-xl shadow-sm border border-border">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Yearly Expenses</h3>
               <div className="flex items-center space-x-2 bg-background border border-border rounded-lg px-2 py-1">
-                  <button onClick={() => setSelectedYear(y => y - 1)} className="p-1 hover:text-primary"><ChevronLeft size={16}/></button>
+                  <button type="button" aria-label="Previous year" onClick={() => setSelectedYear(y => y - 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronLeft size={16}/></button>
                   <span className="text-xs font-bold w-12 text-center">{selectedYear}</span>
-                  <button onClick={() => setSelectedYear(y => y + 1)} className="p-1 hover:text-primary"><ChevronRight size={16}/></button>
+                  <button type="button" aria-label="Next year" onClick={() => setSelectedYear(y => y + 1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-surface hover:text-primary"><ChevronRight size={16}/></button>
               </div>
           </div>
           <div className="h-56 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 224 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={yearlyChartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.5} />
                     <XAxis 
@@ -368,7 +373,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                         itemStyle={{ color: 'var(--color-primary)', fontSize: '12px', fontWeight: 'bold' }}
                         formatter={(value: number) => [`${value.toFixed(0)} ${baseCurrency}`, 'Cost']}
                     />
-                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]} isAnimationActive={!reducedMotion}>
                         {yearlyChartData.map((entry, index) => (
                             <Cell 
                                 key={`cell-${index}`} 
@@ -395,7 +400,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
 
        {/* Spending by Card */}
        <div className="dashboard-cards bg-surface p-6 rounded-xl shadow-sm border border-border">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                  <div className="flex items-center space-x-2">
                     <CreditCard className="text-primary" size={18} />
                     <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Card Usage</h3>
@@ -403,14 +408,14 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                  <div className="flex space-x-2">
                     {/* Month Picker */}
                     <div className="flex items-center bg-background border border-border rounded-lg p-1">
-                        <button onClick={handlePrevCardMonth} className="p-1 hover:text-primary"><ChevronLeft size={16} /></button>
+                        <button type="button" aria-label="Previous card month" onClick={handlePrevCardMonth} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-background hover:text-primary"><ChevronLeft size={16} /></button>
                         <span className="text-xs font-bold w-20 text-center select-none">
                             {cardFilterDate.toLocaleDateString('en-US', {month: 'short', year: '2-digit'})}
                         </span>
-                        <button onClick={handleNextCardMonth} className="p-1 hover:text-primary"><ChevronRight size={16} /></button>
+                        <button type="button" aria-label="Next card month" onClick={handleNextCardMonth} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-background hover:text-primary"><ChevronRight size={16} /></button>
                     </div>
                     {/* Add Card Button - Open Modal via App prop */}
-                    <button onClick={onAddCard} className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors">
+                    <button type="button" aria-label="Add card" onClick={onAddCard} className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-colors">
                         <PlusCircle size={18} />
                     </button>
                  </div>
@@ -442,10 +447,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-sm font-bold text-textMain block">{item.value.toFixed(2)} {baseCurrency}</span>
+                                    <span className="text-sm font-bold text-textMain block">{formatAmount(item.value)} {baseCurrency}</span>
                                     {item.kind === 'Credit' && item.limitOrBalance && (
                                         <span className={`text-[10px] font-medium ${item.value > item.limitOrBalance ? 'text-red-500' : 'text-secondary'}`}>
-                                            of {item.limitOrBalance} limit
+                                            of {formatAmount(item.limitOrBalance, 0)} {baseCurrency} limit
                                         </span>
                                     )}
                                 </div>
@@ -466,9 +471,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
         <h3 className="text-sm font-bold text-textMain uppercase mb-6 tracking-wide">Spending by Category</h3>
         <div className="h-64 w-full min-w-0">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 560, height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
+                  isAnimationActive={!reducedMotion}
                   data={categoryData}
                   cx="50%"
                   cy="50%"
@@ -480,13 +486,13 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
                   strokeWidth={2}
                 >
                   {categoryData.map(entry => (
-                    <Cell key={`cell-${entry.name}`} fill={getExpenseCategoryColor(entry.name)} />
+                    <Cell key={`cell-${entry.name}`} fill={categoryColors[entry.name]} />
                   ))}
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-main)', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   itemStyle={{ color: 'var(--color-text-main)', fontSize: '12px', fontWeight: 'bold' }}
-                  formatter={(value: number) => [`${value.toFixed(2)} ${baseCurrency}`, 'Monthly']}
+                  formatter={(value: number) => [`${formatAmount(value)} ${baseCurrency}`, 'Monthly']}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -499,7 +505,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subscriptions, cards, baseCurrenc
         <div className="mt-6 flex flex-wrap gap-3 justify-center">
           {categoryData.map(entry => (
             <div key={entry.name} className="flex items-center space-x-1.5 bg-background px-2 py-1 rounded-md border border-border">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getExpenseCategoryColor(entry.name) }}></div>
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: categoryColors[entry.name] }}></div>
               <span className="text-xs font-medium text-secondary">{entry.name}</span>
             </div>
           ))}

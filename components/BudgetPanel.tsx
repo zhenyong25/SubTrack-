@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, Copy, Pencil, PiggyBank, Plus, Search, Trash2, X } from 'lucide-react';
 import { BudgetPlan } from '../types';
 import { getCategoryIcon } from '../services/categoryIcons';
+import { formatAmount } from '../services/formatting';
 
 interface BudgetPanelProps {
   monthLabel: string;
@@ -160,7 +161,7 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
                 <div className="flex items-center justify-between gap-3 text-[10px]">
                   <span className="text-secondary">Allocated to categories</span>
                   <span className={`font-bold ${parsedTotalLimit > 0 && categoryAllocationTotal > parsedTotalLimit ? 'text-red-500' : 'text-textMain'}`}>
-                    {categoryAllocationTotal.toFixed(2)} / {parsedTotalLimit.toFixed(2)} {currency}
+                    {formatAmount(categoryAllocationTotal)} / {formatAmount(parsedTotalLimit)} {currency}
                   </span>
                 </div>
                 {hasIncompleteCategory && (
@@ -285,7 +286,7 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">{monthLabel} budget</p>
             <p className={`mt-1 text-xl font-extrabold ${isOver ? 'text-red-500' : 'text-textMain'}`}>
-              {Math.abs(remaining).toFixed(2)} <span className="text-xs font-bold">{currency}</span>
+              {formatAmount(Math.abs(remaining))} <span className="text-xs font-bold">{currency}</span>
             </p>
             <p className="text-[10px] text-secondary">{isOver ? 'over budget' : 'left to spend'}</p>
           </div>
@@ -295,8 +296,8 @@ const BudgetPanel: React.FC<BudgetPanelProps> = ({
 
       <div className="mt-5">
         <div className="mb-2 flex justify-between text-[11px] font-semibold">
-          <span className="text-textMain">{spent.toFixed(2)} spent</span>
-          <span className="text-secondary">of {limit.toFixed(2)}</span>
+          <span className="text-textMain">{formatAmount(spent)} spent</span>
+          <span className="text-secondary">of {formatAmount(limit)}</span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-background">
           <div className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : progress >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }} />
