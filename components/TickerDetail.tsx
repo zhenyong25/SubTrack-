@@ -3,6 +3,8 @@ import {
   Activity,
   ArrowLeft,
   BarChart3,
+  CandlestickChart,
+  Check,
   Scale,
   Clock3,
   Loader2,
@@ -611,84 +613,99 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
             </section>
             </div>
             <div className="order-3 min-w-0 lg:order-none">
-            <section className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm">
-              <div className="border-b border-border px-4 pb-3 pt-4 sm:px-5">
-                <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {RANGE_OPTIONS.map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => handleRangeChange(option)}
-                      className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${range === option ? 'bg-primary text-white shadow-sm' : 'border border-border bg-background text-secondary hover:text-textMain'}`}
-                    >
-                      {option}
-                    </button>
-                  ))}
+            <section aria-label="Price chart and technical indicators" className="overflow-hidden rounded-3xl border border-border bg-background shadow-sm">
+              <div className="border-b border-border p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="flex items-center gap-2 text-sm font-bold"><CandlestickChart size={18} className="text-primary" />Price chart</h2>
+                  <span className="text-[11px] font-medium text-secondary">Candlesticks <span className="mx-1 opacity-50">/</span> {currency}</span>
                 </div>
-                <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {INTERVALS_BY_RANGE[range].map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setIntervalMode(option)}
-                      className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold transition ${interval === option ? 'bg-cyan-500/15 text-cyan-600 ring-1 ring-cyan-500/30 dark:text-cyan-300' : 'bg-background text-secondary'}`}
-                    >
-                      {INTERVAL_LABELS[option]}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+                  <div className="min-w-0">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-secondary">Time range</p>
+                    <div role="group" aria-label="Chart time range" className="inline-flex max-w-full rounded-xl bg-surface p-1">
+                      {RANGE_OPTIONS.map(option => (
+                        <button
+                          key={option}
+                          type="button"
+                          aria-pressed={range === option}
+                          onClick={() => handleRangeChange(option)}
+                          className={`min-h-9 min-w-0 rounded-lg px-3 text-[11px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:px-3.5 ${range === option ? 'bg-primary text-white shadow-sm' : 'text-secondary hover:bg-background hover:text-textMain'}`}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-secondary">Candle interval</p>
+                    <div role="group" aria-label="Candle interval" className="inline-flex max-w-full rounded-xl bg-surface p-1">
+                      {INTERVALS_BY_RANGE[range].map(option => (
+                        <button
+                          key={option}
+                          type="button"
+                          aria-pressed={interval === option}
+                          onClick={() => setIntervalMode(option)}
+                          className={`min-h-9 rounded-lg px-3 text-[11px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${interval === option ? 'bg-background text-primary shadow-sm ring-1 ring-border' : 'text-secondary hover:text-textMain'}`}
+                        >
+                          {INTERVAL_LABELS[option]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-    
-              <div className="border-b border-border px-4 py-3" data-testid="ticker-moving-averages">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="flex items-center gap-2 text-xs font-bold">Moving averages
-                    <select aria-label="Moving average type" value={averageType} onChange={e => setAverageType(e.target.value as AverageType)} className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-textMain">
+
+              <div className="border-b border-border bg-surface p-4 sm:px-5" data-testid="ticker-moving-averages">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold">Moving averages
+                    <select aria-label="Moving average type" value={averageType} onChange={e => setAverageType(e.target.value as AverageType)} className="min-h-8 rounded-lg border border-border bg-background px-2 text-[11px] font-semibold text-textMain focus-visible:outline-primary">
                       <option value="SMA">SMA</option><option value="EMA">EMA</option>
                     </select>
                   </label>
-                  <div className="flex gap-2">
-                    {trades.length > 0 && <button type="button" aria-pressed={showTrades} onClick={() => setShowTrades(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showTrades ? 'border-primary text-primary' : 'border-border text-secondary'}`}>My trades</button>}
-                    <button type="button" aria-pressed={showPatterns} onClick={() => setShowPatterns(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showPatterns ? 'border-primary text-primary' : 'border-border text-secondary'}`}>Pattern markers</button>
+                  <div className="flex flex-wrap gap-2">
+                    {trades.length > 0 && <button type="button" aria-pressed={showTrades} onClick={() => setShowTrades(value => !value)} className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold transition focus-visible:outline-primary ${showTrades ? 'text-primary' : 'text-secondary'}`}><span aria-hidden="true" className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${showTrades ? 'border-primary bg-primary text-white' : 'border-slate-400/50'}`}>{showTrades && <Check size={10} strokeWidth={3} />}</span>My trades</button>}
+                    <button type="button" aria-pressed={showPatterns} onClick={() => setShowPatterns(value => !value)} className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold transition focus-visible:outline-primary ${showPatterns ? 'text-primary' : 'text-secondary'}`}><span aria-hidden="true" className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${showPatterns ? 'border-primary bg-primary text-white' : 'border-slate-400/50'}`}>{showPatterns && <Check size={10} strokeWidth={3} />}</span>Pattern markers</button>
                   </div>
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
                   {MA_PERIODS.map(period => {
                     const value = technical.averages[period][activeCandle.sourceEnd];
                     const enabled = enabledAverages.includes(period);
                     return <button type="button" key={period} aria-label={`Toggle ${averageType} ${period}`} aria-pressed={enabled}
+                      title={`${enabled ? 'Hide' : 'Show'} ${averageType} ${period}${value === null || value === undefined ? ' · More history is needed' : ' · Value follows the inspected candle'}`}
                       onClick={() => setEnabledAverages(previous => enabled ? previous.filter(n => n !== period) : [...previous, period])}
-                      className={`min-w-0 rounded-lg border bg-background px-2 py-1.5 text-left ${enabled ? '' : 'opacity-60'}`} style={{ borderColor: enabled ? MA_COLORS[period] : undefined }}>
-                      <span className="flex items-center gap-1.5 text-[10px] font-bold text-secondary"><span className="inline-block h-0.5 w-3" style={{ background: MA_COLORS[period] }} />{averageType} {period}</span>
-                      <span className="mt-0.5 block text-xs font-black tabular-nums" data-ma-value={period}>{value === null || value === undefined ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 4 : 2, minimumFractionDigits: 2 })}</span>
+                      className={`relative min-w-0 overflow-hidden rounded-xl border px-2.5 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${enabled ? 'border-border bg-background shadow-sm' : 'border-transparent bg-transparent hover:border-border'}`}>
+                      {enabled && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-0.5" style={{ background: MA_COLORS[period] }} />}
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-[10px] font-medium text-secondary"><span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${enabled ? '' : 'border border-slate-400/50'}`} style={{ background: enabled ? MA_COLORS[period] : undefined }} />{averageType} {period}</span>
+                      <span className={`mt-1 block truncate text-sm font-bold tabular-nums ${enabled ? 'text-textMain' : 'text-secondary'}`} data-ma-value={period}>{value === null || value === undefined ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 4 : 2, minimumFractionDigits: 2 })}</span>
                     </button>;
                   })}
                 </div>
-                <p className="mt-2 text-[10px] text-secondary">{averageType === 'SMA' ? 'Simple' : 'Exponential'} averages of {INTERVAL_LABELS[interval].toLowerCase()} candles · {currency} · values follow the inspected candle. A dash means more history is needed.</p>
+                <p className="mt-2.5 text-[11px] leading-relaxed text-secondary">{averageType === 'SMA' ? 'Simple' : 'Exponential'} averages · {INTERVAL_LABELS[interval]} candles · {currency}. Select an indicator to show or hide it.<span className="sr-only"> Values follow the inspected candle. A dash means more history is needed.</span></p>
                 {warmupError && interval !== '1d' && interval !== '20s' && <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">{warmupError}</p>}
                 {rawCandles.length > candles.length && <p className="mt-1 text-[10px] text-secondary">Candles are grouped in this long view. Averages and pattern checks use the original {INTERVAL_LABELS[interval].toLowerCase()} candles; values are shown at each group's close.</p>}
               </div>
-              <div className="grid grid-cols-4 gap-px border-b border-border bg-border">
-                {[
-                  ['O', activeCandle.open],
-                  ['H', activeCandle.high],
-                  ['L', activeCandle.low],
-                  ['C', activeCandle.close],
-                ].map(([label, value]) => (
-                  <div key={label as string} className="bg-surface px-2 py-3 text-center">
-                    <p className="text-[9px] font-black uppercase text-secondary">{label}</p>
-                    <p className="mt-1 truncate text-[11px] font-black sm:text-sm">{Number(value).toLocaleString(undefined, { maximumFractionDigits: Number(value) < 1 ? 4 : 2 })}</p>
-                  </div>
-                ))}
-              </div>
-    
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <div>
-                  <p className="text-xs font-black">{timeLabel(activeCandle.timestamp)}</p>
-                  <p className="mt-0.5 text-[10px] text-secondary">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:px-5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold"><Clock3 size={12} className="text-secondary" />{timeLabel(activeCandle.timestamp)}</p>
+                  <p className="mt-1 text-[10px] text-secondary">
                     Volume {activeCandle.volume ? formatCompact(activeCandle.volume) : '—'}
                   </p>
                 </div>
-                <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1">
+                <div className="order-last grid w-full grid-cols-4 gap-3 border-t border-border pt-3 sm:order-none sm:w-auto sm:flex-1 sm:border-0 sm:pt-0" aria-label="Inspected candle prices">
+                  {[
+                    ['Open', activeCandle.open],
+                    ['High', activeCandle.high],
+                    ['Low', activeCandle.low],
+                    ['Close', activeCandle.close],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="min-w-0 sm:text-center">
+                      <p className="text-[10px] font-medium text-secondary">{label}</p>
+                      <p className={`mt-0.5 truncate text-xs font-bold tabular-nums ${label === 'Close' ? activeCandle.close >= activeCandle.open ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' : ''}`}>{Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: Number(value) < 1 ? 4 : 2 })}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
                   <button
                     type="button"
                     onClick={() => zoomTo(zoom - 0.5)}
@@ -718,7 +735,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                 </div>
               </div>
     
-              <div ref={chartViewportRef} className="relative overflow-x-auto overscroll-x-contain border-y border-border bg-background/40">
+              <div ref={chartViewportRef} className="relative overflow-x-auto overscroll-x-contain border-t border-border bg-background">
                 {isLoading && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/70 backdrop-blur-sm">
                     <div className="flex items-center gap-2 text-sm font-bold text-secondary"><Loader2 size={18} className="animate-spin" />Loading price movement…</div>
@@ -763,7 +780,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                       width={chart.width - chart.padding.left - chart.padding.right}
                       height={Math.abs(averageY - priceY)}
                       fill={inProfit ? '#10b981' : '#f43f5e'}
-                      opacity="0.08"
+                      opacity="0.035"
                       pointerEvents="none"
                     />
                   )}
