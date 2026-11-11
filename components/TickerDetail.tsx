@@ -10,9 +10,10 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  ArrowLeftRight,
   WalletCards,
 } from 'lucide-react';
-import type { InvestmentHolding } from '../types';
+import type { InvestmentHolding, InvestmentTransaction } from '../types';
 import {
   fetchStockIntradayHistory,
   type StockCandle,
@@ -20,7 +21,8 @@ import {
   type StockHistoryRange,
   type StockIntradayHistory,
 } from '../services/stockQuoteService';
-import type { PositionMetrics } from '../services/investmentService';
+import { transactionTypeLabel, type PositionMetrics } from '../services/investmentService';
+import { placeTrades, tradeMarkerLetter, TRADE_MARKER_COLORS } from '../services/tradeMarkers';
 import { breakEven, tickerStats } from '../services/tickerStatsService';
 import { buildInsights, fetchStockInsights, type StockInsights } from '../services/stockInsightsService';
 import { AnalystCard, EarningsCard, FinancialsCard, GrowthCard, InsightsCard, KeyStatsCard, NewsCard, ProfileCard } from './TickerFundamentals';
@@ -36,6 +38,8 @@ type TickerInterval = '20s' | StockHistoryInterval;
 interface TickerDetailProps {
   investment: InvestmentHolding;
   metrics: PositionMetrics;
+  // This holding's own transactions, drawn on the chart and listed under the position.
+  transactions?: InvestmentTransaction[];
   baseCurrency: string;
   priceRefreshedAt: number | null;
   isRefreshing: boolean;
@@ -102,6 +106,7 @@ const formatMarketState = (state?: string | null) => {
 const TickerDetail: React.FC<TickerDetailProps> = ({
   investment,
   metrics,
+  transactions = [],
   baseCurrency,
   priceRefreshedAt,
   isRefreshing,
@@ -120,6 +125,11 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
   const [enabledAverages, setEnabledAverages] = useState<number[]>([20, 50, 200]);
   const [showPatterns, setShowPatterns] = useState(true);
   const [focusedPattern, setFocusedPattern] = useState<PatternMatch | null>(null);
+  const [showTrades, setShowTrades] = useState(true);
+  const [focusedTradeId, setFocusedTradeId] = useState<string | null>(null);
+  const [allTradesShown, setAllTradesShown] = useState(false);
+  // A trade picked from the list that sits outside the charted range: shown once its range loads.
+  const pendingTradeRef = useRef<string | null>(null);
   const [warmup, setWarmup] = useState<{ key: string; candles: StockCandle[] } | null>(null);
   const [warmupError, setWarmupError] = useState('');
   const [daily, setDaily] = useState<StockIntradayHistory | null>(null);
@@ -258,6 +268,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
   useEffect(() => {
     setSelectedCandleIndex(null);
     setFocusedPattern(null);
+    if (!pendingTradeRef.current) setFocusedTradeId(null);
     setZoom(1);
     if (chartViewportRef.current) chartViewportRef.current.scrollLeft = 0;
   }, [range, interval]);
@@ -343,6 +354,20 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
     return groups;
   }, [candles, technical.matches, showPatterns]);
 
+  const trades = useMemo(() => transactions.slice().sort((a, b) => b.tradeDate.localeCompare(a.tradeDate) || (b.createdAt || '').localeCompare(a.createdAt || '')), [transactions]);
+  // Chart candle index -> the trades made on it.
+  const tradePlacement = useMemo(() => {
+    const { placed, outside } = placeTrades(rawCandles, trades, history?.exchangeTimezone);
+    const groups = new Map<number, InvestmentTransaction[]>(), candleOf = new Map<string, number>();
+    for (const [rawIndex, list] of placed) {
+      const index = candles.findIndex(c => c.sourceStart <= rawIndex && c.sourceEnd >= rawIndex);
+      if (index < 0) continue;
+      groups.set(index, [...(groups.get(index) || []), ...list]);
+      for (const trade of list) candleOf.set(trade.id, index);
+    }
+    return { groups, candleOf, outside };
+  }, [rawCandles, candles, trades, history?.exchangeTimezone]);
+
   const chart = useMemo(() => {
     const { width, height } = chartSize;
     const padding = { top: 22, right: 20, bottom: 34, left: width < 500 ? 48 : 68 };
@@ -422,12 +447,16 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
   const averageY = chart.average?.y;
   const priceY = chart.yForPrice(marketPrice);
   const inProfit = even?.status === 'profit';
+  const realized = trades.reduce((sum, trade) => sum + (trade.realizedPnl || 0), 0);
+  const boughtUnits = trades.reduce((sum, trade) => sum + (trade.transactionType === 'Buy' || trade.transactionType === 'Transfer In' ? trade.units : 0), 0);
+  const soldUnits = trades.reduce((sum, trade) => sum + (trade.transactionType === 'Sell' || trade.transactionType === 'Transfer Out' ? trade.units : 0), 0);
   const insightList = useMemo(
     () => (insights ? buildInsights(insights, { price: marketPrice, averageCost: investment.averageCost, side, today: new Date().toISOString().slice(0, 10) }) : []),
     [insights, marketPrice, investment.averageCost, side],
   );
 
   const handleRangeChange = (nextRange: TickerRange) => {
+    pendingTradeRef.current = null;
     setRange(nextRange);
     if (!INTERVALS_BY_RANGE[nextRange].includes(interval)) setIntervalMode(DEFAULT_INTERVAL[nextRange]);
   };
@@ -476,8 +505,41 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
       ? { weekday: 'short', hour: '2-digit', minute: '2-digit' }
       : { month: 'short', day: 'numeric', year: range === '1Y' || range === 'MAX' ? 'numeric' : undefined });
 
+  const focusCandle = (index: number) => {
+    setSelectedCandleIndex(index);
+    const viewport = chartViewportRef.current;
+    if (viewport && chart.candles[index]) viewport.scrollLeft = chart.candles[index].x / chart.width * viewport.scrollWidth - viewport.clientWidth / 2;
+  };
+
+  // Show a trade on the chart, switching to a longer range when it happened before this one.
+  const showTrade = (trade: InvestmentTransaction) => {
+    setFocusedPattern(null);
+    setFocusedTradeId(trade.id);
+    const index = tradePlacement.candleOf.get(trade.id);
+    if (index !== undefined) { focusCandle(index); return; }
+    const days = (Date.now() - new Date(`${trade.tradeDate.slice(0, 10)}T00:00:00`).getTime()) / 86400000;
+    const next: TickerRange = days < 28 ? '1M' : days < 88 ? '3M' : days < 360 ? '1Y' : 'MAX';
+    if (next === range && DEFAULT_INTERVAL[next] === interval) return;
+    pendingTradeRef.current = trade.id;
+    setRange(next); setIntervalMode(DEFAULT_INTERVAL[next]);
+  };
+
+  useEffect(() => {
+    const id = pendingTradeRef.current;
+    const index = id ? tradePlacement.candleOf.get(id) : undefined;
+    if (index === undefined) return;
+    pendingTradeRef.current = null;
+    focusCandle(index);
+  // Runs when a new range's candles arrive; focusCandle reads the chart drawn for them.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradePlacement]);
+
+  const tradeDay = (trade: InvestmentTransaction) => new Date(`${trade.tradeDate.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const tradeLabel = (trade: InvestmentTransaction) => `${transactionTypeLabel(trade.transactionType, investment.positionSide === 'Short')} ${trade.units.toLocaleString()} at ${trade.price.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${trade.currency} on ${tradeDay(trade)}`;
+
   const selectPattern = (match: PatternMatch | null) => {
     setFocusedPattern(match);
+    setFocusedTradeId(null);
     if (!match) { setSelectedCandleIndex(null); return; }
     const index = candles.findIndex(c => c.sourceStart <= match.index && c.sourceEnd >= match.index);
     if (index >= 0) {
@@ -584,7 +646,10 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                       <option value="SMA">SMA</option><option value="EMA">EMA</option>
                     </select>
                   </label>
-                  <button type="button" aria-pressed={showPatterns} onClick={() => setShowPatterns(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showPatterns ? 'border-primary text-primary' : 'border-border text-secondary'}`}>Pattern markers</button>
+                  <div className="flex gap-2">
+                    {trades.length > 0 && <button type="button" aria-pressed={showTrades} onClick={() => setShowTrades(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showTrades ? 'border-primary text-primary' : 'border-border text-secondary'}`}>My trades</button>}
+                    <button type="button" aria-pressed={showPatterns} onClick={() => setShowPatterns(value => !value)} className={`rounded-lg border px-2 py-1 text-[11px] font-bold ${showPatterns ? 'border-primary text-primary' : 'border-border text-secondary'}`}>Pattern markers</button>
+                  </div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
                   {MA_PERIODS.map(period => {
@@ -672,7 +737,7 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                   onPointerCancel={endDrag}
                   onPointerLeave={event => {
                     // Back to the latest candle once the mouse leaves, like most chart tools.
-                    if (event.pointerType === 'mouse' && !dragRef.current && !focusedPattern) setSelectedCandleIndex(null);
+                    if (event.pointerType === 'mouse' && !dragRef.current && !focusedPattern && !focusedTradeId) setSelectedCandleIndex(null);
                   }}
                 >
                   {[0, 0.25, 0.5, 0.75, 1].map(fraction => {
@@ -768,6 +833,37 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                     )}
                   </g>
     
+                  {/* Your trades: buys and transfers/dividends in sit below the candle, sells and transfers
+                      out above it, beyond the pattern markers, drawn over the price labels. A dot marks the price you traded at. */}
+                  {showTrades && Array.from(tradePlacement.groups, ([index, list]) => {
+                    const candle = chart.candles[index];
+                    if (!candle) return null;
+                    let below = 0, above = 0;
+                    return <g key={`trade-${index}`} data-trade-marker={index}>
+                      {list.map(trade => {
+                        const letter = tradeMarkerLetter(trade.transactionType)!, color = TRADE_MARKER_COLORS[letter];
+                        const under = trade.transactionType !== 'Sell' && trade.transactionType !== 'Transfer Out';
+                        const step = under ? below++ : above++;
+                        const y = clamp(under ? candle.lowY + 28 + step * 17 : candle.highY - 28 - step * 17, chart.padding.top + 8, chart.priceBottom - 8);
+                        // A dividend's price is the payout per share, not a share price; prices off the scale get no dot.
+                        const priceDotY = letter !== 'D' && trade.price >= chart.minPrice && trade.price <= chart.maxPrice ? chart.yForPrice(trade.price) : null;
+                        const focused = focusedTradeId === trade.id;
+                        const label = tradeLabel(trade);
+                        return <g key={trade.id} role="button" tabIndex={0} aria-label={label} className="cursor-pointer" data-trade-letter={letter}
+                          onPointerDown={e => e.stopPropagation()} onClick={() => showTrade(trade)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showTrade(trade); } }}>
+                          <title>{label}</title>
+                          {priceDotY !== null && <>
+                            <line x1={candle.x} x2={candle.x} y1={priceDotY} y2={y} stroke={color} strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+                            <circle cx={candle.x} cy={priceDotY} r="2.6" fill={color} stroke="#fff" strokeWidth="0.8" />
+                          </>}
+                          <circle cx={candle.x} cy={y} r={focused ? 9 : 7.5} fill={color} stroke={focused ? '#fff' : 'none'} strokeWidth="1.6" />
+                          <text x={candle.x} y={y + 3.3} textAnchor="middle" fill="#fff" fontSize="9.5" fontWeight="900">{letter}</text>
+                        </g>;
+                      })}
+                    </g>;
+                  })}
+
                   {chart.candles[activeIndex] && (
                     <line
                       x1={chart.candles[activeIndex].x}
@@ -793,6 +889,14 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
                 </svg>
               </div>
     
+              {showTrades && trades.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 text-[10px] font-bold text-secondary" data-testid="trade-marker-legend">
+                  {(['B', 'S', 'T', 'D'] as const).map(letter => (
+                    <span key={letter} className="flex items-center gap-1"><span className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-black text-white" style={{ background: TRADE_MARKER_COLORS[letter] }}>{letter}</span>{letter === 'B' ? 'Buy' : letter === 'S' ? 'Sell' : letter === 'T' ? 'Transfer' : 'Dividend'}</span>
+                  ))}
+                  <span className="font-semibold">· on the trade day's first candle{tradePlacement.outside > 0 ? ` · ${tradePlacement.outside} outside this range` : ''}</span>
+                </div>
+              )}
               <TickerTechnicals candles={rawCandles} matches={technical.matches} selected={focusedPattern} onSelect={selectPattern} timeLabel={timeLabel} intervalLabel={INTERVAL_LABELS[interval]} live={interval === '20s'} loading={isLoading} />
               <div className="px-4 py-3 text-[10px] leading-relaxed text-secondary">
                 {error ? <p className="font-semibold text-rose-500">{error}</p> : interval === '20s'
@@ -938,6 +1042,48 @@ const TickerDetail: React.FC<TickerDetailProps> = ({
               </div>
             </section>
             </div>
+            {trades.length > 0 && (
+            <div className="order-4 min-w-0 lg:order-none">
+            <section className="rounded-3xl border border-border bg-surface p-5 shadow-sm" data-testid="ticker-transactions">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-secondary"><ArrowLeftRight size={15} /><p className="text-[10px] font-black uppercase tracking-wide">Your transactions · {trades.length}</p></div>
+                {realized !== 0 && <p className={`text-xs font-black tabular-nums ${tone(realized)}`}>Realized {realized > 0 ? '+' : ''}{formatPrice(realized, investment.currency)}</p>}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[{ label: 'Bought', units: boughtUnits }, { label: 'Sold', units: soldUnits }].map(item => (
+                  <div key={item.label} className="rounded-xl border border-border bg-background px-3 py-2">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-secondary">{item.label}</p>
+                    <p className="mt-0.5 text-sm font-black tabular-nums">{item.units.toLocaleString()} units</p>
+                  </div>
+                ))}
+              </div>
+              <ul className="mt-3 space-y-2">
+                {(allTradesShown ? trades : trades.slice(0, 8)).map(trade => {
+                  const letter = tradeMarkerLetter(trade.transactionType);
+                  const amount = trade.units * trade.price;
+                  return (
+                    <li key={trade.id}>
+                      <button type="button" onClick={() => letter ? showTrade(trade) : undefined} disabled={!letter} aria-pressed={focusedTradeId === trade.id}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${focusedTradeId === trade.id ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-primary/40'} disabled:cursor-default`}>
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white" style={{ background: letter ? TRADE_MARKER_COLORS[letter] : '#94a3b8' }}>{letter || trade.transactionType.charAt(0)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-black">{transactionTypeLabel(trade.transactionType, investment.positionSide === 'Short')} · {tradeDay(trade)}</span>
+                          <span className="block truncate text-[11px] text-secondary">{trade.units.toLocaleString()} @ {formatPrice(trade.price, trade.currency)}{trade.fees ? ` · fees ${trade.fees.toFixed(2)}` : ''}{trade.notes ? ` · ${trade.notes}` : ''}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-xs font-black tabular-nums">{formatPrice(amount, trade.currency)}</span>
+                          {trade.realizedPnl != null && trade.realizedPnl !== 0 && <span className={`block text-[10px] font-bold tabular-nums ${tone(trade.realizedPnl)}`}>{trade.realizedPnl > 0 ? '+' : ''}{trade.realizedPnl.toFixed(2)} realized</span>}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {trades.length > 8 && <button type="button" onClick={() => setAllTradesShown(value => !value)} className="mt-2 w-full rounded-xl py-2 text-xs font-bold text-primary hover:bg-primary/5">{allTradesShown ? 'Show fewer' : `Show all ${trades.length}`}</button>}
+              <p className="mt-2 text-[10px] text-secondary">Tap a trade to find it on the chart.</p>
+            </section>
+            </div>
+            )}
             {insightsError && <p className="order-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 lg:order-none">{insightsError}</p>}
             {!insights && !insightsError && investment.symbol && (
               <div className="order-5 flex items-center gap-2 rounded-3xl border border-border bg-surface p-5 text-xs font-bold text-secondary lg:order-none"><Loader2 size={15} className="animate-spin" /> Loading company data…</div>

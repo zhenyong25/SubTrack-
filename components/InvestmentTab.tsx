@@ -430,6 +430,12 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
 
   const investmentsById = useMemo(() => new Map(investments.map(investment => [investment.id, investment])), [investments]);
   const tickerDetailInvestment = tickerDetailHoldingId ? investmentsById.get(tickerDetailHoldingId) || null : null;
+  const tickerDetailTransactions = useMemo(
+    () => transactions.filter(transaction => transaction.investmentId === tickerDetailHoldingId),
+    [transactions, tickerDetailHoldingId]
+  );
+  // Holdings with a market symbol open the ticker detail (chart plus your trades on it).
+  const hasTickerDetail = (investment?: InvestmentHolding) => Boolean(investment && QUOTABLE_KINDS.includes(investment.kind) && investment.symbol);
 
   // Realized profit/loss (in the base currency) per holding, from the trades stored with each transaction.
   const realizedByHolding = useMemo(() => {
@@ -882,6 +888,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           key={`${tickerDetailInvestment.id}:${tickerDetailInvestment.symbol || ''}`}
           investment={tickerDetailInvestment}
           metrics={getBaseMetrics(tickerDetailInvestment)}
+          transactions={tickerDetailTransactions}
           baseCurrency={baseCurrency}
           priceRefreshedAt={priceRefreshedAt}
           isRefreshing={refreshingHoldingId === tickerDetailInvestment.id}
@@ -1346,9 +1353,25 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
           </div>
         ) : (
           <div className="space-y-2">
-            {selectedTransactions.slice(0, 8).map(transaction => (
+            {selectedTransactions.slice(0, 8).map(transaction => {
+              const holding = investmentsById.get(transaction.investmentId);
+              const opensDetail = hasTickerDetail(holding);
+              return (
               <div key={transaction.id} className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-background px-4 py-3">
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  disabled={!opensDetail}
+                  onClick={() => opensDetail && setTickerDetailHoldingId(transaction.investmentId)}
+                  aria-label={opensDetail ? `View ${holding!.symbol} chart and transactions` : undefined}
+                  className="min-w-0 flex-1 text-left enabled:hover:opacity-80 disabled:cursor-default"
+                >
+                  {holding && (
+                    <p className="mb-1 flex items-center gap-1 text-xs font-black text-textMain truncate">
+                      {holding.symbol || holding.name}
+                      {holding.symbol && holding.name !== holding.symbol && <span className="font-semibold text-secondary truncate">· {holding.name}</span>}
+                      {opensDetail && <LineChartIcon size={11} className="shrink-0 text-cyan-500" />}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${transaction.transactionType === 'Buy' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : transaction.transactionType === 'Sell' ? 'bg-red-500/10 text-red-600 border-red-500/20' : 'bg-slate-500/10 text-slate-600 border-slate-500/20'}`}>
                       {transactionTypeLabel(transaction.transactionType, investmentsById.get(transaction.investmentId)?.positionSide === 'Short')}
@@ -1362,7 +1385,7 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                     {transaction.fees ? ` · fees ${transaction.fees.toFixed(2)}` : ''}
                     {transaction.notes ? ` · ${transaction.notes}` : ''}
                   </p>
-                </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
                 <div className="text-right">
                   {transaction.realizedPnl != null && transaction.realizedPnl !== 0 && (
@@ -1396,7 +1419,8 @@ const InvestmentTab: React.FC<InvestmentTabProps> = ({
                 </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
