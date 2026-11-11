@@ -7,6 +7,7 @@
 
 import { handleExchangeBalances } from './cryptoExchanges';
 import { handleEarningsCalendar } from './earningsCalendar';
+import { handleHotStocks } from './hotStocks';
 import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
 import { handlePokemonMarket } from './pokemonMarket';
@@ -205,6 +206,10 @@ export default {
 
     if (url.pathname === '/api/earnings-calendar') {
       return handleEarningsCalendar(request);
+    }
+
+    if (url.pathname === '/api/hot-stocks') {
+      return handleHotStocks(request);
     }
 
     if (url.pathname === '/api/stock-insights') {

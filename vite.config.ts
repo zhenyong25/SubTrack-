@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { handleExchangeBalances } from './server/cryptoExchanges';
 import { handleSolanaRpc } from './server/solanaRpc';
 import { handleEarningsCalendar } from './server/earningsCalendar';
+import { handleHotStocks } from './server/hotStocks';
 import { handleStockInsights } from './server/stockInsights';
 import { handlePokemonMarket } from './server/pokemonMarket';
 import { handlePsaCert } from './server/psaCert';
@@ -31,6 +32,7 @@ export default defineConfig(({ mode }) => {
               '/api/crypto/exchange': handleExchangeBalances,
               '/api/crypto/solana': request => handleSolanaRpc(request, env.SOLANA_RPC_URL),
               '/api/earnings-calendar': handleEarningsCalendar,
+              '/api/hot-stocks': handleHotStocks,
               '/api/stock-insights': handleStockInsights,
               '/api/pokemon/market': handlePokemonMarket,
               '/api/credit-cards': handleCreditCardMarket,

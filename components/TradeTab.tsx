@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, CalendarDays, CandlestickChart, Crosshair, Loader2, Radar, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BookOpen, CalendarDays, CandlestickChart, Crosshair, Flame, Loader2, Radar, ShieldCheck } from 'lucide-react';
 import { DEFAULT_RULES, type JournalTrade, type TradeRules } from '../services/tradingMath';
 import { deleteJournalTrade, loadTradeData, saveJournalTrade, saveTradeRules } from '../services/tradeStoreService';
 import TradePlanPanel from './TradePlanPanel';
 import TradeScannerPanel from './TradeScannerPanel';
+import TradeHotPanel from './TradeHotPanel';
 import TradeJournalPanel from './TradeJournalPanel';
 import TradeEarningsPanel from './TradeEarningsPanel';
 import TradeOptionsPanel from './TradeOptionsPanel';
 import TradePatternsPanel from './TradePatternsPanel';
 import { Field, INPUT_CLASS, Panel } from './tradeUi';
 
-type TradeView = 'plan' | 'scanner' | 'journal' | 'rules' | 'earnings' | 'patterns' | 'options';
+type TradeView = 'plan' | 'hot' | 'scanner' | 'journal' | 'rules' | 'earnings' | 'patterns' | 'options';
 
 const VIEWS: Array<{ id: TradeView; label: string; icon: React.ElementType }> = [
   { id: 'plan', label: 'Plan', icon: Crosshair },
+  { id: 'hot', label: 'Hot', icon: Flame },
   { id: 'scanner', label: 'Scanner', icon: Radar },
   { id: 'options', label: 'Options', icon: BookOpen },
   { id: 'journal', label: 'Journal', icon: BookOpen },
@@ -101,6 +103,7 @@ const TradeTab: React.FC<TradeTabProps> = ({ holdingSymbols, onNotify }) => {
 
       {view === 'plan' && <TradePlanPanel rules={rules} journal={journal} symbol={planSymbol} onSymbolChange={setPlanSymbol} onLogTrade={saveTrade} />}
       {view === 'options' && <TradeOptionsPanel rules={rules} onNotify={onNotify} />}
+      {view === 'hot' && <TradeHotPanel rules={rules} onSaveRules={next => { saveRules(next); onNotify('Added to your watchlist'); }} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
       {view === 'scanner' && <TradeScannerPanel rules={rules} holdingSymbols={holdingSymbols} onSaveRules={saveRules} onPlan={symbol => { setPlanSymbol(symbol); setView('plan'); }} />}
       {view === 'journal' && <TradeJournalPanel rules={rules} journal={journal} onSave={saveTrade} onDelete={deleteTrade} />}
       {view === 'rules' && <RulesPanel rules={rules} onSave={next => { saveRules(next); onNotify('Trading rules saved'); }} />}
