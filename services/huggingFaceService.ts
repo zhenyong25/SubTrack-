@@ -64,12 +64,15 @@ interface ChatCompletionRequest {
 // 401 means HF_TOKEN itself is bad - every other model would fail the same way, so surface it
 // straight away. Anything else (provider paused/overloaded, model not enabled for this account,
 // rate limited, network error) is worth trying the next model for.
-const requestChatCompletion = async (request: ChatCompletionRequest): Promise<any> => {
+// Other callers can pass their own model order (tried from the top every time); the sticky
+// activeModelIndex only applies to the statement list above.
+export const requestChatCompletion = async (request: ChatCompletionRequest, purpose = 'Statement parsing', models: string[] = HF_MODELS): Promise<any> => {
   let lastError = '';
+  const sticky = models === HF_MODELS;
 
-  for (let attempt = 0; attempt < HF_MODELS.length; attempt++) {
-    const modelIndex = (activeModelIndex + attempt) % HF_MODELS.length;
-    const model = HF_MODELS[modelIndex];
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    const modelIndex = ((sticky ? activeModelIndex : 0) + attempt) % models.length;
+    const model = models[modelIndex];
 
     try {
       const response = await fetch(HF_CHAT_ENDPOINT, {
@@ -81,7 +84,7 @@ const requestChatCompletion = async (request: ChatCompletionRequest): Promise<an
 
       if (response.ok) {
         const data = await response.json();
-        activeModelIndex = modelIndex;
+        if (sticky) activeModelIndex = modelIndex;
         return data;
       }
 
@@ -92,10 +95,10 @@ const requestChatCompletion = async (request: ChatCompletionRequest): Promise<an
       const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
       lastError = `${model}: ${timedOut ? 'timed out' : error instanceof Error ? error.message : 'network error'}`;
     }
-    console.error('Statement model request failed, trying next model', lastError);
+    console.error(`${purpose} model request failed, trying next model`, lastError);
   }
 
-  throw new Error(`Statement parsing request failed ${lastError}`);
+  throw new Error(`${purpose} request failed ${lastError}`);
 };
 
 // Bank e-statement PDFs are digitally generated (not scanned images), so pdf.js can

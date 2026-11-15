@@ -9,6 +9,7 @@ import { handleHotStocks } from './server/hotStocks';
 import { handleStockInsights } from './server/stockInsights';
 import { handlePokemonMarket } from './server/pokemonMarket';
 import { handlePsaCert } from './server/psaCert';
+import { handleInsurancePage } from './server/insurancePage';
 import { handleCreditCardMarket } from './server/creditCardMarket';
 import { handleCardImage } from './server/cardImage';
 import { handlePokemonShops } from './server/pokemonShops';
@@ -39,6 +40,7 @@ export default defineConfig(({ mode }) => {
               '/api/card-image': handleCardImage,
               '/api/pokemon/shops': handlePokemonShops,
               '/api/pokemon/events': handlePokemonEvents,
+              '/api/insurance/page': handleInsurancePage,
               '/api/pokemon/psa-cert': request => handlePsaCert(request, env.PSA_API_TOKEN),
             };
             Object.entries(routes).forEach(([route, handle]) => {

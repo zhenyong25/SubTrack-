@@ -12,6 +12,7 @@ import { handleStockInsights } from './stockInsights';
 import { handleSolanaRpc } from './solanaRpc';
 import { handlePokemonMarket } from './pokemonMarket';
 import { handlePsaCert } from './psaCert';
+import { handleInsurancePage } from './insurancePage';
 import { handleCreditCardMarket } from './creditCardMarket';
 import { handleCardImage } from './cardImage';
 import { handlePokemonShops } from './pokemonShops';
@@ -220,6 +221,7 @@ export default {
     if (url.pathname === '/api/card-image') return handleCardImage(request);
     if (url.pathname === '/api/pokemon/shops') return handlePokemonShops(request);
     if (url.pathname === '/api/pokemon/events') return handlePokemonEvents(request);
+    if (url.pathname === '/api/insurance/page') return handleInsurancePage(request);
     if (url.pathname === '/api/pokemon/psa-cert') return handlePsaCert(request, env.PSA_API_TOKEN);
 
     // Crypto: exchange balances via a read-only key sent with each request (never stored),

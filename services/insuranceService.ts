@@ -7,7 +7,22 @@ export interface InsurancePolicy {
   frequency: 'Monthly' | 'Quarterly' | 'Yearly' | 'One-time';
   coverage: number; deductible: number; startDate: string; endDate: string; renewalDate: string;
   destination: string; emergencyPhone: string; notes: string; archived: boolean;
+  /** Itemised cover, e.g. imported from a policy page. Older records have none. */
+  benefits?: InsuranceBenefit[];
+  /** The link the benefits were imported from, if any. */
+  sourceUrl?: string;
 }
+/** One line of a policy's benefit schedule. `limit` is null for cover with no amount ("Included"). */
+export interface InsuranceBenefit {
+  id: string; name: string; limit: number | null;
+  /** How the schedule words the limit when a number alone loses meaning, e.g. "200 per 6 hours, up to 800". */
+  limitText: string;
+  /** Conditions such as age bands or waiting periods. */
+  details: string;
+  /** True for a sub-limit that sits under the benefit before it. */
+  subLimit: boolean;
+}
+export const MAX_BENEFITS = 150;
 export const insuranceToday = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -39,6 +54,12 @@ export function validatePolicy(p: InsurancePolicy) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new Error('Enter valid dates.');
   }
   if (p.endDate && p.startDate && p.endDate < p.startDate) throw new Error('Coverage must end on or after its start date.');
+  const benefits = p.benefits ?? [];
+  if (!Array.isArray(benefits) || benefits.length > MAX_BENEFITS) throw new Error(`A policy can list up to ${MAX_BENEFITS} benefits.`);
+  for (const b of benefits) {
+    if (!b.name?.trim()) throw new Error('Every benefit needs a name.');
+    if (b.limit !== null && (!Number.isFinite(b.limit) || b.limit < 0)) throw new Error(`The limit for ${b.name} must be zero or greater.`);
+  }
   if (p.kind === 'Travel' && (!p.startDate || !p.endDate || !p.destination.trim())) throw new Error('Travel insurance needs a destination and coverage dates.');
 }
 const key = 'subtrack_insurance_v1';
