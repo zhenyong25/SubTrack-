@@ -551,3 +551,17 @@
   .income-layout > :is(.income-hero, .income-stats, .income-year, .income-categories) { grid-column: span 6; }
   .income-layout > .income-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@keyframes investment-price-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.investment-price-flash {
+  animation: investment-price-flash 450ms ease-in-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .investment-price-flash {
+    animation: none;
+  }
+}

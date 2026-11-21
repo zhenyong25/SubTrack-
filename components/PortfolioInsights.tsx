@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, Info, Layers, PieChart, Receipt, TrendingUp } from 'lucide-react';
 import type { InvestmentAccount, InvestmentHolding, InvestmentTransaction, InvestmentValuation } from '../types';
 import InvestmentLogo from './InvestmentLogo';
+import InvestmentPrice from './InvestmentPrice';
 import BrokerageLogo from './BrokerageLogo';
 import { convertCurrency } from '../services/storageService';
 import { colorForInvestmentKind } from '../services/investmentService';
@@ -373,10 +374,12 @@ const PortfolioInsights: React.FC<PortfolioInsightsProps> = ({ baseCurrency, pos
               </span>
             </p>
             <div className="overflow-x-auto rounded-2xl border border-border">
-              <table className="w-full min-w-[520px] whitespace-nowrap text-left text-xs">
+              <table className="w-full min-w-[760px] whitespace-nowrap text-left text-xs">
                 <thead className="bg-background text-[10px] uppercase tracking-wide text-secondary">
                   <tr>
                     <th className="px-3 py-2 font-bold">Holding</th>
+                    <th className="px-3 py-2 text-right font-bold" title="Average entry price per unit in the holding's currency; average sale price for shorts">Average price</th>
+                    <th className="px-3 py-2 text-right font-bold" title="Latest price per unit in the holding's currency, updated with your holding prices">Current price</th>
                     <th className="px-3 py-2 text-right font-bold">Put in</th>
                     <th className="px-3 py-2 text-right font-bold">Value now</th>
                     <th className="px-3 py-2 text-right font-bold">Net gain</th>
@@ -398,6 +401,8 @@ const PortfolioInsights: React.FC<PortfolioInsightsProps> = ({ baseCurrency, pos
                             </span>
                           </div>
                         </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-secondary">{formatMoney(row.holding.averageCost, row.holding.currency || baseCurrency)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums"><InvestmentPrice price={row.holding.currentPrice} currency={row.holding.currency || baseCurrency} /></td>
                         <td className="px-3 py-2 text-right tabular-nums text-secondary">{formatMoney(row.invested, baseCurrency)}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-textMain">{formatMoney(row.value, baseCurrency)}</td>
                         <td className={`px-3 py-2 text-right font-semibold tabular-nums ${toneFor(row.netGain)}`}>{formatSigned(row.netGain, baseCurrency)}</td>
