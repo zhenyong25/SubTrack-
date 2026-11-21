@@ -5,6 +5,7 @@ import type { SavingsGoal, SavingsEntry, SavingsGoalKind } from '../types';
 import { convertCurrency } from '../services/storageService';
 import { advanceGoalDate, GOAL_COLORS, goalBalance, goalPlan, todayDate, validateEntry, validateGoal } from '../services/savingsGoalMath';
 import { deleteSavingsEntry, deleteSavingsGoal, loadSavingsGoals, recordSavingsEntry, saveSavingsGoal, type SavingsData } from '../services/savingsGoalService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 
 const money = (value: number, currency: string) => `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 const dateText = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -99,6 +100,7 @@ export default function SavingsGoalsTab({ baseCurrency, focusGoalId, onFocusHand
   const [expanded, setExpanded] = useState<string[]>([]); const alive = useRef(true); const requestVersion = useRef(0);
   const refresh = useCallback(async () => { const version = ++requestVersion.current; try { const next = await loadSavingsGoals(); if (alive.current && version === requestVersion.current) { setData(next); setLoadError(''); } } catch (error) { if (version === requestVersion.current) throw error; } }, []);
   useEffect(() => { alive.current = true; void refresh().catch(error => { if (alive.current) setLoadError(errorText(error)); }).finally(() => { if (alive.current) setLoading(false); }); return () => { alive.current = false; }; }, [refresh]);
+  useRemoteRefresh(['savings_goals'], () => { void refresh().catch(() => undefined); });
   const refreshAfterSave = () => { void refresh().catch(error => { if (alive.current) setLoadError(`Saved, but the latest data could not be reloaded: ${errorText(error)}`); }); };
   useEffect(() => {
     if (!focusGoalId || loading || loadError) return;

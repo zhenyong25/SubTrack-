@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { cloudSync } from './services/cloudSyncService';
+import { muteAnnouncements, onDataChanged, setSyncAccount } from './services/crossTabSync';
 import { PiggyBank, Search, CheckCircle, Plus, Landmark, TrendingUp, Wallet, HandCoins, CandlestickChart, Building2 } from 'lucide-react';
 import FinanceWorld from './components/FinanceWorld';
 import AuthScreen from './components/AuthScreen';
@@ -51,6 +52,9 @@ enum Tab {
   World = 'World',
   Settings = 'Settings'
 }
+
+// Tables whose screens reload themselves when another tab changes them.
+const SELF_LOADED_TABLES = ['insurance_policies', 'tax_years', 'savings_goals', 'receivables', 'receivable_entries', 'option_trades'];
 
 const applyCategoryColorsToExpenses = (items: Expense[]): Expense[] =>
   items.map(expense => {
@@ -212,6 +216,82 @@ function App() {
     };
   }, []);
 
+  // Puts freshly loaded data into state. Shared by the first load and by quiet reloads after
+  // another tab (or device) changes something.
+  const applyLoadedData = (loaded: Awaited<ReturnType<typeof loadAppData>>) => {
+    const updated = loaded.subscriptions.map(sub => {
+      let next = sub.nextPaymentDate;
+      const status = sub.status || 'Active';
+      const cancellationDate = sub.cancellationDate;
+      // Expiry does not prove cancellation; leave trials available for review.
+
+      if (new Date(next) < new Date() && status === 'Active') {
+        if (sub.billingCycle !== BillingCycle.FreeTrial) {
+          next = calculateNextPayment(sub.firstPaymentDate, sub.billingCycle);
+        }
+      }
+      return { ...sub, status, cancellationDate, nextPaymentDate: next };
+    });
+
+    const sessionEmail = session?.user.email;
+    const sessionPhoto =
+      session?.user.user_metadata?.avatar_url ||
+      session?.user.user_metadata?.picture ||
+      undefined;
+
+    setUserProfile({
+      ...loaded.profile,
+      email: sessionEmail || loaded.profile.email,
+      photoUrl: loaded.profile.photoUrl || sessionPhoto,
+      isLoggedIn: Boolean(session || loaded.userId),
+    });
+    setSubscriptions(updated);
+    setIncomes(loaded.incomes);
+    const categoryColoredExpenses = applyCategoryColorsToExpenses(loaded.expenses);
+    setExpenses(categoryColoredExpenses);
+    setBudgetPlans(loaded.budgetPlans ?? []);
+    setInvestments(loaded.investments);
+    setInvestmentValuations(loaded.investmentValuations);
+    setInvestmentTransactions(loaded.investmentTransactions);
+    setInvestmentAccounts(loaded.investmentAccounts);
+    setPokerMttTournaments(loaded.pokerMttTournaments);
+    setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
+    setPokerCashSessions(loaded.pokerCashSessions);
+    setCryptoSources(loaded.cryptoSources);
+    setCashAccounts(loaded.cashAccounts);
+    setCashBalanceEntries(loaded.cashBalanceEntries);
+    setRetirementFunds(loaded.retirementFunds);
+    setRetirementEntries(loaded.retirementEntries);
+    setLoans(loaded.loans);
+    setLoanPayments(loaded.loanPayments);
+    setCards(loaded.cards);
+    setCardPointTransactions(loaded.cardPointTransactions);
+    setCardBenefits(loaded.cardBenefits);
+    setCashbackPrograms(loaded.cashbackPrograms);
+    setAccountStatements(loaded.accountStatements);
+    return { updated, categoryColoredExpenses };
+  };
+
+  // Other open tabs announce their writes; reload quietly (no loading screen) when they do, or
+  // when this tab comes back into view after a while. Screens that load their own data (insurance,
+  // tax, goals, receivables, options) refresh themselves, so their tables don't need a full reload.
+  const remoteReload = useRef<() => void>(() => undefined);
+  const remoteReloadVersion = useRef(0);
+  remoteReload.current = () => {
+    if (isLoading || authChecking || (isSupabaseConfigured() && !session)) return;
+    // Let this tab's own saves land first, so a reload can't hide a change still being written.
+    if (cloudSync.getSnapshot().active > 0) { window.setTimeout(() => remoteReload.current(), 1000); return; }
+    const version = ++remoteReloadVersion.current;
+    muteAnnouncements(10_000);
+    loadAppData()
+      .then(loaded => { if (version === remoteReloadVersion.current) applyLoadedData(loaded); })
+      .catch(error => console.error('Could not refresh after a change in another tab', error));
+  };
+  useEffect(() => onDataChanged(tables => {
+    if (tables.includes('*') || tables.some(table => !SELF_LOADED_TABLES.includes(table))) remoteReload.current();
+  }), []);
+  useEffect(() => { setSyncAccount(session?.user.id ?? null, !isSupabaseConfigured()); }, [session?.user.id]);
+
   // Refocus and token refresh can replace the session object for the same account.
   // Bootstrap only when account identity changes, keeping the current screen mounted.
   useEffect(() => {
@@ -249,61 +329,13 @@ function App() {
       }
 
       setIsLoading(true);
+      // Loading re-saves a few normalised lists; don't make other tabs reload for those.
+      muteAnnouncements(10_000);
 
       try {
         const loaded = await loadAppData();
-        const updated = loaded.subscriptions.map(sub => {
-          let next = sub.nextPaymentDate;
-          const status = sub.status || 'Active';
-          const cancellationDate = sub.cancellationDate;
-          // Expiry does not prove cancellation; leave trials available for review.
-
-          if (new Date(next) < new Date() && status === 'Active') {
-            if (sub.billingCycle !== BillingCycle.FreeTrial) {
-              next = calculateNextPayment(sub.firstPaymentDate, sub.billingCycle);
-            }
-          }
-          return { ...sub, status, cancellationDate, nextPaymentDate: next };
-        });
-
         if (cancelled) return;
-
-        const sessionEmail = session?.user.email;
-        const sessionPhoto =
-          session?.user.user_metadata?.avatar_url ||
-          session?.user.user_metadata?.picture ||
-          undefined;
-
-        setUserProfile({
-          ...loaded.profile,
-          email: sessionEmail || loaded.profile.email,
-          photoUrl: loaded.profile.photoUrl || sessionPhoto,
-          isLoggedIn: Boolean(session || loaded.userId),
-        });
-        setSubscriptions(updated);
-        setIncomes(loaded.incomes);
-        const categoryColoredExpenses = applyCategoryColorsToExpenses(loaded.expenses);
-        setExpenses(categoryColoredExpenses);
-        setBudgetPlans(loaded.budgetPlans ?? []);
-        setInvestments(loaded.investments);
-        setInvestmentValuations(loaded.investmentValuations);
-        setInvestmentTransactions(loaded.investmentTransactions);
-        setInvestmentAccounts(loaded.investmentAccounts);
-        setPokerMttTournaments(loaded.pokerMttTournaments);
-        setPokerMttBankrollTransactions(loaded.pokerMttBankrollTransactions);
-        setPokerCashSessions(loaded.pokerCashSessions);
-        setCryptoSources(loaded.cryptoSources);
-        setCashAccounts(loaded.cashAccounts);
-        setCashBalanceEntries(loaded.cashBalanceEntries);
-        setRetirementFunds(loaded.retirementFunds);
-        setRetirementEntries(loaded.retirementEntries);
-        setLoans(loaded.loans);
-        setLoanPayments(loaded.loanPayments);
-        setCards(loaded.cards);
-        setCardPointTransactions(loaded.cardPointTransactions);
-        setCardBenefits(loaded.cardBenefits);
-        setCashbackPrograms(loaded.cashbackPrograms);
-        setAccountStatements(loaded.accountStatements);
+        const { updated, categoryColoredExpenses } = applyLoadedData(loaded);
         void saveSubscriptions(updated);
 
         if (loaded.userId) {

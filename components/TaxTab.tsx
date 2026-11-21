@@ -8,6 +8,7 @@ import {
   employmentFromIncomes, estimateCpf, incomeYear, savings, type ReliefKey, type TaxDocument, type TaxYear,
 } from '../services/sgTaxService';
 import { deleteTaxYear, loadTaxYears, saveTaxYear } from '../services/taxRecordService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 
 const box = 'rounded-2xl border border-border bg-surface p-5';
 const input = 'mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-textMain outline-none focus:border-primary';
@@ -29,6 +30,7 @@ export default function TaxTab({ incomes }: { incomes: Income[]; key?: string })
   const [deleting, setDeleting] = useState<TaxYear | null>(null); const [busy, setBusy] = useState(false);
   const load = async () => { setLoading(true); setError(''); try { setYears(await loadTaxYears()); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
+  useRemoteRefresh(['tax_years'], () => { loadTaxYears().then(setYears).catch(() => undefined); });
   const sorted = useMemo(() => [...years].sort((a, b) => b.ya - a.ya), [years]);
   const nowYa = currentYa(today);
   const selected = sorted.find(y => y.ya === ya) ?? sorted.find(y => y.ya === nowYa) ?? sorted[0];

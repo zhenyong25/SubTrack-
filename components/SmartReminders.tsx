@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, CheckCircle, RefreshCw, X } from 'lucide-react';
 import type { Loan, LoanPayment, Subscription } from '../types';
 import { loadSavingsGoals, type SavingsData } from '../services/savingsGoalService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 import { SAVINGS_STORAGE_KEY, todayDate } from '../services/savingsGoalMath';
 import { buildSmartReminders, reminderDayOffset, type ReminderKind, type SmartReminder } from '../services/smartReminderService';
 import SubscriptionLogo from './SubscriptionLogo';
@@ -19,6 +20,7 @@ export default function SmartReminders(props: Props) {
   const [filter, setFilter] = useState<'all' | ReminderKind>('all'); const [hidden, setHidden] = useState(false); const [snoozeDays, setSnoozeDays] = useState(1);
   const wrapper = useRef<HTMLDivElement>(null); const button = useRef<HTMLButtonElement>(null); const panel = useRef<HTMLDivElement>(null); const alive = useRef(true); const request = useRef(0);
   const refresh = useCallback(async () => { const version = ++request.current; setLoading(true); try { const goals = await loadSavingsGoals(); if (alive.current && version === request.current) { setData(goals); setGoalError(''); } } catch (error) { if (alive.current && version === request.current) { setData({ goals: [], entries: [] }); setGoalError(errorText(error)); } } finally { if (alive.current && version === request.current) setLoading(false); } }, []);
+  useRemoteRefresh(['savings_goals'], () => { void refresh(); });
   useEffect(() => {
     alive.current = true; void refresh();
     const tick = () => setToday(todayDate()); const focus = () => { tick(); setPreferences(getPreferences(props.scope)); void refresh(); };

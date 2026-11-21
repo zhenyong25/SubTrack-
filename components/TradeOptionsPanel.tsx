@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { optionMetrics, optionPnl, validateOption, type OptionTrade } from '../services/optionsMath';
 import { loadOptions, persistOption } from '../services/optionsStoreService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 import { normalizeTickerSymbol } from '../services/stockQuoteService';
 import type { TradeRules } from '../services/tradingMath';
 import { CURRENCIES } from '../types';
@@ -19,6 +20,7 @@ export default function TradeOptionsPanel({ rules, onNotify }: { rules: TradeRul
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [status, setStatus] = useState('All');
+  useRemoteRefresh(['option_trades'], () => { loadOptions().then(data => { setTrades(data.trades); setWarning(data.warning || ''); }).catch(() => undefined); });
   useEffect(() => {
     let active = true;
     loadOptions().then(data => { if (active) { setTrades(data.trades); setWarning(data.warning || ''); } })

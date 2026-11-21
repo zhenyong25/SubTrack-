@@ -4,6 +4,7 @@ import { CURRENCIES } from '../types';
 import { BenefitsEditor, BenefitsList, ImportPanel } from './InsuranceImport';
 import { DocumentsEditor, DocumentsList } from './InsuranceDocuments';
 import { InsuranceWorkspace } from './InsuranceWorkspace';
+import { useRemoteRefresh } from '../services/crossTabSync';
 import { EXTRA_SECTIONS, InsuranceExtras, type ExtrasProps } from './InsuranceExtras';
 import { INSURANCE_LESSONS } from './InsuranceLearn';
 import BankLogo from './BankLogo';
@@ -99,6 +100,7 @@ export default function InsuranceTab({ baseCurrency, linked }: { baseCurrency: s
   const [today, setToday] = useState(insuranceToday);
   useEffect(() => { const timer = window.setInterval(() => setToday(insuranceToday()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { let alive = true; loadInsurance().then(data => { if (alive) setPolicies(data); }).catch(e => { if (alive) setError(errorText(e)); }).finally(() => { if (alive) setLoading(false); }); return () => { alive = false; }; }, []);
+  useRemoteRefresh(['insurance_policies'], () => { loadInsurance().then(setPolicies).catch(() => undefined); });
   const refresh = async () => { setLoading(true); setError(''); try { setPolicies(await loadInsurance()); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } };
   const metrics = insuranceMetrics(policies, currency, today);
   const ofView = useMemo(() => policies.filter(p => (view === 'All' || (view === 'Personal' ? p.kind !== 'Travel' : p.kind === 'Travel')) && `${p.name} ${p.insurer} ${p.insuredPerson} ${p.policyNumber} ${p.destination} ${(p.benefits ?? []).map(b => b.name).join(' ')}`.toLowerCase().includes(query.toLowerCase())), [policies, view, query]);

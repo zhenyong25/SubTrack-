@@ -5,6 +5,7 @@ import type { CashAccount, CashBalanceEntry, Expense, Income, Loan, LoanPayment,
 import { buildCashForecast } from '../services/cashForecastService';
 import { convertCurrency } from '../services/storageService';
 import { loadSavingsGoals } from '../services/savingsGoalService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 import { todayDate } from '../services/savingsGoalMath';
 import SafeToSpendPanel from './SafeToSpendPanel';
 
@@ -17,6 +18,7 @@ export default function CashForecastPanel(props: CashForecastProps) {
   const [includeGoals, setIncludeGoals] = useState(true); const [showDetails, setShowDetails] = useState(false);
   const [today, setToday] = useState(todayDate);
   useEffect(() => { const timer = window.setInterval(() => setToday(todayDate()), 60000); return () => window.clearInterval(timer); }, []);
+  useRemoteRefresh(['savings_goals'], () => setRevision(r => r + 1));
   useEffect(() => { let cancelled = false; setLoading(true); setGoalError(''); loadSavingsGoals().then(data => { if (!cancelled) setGoals(data); }).catch(error => { if (!cancelled) { setGoals(null); setGoalError(error.message || 'Could not load savings goals.'); } }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [revision]);
   useEffect(() => { setOpening(''); setExtra(''); setDaily(''); }, [props.currency]);
   const invalid = [opening, extra, daily].some(value => value !== '' && (!Number.isFinite(Number(value)) || Math.abs(Number(value)) > 1e12)) || Number(extra) < 0 || Number(daily) < 0;

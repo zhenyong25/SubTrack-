@@ -19,6 +19,8 @@ export class CloudSyncMonitor {
   private generation = 0;
   private activeIds = new Set<number>();
   private retryBarrier: Promise<void> | null = null;
+  /** Called with the table name after each successful write; used to tell other open tabs. */
+  onWrite: ((table: string) => void) | null = null;
   constructor(private transport: typeof fetch = (...args) => fetch(...args)) {}
   subscribe = (callback: () => void) => { this.listeners.add(callback); return () => { this.listeners.delete(callback); }; };
   getSnapshot = () => this.state;
@@ -71,7 +73,7 @@ export class CloudSyncMonitor {
     try {
       const response = await this.transport(request);
       if (generation === this.generation) {
-        if (response.ok) this.success(key, version);
+        if (response.ok) { this.success(key, version); try { this.onWrite?.(table); } catch { /* Notification only. */ } }
         else {
           const details = await this.errorMessage(response);
           if (generation === this.generation) this.failures.set(id, { id, table, key, version, request: stored, retryable: retryable && this.versions.get(table) === version, message: details });

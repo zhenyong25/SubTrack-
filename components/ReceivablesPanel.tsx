@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, HandCoins, Plus, RefreshCw, Users, X } from 'lucide-react';
 import { CURRENCIES, type Receivable, type ReceivableEntry } from '../types';
 import { addReceivableEntry, deleteReceivableEntry, loadReceivables, saveReceivable } from '../services/receivableService';
+import { useRemoteRefresh } from '../services/crossTabSync';
 import { receivableBalance, type ReceivablesData } from '../services/receivableMath';
 import { todayDate } from '../services/savingsGoalMath';
 import { convertCurrency } from '../services/storageService';
@@ -28,6 +29,7 @@ const ReceivablesPanel: React.FC<{ baseCurrency: string }> = ({ baseCurrency }) 
   const today = todayDate();
   const reload = async () => { setLoading(true); try { setData(await loadReceivables()); setLoadError(''); } catch (e) { setLoadError(e instanceof Error ? e.message : 'Could not load receivables.'); } finally { setLoading(false); } };
   useEffect(() => { void reload(); }, []);
+  useRemoteRefresh(['receivables', 'receivable_entries'], () => { loadReceivables().then(next => { setData(next); setLoadError(''); }).catch(() => undefined); });
   const close = () => { if (!busy) { setRecord(null); setEntry(null); setError(''); } };
   useEffect(() => { if ((record || entry) && !dialog.current?.open) dialog.current?.showModal(); if (!record && !entry) dialog.current?.close(); }, [Boolean(record), Boolean(entry)]);
   const rows = useMemo(() => data.receivables.map(r => ({ record: r, balance: receivableBalance(r, data.entries, today) })), [data, today]);

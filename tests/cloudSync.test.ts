@@ -111,3 +111,17 @@ test('retry refuses a different signed-in account', async () => {
   assert.equal(monitor.getSnapshot().retrying, false);
   assert.equal(monitor.getSnapshot().issues.length, 1);
 });
+
+test('successful writes are reported by table so other tabs can refresh; reads and failures are not', async () => {
+  const written: string[] = [];
+  let ok = true;
+  const monitor = new CloudSyncMonitor(async () => ok ? new Response('[]', { status: 201 }) : failed());
+  monitor.onWrite = table => written.push(table);
+  monitor.setAccount('owner');
+  await monitor.fetch(upsert('expenses'));
+  await monitor.fetch(new Request('https://example.supabase.co/rest/v1/incomes?select=*'));
+  ok = false; await monitor.fetch(upsert('incomes'));
+  ok = true; monitor.onWrite = () => { throw new Error('listener failure must not break saving'); };
+  assert.equal((await monitor.fetch(upsert('loans'))).status, 201);
+  assert.deepEqual(written, ['expenses']);
+});
