@@ -6,7 +6,7 @@ import type { Bank } from './bankLogoService';
 const INSURERS: Array<Bank & { pattern: RegExp }> = [
   { name: 'Income', domain: 'income.com.sg', pattern: /\b(ntuc\s+)?income\b/i },
   { name: 'Chubb', domain: 'chubb.com', pattern: /\bchubb\b/i },
-  { name: 'FWD', domain: 'fwd.com.sg', pattern: /\bfwd\b/i },
+  { name: 'FWD', domain: 'www.fwd.com.sg', pattern: /\bfwd\b/i },
   { name: 'AIA', domain: 'aia.com.sg', pattern: /\baia\b/i },
   { name: 'Prudential', domain: 'prudential.com.sg', pattern: /\bprudential\b|\bpru\b/i },
   { name: 'Great Eastern', domain: 'greateasternlife.com', pattern: /great\s*eastern/i },
