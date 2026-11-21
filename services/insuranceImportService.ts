@@ -12,7 +12,7 @@ export const MAX_SOURCE_CHARS = 24_000;
 export interface PolicySource { text: string; label: string; sourceUrl?: string; truncated: boolean; pdfLinks: string[] }
 
 export interface PolicyExtraction {
-  fields: Partial<Pick<InsurancePolicy, 'name' | 'insurer' | 'policyNumber' | 'insuredPerson' | 'kind' | 'currency' | 'premium' | 'frequency' | 'coverage' | 'deductible' | 'startDate' | 'endDate' | 'renewalDate' | 'destination' | 'emergencyPhone' | 'notes'>>;
+  fields: Partial<Pick<InsurancePolicy, 'name' | 'insurer' | 'policyNumber' | 'insuredPerson' | 'kind' | 'currency' | 'premium' | 'frequency' | 'coverage' | 'deductible' | 'coPaymentPercent' | 'waitingPeriod' | 'exclusions' | 'riders' | 'limitBasis' | 'startDate' | 'endDate' | 'renewalDate' | 'destination' | 'emergencyPhone' | 'notes'>>;
   benefits: InsuranceBenefit[];
 }
 
@@ -57,6 +57,9 @@ Return ONE JSON object, no commentary, with these keys (use "" or null when the 
 - premium: number per payment, null if not shown; frequency: "Monthly", "Quarterly", "Yearly" or "One-time" (single-trip travel cover is "One-time")
 - coverage: the headline limit as a number - the sum assured for life/CI/PA, or the overseas medical expenses limit for travel
 - deductible: number, null if none shown
+- coPaymentPercent: number from 0 to 100, null if not stated
+- waitingPeriod, exclusions, riders: concise text only when explicitly stated, otherwise ""
+- limitBasis: "Annual", "Lifetime", "Per claim" or "Unspecified", based only on the headline coverage limit wording
 - startDate, endDate, renewalDate: YYYY-MM-DD, only if actual dates are printed
 - destination: covered region for travel, if stated
 - emergencyPhone: the claims or 24-hour emergency assistance number
@@ -114,6 +117,11 @@ export function parsePolicyExtraction(reply: string, newId: () => string = () =>
     const value = text(raw[key], key === 'emergencyPhone' ? 40 : 200);
     if (value) fields[key] = value;
   }
+  for (const key of ['waitingPeriod', 'exclusions', 'riders'] as const) {
+    const value = text(raw[key], 2000); if (value) fields[key] = value;
+  }
+  const co = amount(raw.coPaymentPercent); if (co !== null && co <= 100) fields.coPaymentPercent = co;
+  if (['Annual', 'Lifetime', 'Per claim'].includes(raw.limitBasis)) fields.limitBasis = raw.limitBasis;
   const notes = typeof raw.notes === 'string' ? raw.notes.replace(/\\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean).join('\n').slice(0, 2000) : '';
   if (notes) fields.notes = notes;
   const kind = INSURANCE_KINDS.find(k => k.toLowerCase() === text(raw.kind).toLowerCase());
@@ -174,7 +182,7 @@ export function applyExtraction(draft: InsurancePolicy, extraction: PolicyExtrac
   const untouched = (key: keyof InsurancePolicy) => {
     const value = draft[key];
     if (defaults && value === defaults[key]) return true;
-    return value === '' || value === 0;
+    return value === undefined || value === '' || value === 0;
   };
   for (const [key, value] of Object.entries(extraction.fields) as Array<[keyof PolicyExtraction['fields'], any]>) {
     if (value === undefined || !untouched(key)) continue;

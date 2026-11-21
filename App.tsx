@@ -689,6 +689,15 @@ function App() {
     return newExpense;
   };
 
+  // Insurance premiums tracked as recurring expenses. Same save path as adding a subscription by hand.
+  const handleAddSubscriptionFromInsurance = (data: Omit<Subscription, 'id' | 'nextPaymentDate'>) => {
+    const newSub: Subscription = { ...data, id: crypto.randomUUID(), nextPaymentDate: calculateNextPayment(data.firstPaymentDate, data.billingCycle) };
+    const updatedList = [...subscriptions, newSub];
+    setSubscriptions(updatedList);
+    void saveSubscriptions(updatedList);
+    showToast(`Added ${newSub.name}`);
+  };
+
   const handleUpdateExpenseFromStatement = async (updated: Expense): Promise<void> => {
     const categoryColoredUpdate = { ...updated, color: getExpenseCategoryColor(updated.category) };
     const updatedList = applyCategoryColorsToExpenses(
@@ -1477,7 +1486,7 @@ function App() {
         )}
 
         {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} focusGoalId={focusGoalId} onFocusHandled={() => setFocusGoalId(null)} />}
-        {activeTab === Tab.Insurance && <InsuranceTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} />}
+        {activeTab === Tab.Insurance && <InsuranceTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} linked={{ incomes, subscriptions, expenses, onAddSubscription: handleAddSubscriptionFromInsurance, onAddExpense: handleAddExpenseFromStatement }} />}
         {activeTab === Tab.World && <FinanceWorld key={session?.user.id || 'local'} owner={session?.user.id || 'local'} expenses={expenses} incomes={incomes} subscriptions={subscriptions} loans={loans} loanPayments={loanPayments} onOpen={destination => { setWorldReviewRequested(destination === 'review'); setActiveTab(destination === 'goals' ? Tab.Goals : destination === 'expenses' ? Tab.Expenses : destination === 'income' ? Tab.Income : destination === 'debts' ? Tab.Debts : destination === 'subscriptions' ? Tab.Dashboard : Tab.CashFlow); }} />}
 
         {activeTab === Tab.Settings && (

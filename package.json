@@ -28,6 +28,7 @@
     "test:city:boats": "node scripts/test-city-game.mjs --boats",
     "test:city:boats:browser": "node scripts/test-city-expansion-browser.mjs --boats",
     "test:insurance": "node scripts/test-insurance.mjs",
+    "test:insurance:browser": "node scripts/test-insurance-browser.mjs",
     "test:valuations:browser": "node scripts/test-valuation-browser.mjs",
     "catalog:build": "node scripts/build-service-catalog.mjs",
     "logos:fetch": "node scripts/fetch-service-logos.mjs",
