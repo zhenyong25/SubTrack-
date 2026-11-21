@@ -11,7 +11,11 @@ export interface InsurancePolicy {
   benefits?: InsuranceBenefit[];
   /** The link the benefits were imported from, if any. */
   sourceUrl?: string;
+  /** Stored copies of the policy wording, certificate or schedule. */
+  documents?: InsuranceDocument[];
 }
+export interface InsuranceDocument { path: string; name: string; size: number; type: string; uploadedAt: string }
+export const MAX_DOCUMENTS = 10;
 /** One line of a policy's benefit schedule. `limit` is null for cover with no amount ("Included"). */
 export interface InsuranceBenefit {
   id: string; name: string; limit: number | null;
@@ -30,6 +34,14 @@ export const insuranceToday = () => {
 export function policyStatus(policy: InsurancePolicy, today = insuranceToday()) {
   return policy.archived ? 'Archived' : policy.endDate && policy.endDate < today ? 'Expired' : policy.startDate > today ? 'Upcoming' : 'Active';
 }
+export type PolicyStatus = ReturnType<typeof policyStatus>;
+/** What the register shows: a one-time policy (e.g. travel cover) in force is "Current", a recurring one "Active". */
+export const statusLabel = (policy: InsurancePolicy, today = insuranceToday()) => {
+  const status = policyStatus(policy, today);
+  return status === 'Active' && policy.frequency === 'One-time' ? 'Current' : status;
+};
+/** Register order: in force first, then upcoming, expired and archived. */
+export const STATUS_ORDER: PolicyStatus[] = ['Active', 'Upcoming', 'Expired', 'Archived'];
 export const annualPremium = (p: InsurancePolicy) => p.premium * ({ Monthly: 12, Quarterly: 4, Yearly: 1, 'One-time': 0 }[p.frequency]);
 export function insuranceMetrics(policies: InsurancePolicy[], currency: string, today = insuranceToday()) {
   const live = policies.filter(p => !p.archived && policyStatus(p, today) !== 'Expired' && p.currency === currency);
@@ -60,6 +72,7 @@ export function validatePolicy(p: InsurancePolicy) {
     if (!b.name?.trim()) throw new Error('Every benefit needs a name.');
     if (b.limit !== null && (!Number.isFinite(b.limit) || b.limit < 0)) throw new Error(`The limit for ${b.name} must be zero or greater.`);
   }
+  if ((p.documents ?? []).length > MAX_DOCUMENTS) throw new Error(`A policy can store up to ${MAX_DOCUMENTS} documents.`);
   if (p.kind === 'Travel' && (!p.startDate || !p.endDate || !p.destination.trim())) throw new Error('Travel insurance needs a destination and coverage dates.');
 }
 const key = 'subtrack_insurance_v1';

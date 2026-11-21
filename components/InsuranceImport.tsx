@@ -17,7 +17,7 @@ const FIELD_LABELS: Record<string, string> = {
 const SOURCES = [['link', 'Link', LinkIcon], ['file', 'PDF / file', FileText], ['paste', 'Paste text', ClipboardPaste]] as const;
 
 /** Reads a link, file or pasted text, and fills the policy form draft with what the model finds. */
-export function ImportPanel({ draft, initial, isNew, onApply }: { draft: InsurancePolicy; initial: InsurancePolicy; isNew: boolean; onApply: (p: InsurancePolicy) => void }) {
+export function ImportPanel({ draft, initial, isNew, onApply, onFileRead }: { draft: InsurancePolicy; initial: InsurancePolicy; isNew: boolean; onApply: (p: InsurancePolicy) => void; /** Called with an imported file so it can be kept with the policy. */ onFileRead?: (file: File) => void }) {
   const [mode, setMode] = useState<'link' | 'file' | 'paste'>('link');
   const [url, setUrl] = useState(draft.sourceUrl || ''); const [pasted, setPasted] = useState(''); const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState(''); const [error, setError] = useState('');
@@ -37,6 +37,7 @@ export function ImportPanel({ draft, initial, isNew, onApply }: { draft: Insuran
       // A new policy's starting values (today's date, Medical, Monthly) are placeholders, not the user's input.
       const { policy, filled } = applyExtraction(draft, extraction, source.sourceUrl, isNew ? initial : undefined);
       onApply(policy);
+      if (mode === 'file' && file) onFileRead?.(file);
       const parts = [extraction.benefits.length ? `${extraction.benefits.length} benefits` : '', filled.map(f => FIELD_LABELS[f] || f).join(', ')].filter(Boolean);
       setResult({ summary: parts.length ? `Filled ${parts.join(', plus ')}.` : 'Nothing new was found to fill in.', source });
     } catch (e) { setError(errorText(e)); } finally { setStep(''); }

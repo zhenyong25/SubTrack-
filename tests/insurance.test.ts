@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { annualPremium, insuranceMetrics, policyStatus, validatePolicy, loadInsurance, saveInsurance, deleteInsurance, type InsurancePolicy } from '../services/insuranceService';
+import { annualPremium, insuranceMetrics, policyStatus, statusLabel, validatePolicy, loadInsurance, saveInsurance, deleteInsurance, type InsurancePolicy } from '../services/insuranceService';
+import { findInsurer } from '../services/insurerLogoService';
+import { validateDocument } from '../services/insuranceDocumentService';
 
 const policy: InsurancePolicy = { id: 'test', name: 'Medical plan', insurer: 'Insurer', insuredPerson: 'Alex', policyNumber: '', kind: 'Medical', currency: 'SGD', premium: 100, frequency: 'Monthly', coverage: 100000, deductible: 500, startDate: '2026-01-01', endDate: '', renewalDate: '2026-11-01', destination: '', emergencyPhone: '', notes: '', archived: false };
 test('annualizes recurring premiums and excludes single payments', () => {
@@ -87,4 +89,29 @@ test('benefits are validated and saved with the policy', async () => {
   const withBenefits = { ...policy, id: 'b', benefits: [{ id: '1', name: 'Medical', limit: null, limitText: 'Included', details: '', subLimit: false }] };
   await saveInsurance(withBenefits);
   assert.deepEqual((await loadInsurance()).find(p => p.id === 'b')?.benefits, withBenefits.benefits);
+});
+test('one-time policies read Upcoming, Current and Expired', () => {
+  const trip: InsurancePolicy = { ...policy, kind: 'Travel', frequency: 'One-time', startDate: '2026-12-03', endDate: '2026-12-10', destination: 'Asia' };
+  assert.equal(statusLabel(trip, '2026-11-21'), 'Upcoming');
+  assert.equal(statusLabel(trip, '2026-12-03'), 'Current');
+  assert.equal(statusLabel(trip, '2026-12-10'), 'Current');
+  assert.equal(statusLabel(trip, '2026-12-11'), 'Expired');
+  assert.equal(statusLabel({ ...trip, archived: true }, '2026-12-05'), 'Archived');
+  assert.equal(statusLabel(policy, '2026-11-21'), 'Active');
+});
+test('matches insurer names to logo domains', () => {
+  assert.equal(findInsurer('Income')?.domain, 'income.com.sg');
+  assert.equal(findInsurer('NTUC Income Insurance')?.domain, 'income.com.sg');
+  assert.equal(findInsurer('Chubb')?.name, 'Chubb');
+  assert.equal(findInsurer('FWD Singapore')?.name, 'FWD');
+  assert.equal(findInsurer('Tiq by Etiqa')?.name, 'Tiq');
+  assert.equal(findInsurer('Some Local Mutual'), undefined);
+  assert.equal(findInsurer(''), undefined);
+});
+test('accepts PDF and image policy documents within the size limit', () => {
+  validateDocument({ type: 'application/pdf', size: 1000 });
+  assert.throws(() => validateDocument({ type: 'application/zip', size: 1000 }), /PDF/);
+  assert.throws(() => validateDocument({ type: 'application/pdf', size: 0 }), /15 MB/);
+  assert.throws(() => validateDocument({ type: 'application/pdf', size: 16 * 1024 * 1024 }), /15 MB/);
+  assert.throws(() => validatePolicy({ ...policy, documents: Array.from({ length: 11 }, (_, i) => ({ path: `p${i}`, name: 'a.pdf', size: 1, type: 'application/pdf', uploadedAt: '' })) }), /10 documents/);
 });
