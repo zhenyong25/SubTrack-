@@ -263,6 +263,9 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  // Category picked in the monthly split; its days are highlighted on the calendar.
+  const [highlightCategory, setHighlightCategory] = useState<string | null>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchVisibleCount, setSearchVisibleCount] = useState(SEARCH_PAGE_SIZE);
@@ -274,6 +277,7 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
 
   useEffect(() => {
     setSelectedDay(null);
+    setHighlightCategory(null);
   }, [selectedMonth, selectedYear]);
 
   const syncedSubscriptions = useMemo(
@@ -371,6 +375,22 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
   }, [calendarDays, baseCurrency]);
   // One distinct color per category in the chart and its legend.
   const categoryColors = useMemo(() => chartCategoryColors(categoryData.map(entry => entry.name)), [categoryData]);
+  const highlight = useMemo(() => {
+    if (!highlightCategory) return null;
+    const days = new Map<number, number>();
+    calendarDays.forEach(day => {
+      const amount = day.entries.filter(entry => entry.category === highlightCategory).reduce((sum, entry) => sum + convertCurrency(entry.amount, entry.currency, baseCurrency), 0);
+      if (amount > 0 || day.entries.some(entry => entry.category === highlightCategory)) days.set(day.day, amount);
+    });
+    const total = [...days.values()].reduce((sum, amount) => sum + amount, 0);
+    return { name: highlightCategory, color: categoryColors[highlightCategory] || 'var(--color-primary)', days, total };
+  }, [highlightCategory, calendarDays, baseCurrency, categoryColors]);
+  const toggleHighlight = (name: string) => {
+    setHighlightCategory(current => current === name ? null : name);
+    // On narrow screens the calendar sits above the split, out of view.
+    const calendar = calendarRef.current;
+    if (calendar && window.innerWidth < 1024 && calendar.getBoundingClientRect().top < 0) calendar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const budgetMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
   const previousBudgetDate = new Date(selectedYear, selectedMonth - 1, 1);
@@ -754,11 +774,19 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
         </div>
       </div>
 
-      <div className="expense-calendar bg-surface p-6 rounded-xl shadow-sm border border-border">
+      <div ref={calendarRef} className="expense-calendar bg-surface p-6 rounded-xl shadow-sm border border-border">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-bold text-textMain uppercase tracking-wide">Monthly Calendar</h3>
           <MonthNavigator label={monthLabel} onPrevious={goToPreviousMonth} onNext={goToNextMonth} />
         </div>
+
+        {highlight && (
+          <div role="status" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-xs" style={{ borderColor: highlight.color, backgroundColor: `color-mix(in srgb, ${highlight.color} 10%, transparent)` }}>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: highlight.color }} />
+            <span className="min-w-0 flex-1 text-textMain"><b>{highlight.name}</b> · {highlight.days.size} day{highlight.days.size === 1 ? '' : 's'} · {formatAmount(highlight.total)} {baseCurrency}</span>
+            <button type="button" onClick={() => setHighlightCategory(null)} className="inline-flex items-center gap-1 font-semibold text-secondary hover:text-textMain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"><X size={12} aria-hidden="true" />Clear</button>
+          </div>
+        )}
 
         <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-secondary mb-2">
           {weekdayLabels.map(day => <div key={day}>{day}</div>)}
@@ -773,6 +801,10 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
               cell.day === new Date().getDate();
             const hasEntries = Boolean(cell.day && cell.entries && cell.entries.length);
             const isSelected = cell.day != null && cell.day === selectedDay;
+            const inHighlight = highlight != null && cell.day != null && highlight.days.has(cell.day);
+            const dimmed = highlight != null && cell.day != null && !inHighlight;
+            // While a category is highlighted, a matching day shows that category's amount and items first.
+            const shownEntries = inHighlight ? [...cell.entries!].sort((a, b) => Number(b.category === highlight!.name) - Number(a.category === highlight!.name)) : cell.entries;
 
             return (
               <div
@@ -786,8 +818,9 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                 role={cell.day != null ? 'button' : undefined}
                 tabIndex={cell.day != null ? 0 : undefined}
                 aria-pressed={cell.day != null ? isSelected : undefined}
-                aria-label={cell.day != null ? `Show expenses for ${monthLabel} ${cell.day}` : undefined}
-                className={`min-h-20 rounded-xl border p-2 text-left transition-all ${cell.day ? `cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/50 ${hasEntries ? 'bg-background border-border shadow-sm' : 'bg-emerald-50/80 border-emerald-200/70 dark:bg-emerald-400/10 dark:border-emerald-400/20'}` : 'bg-transparent border-transparent'} ${isSelected ? 'ring-2 ring-primary border-primary shadow-md' : isToday ? 'ring-2 ring-primary/40' : ''}`}
+                aria-label={cell.day != null ? `Show expenses for ${monthLabel} ${cell.day}${inHighlight ? `, includes ${highlight!.name}` : ''}` : undefined}
+                style={inHighlight && !isSelected ? { borderColor: highlight!.color, boxShadow: `0 0 0 2px ${highlight!.color}` } : undefined}
+                className={`min-h-20 rounded-xl border p-2 text-left transition-all ${dimmed ? 'opacity-35 ' : ''}${cell.day ? `cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/50 ${hasEntries ? 'bg-background border-border shadow-sm' : 'bg-emerald-50/80 border-emerald-200/70 dark:bg-emerald-400/10 dark:border-emerald-400/20'}` : 'bg-transparent border-transparent'} ${isSelected ? 'ring-2 ring-primary border-primary shadow-md' : isToday ? 'ring-2 ring-primary/40' : ''}`}
               >
                 {cell.day != null && (
                   <>
@@ -797,9 +830,11 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                     </div>
                     {hasEntries && (
                       <div className="mt-2">
-                        <p className="text-[10px] font-bold text-textMain">{formatAmount(cell.total)}</p>
+                        {inHighlight
+                          ? <p className="text-[10px] font-bold" style={{ color: highlight!.color }} title={`${highlight!.name} on this day; ${formatAmount(cell.total)} in total`}>{formatAmount(highlight!.days.get(cell.day!) || 0)}</p>
+                          : <p className="text-[10px] font-bold text-textMain">{formatAmount(cell.total)}</p>}
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {cell.entries!.slice(0, 2).map(entry => (
+                          {shownEntries!.slice(0, 2).map(entry => (
                             <span key={`${entry.id}-${entry.source}`} className="text-[9px] px-1.5 py-0.5 rounded-full text-white truncate max-w-full" style={{ backgroundColor: entry.color }}>
                               {entry.name}
                             </span>
@@ -841,9 +876,11 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
                   dataKey="value"
                   stroke="var(--color-surface)"
                   strokeWidth={2}
+                  onClick={(_slice, index) => { const name = categoryData[index]?.name; if (name) toggleHighlight(name); }}
+                  className="cursor-pointer"
                 >
                   {categoryData.map(entry => (
-                    <Cell key={`expense-cell-${entry.name}`} fill={categoryColors[entry.name]} />
+                    <Cell key={`expense-cell-${entry.name}`} fill={categoryColors[entry.name]} fillOpacity={highlightCategory && highlightCategory !== entry.name ? 0.25 : 1} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -863,14 +900,23 @@ const ExpenseTab: React.FC<ExpenseTabProps> = ({ expenses, subscriptions, budget
           {categoryData.map(entry => {
             const total = categoryData.reduce((sum, item) => sum + item.value, 0) || 1;
             const percent = ((entry.value / total) * 100).toFixed(0);
+            const active = highlightCategory === entry.name;
             return (
-              <div key={entry.name} className="flex items-center justify-between gap-3 bg-background px-3 py-2 rounded-xl border border-border">
+              <button
+                type="button"
+                key={entry.name}
+                aria-pressed={active}
+                title={active ? 'Click again to clear' : `Highlight ${entry.name} days on the calendar`}
+                onClick={() => toggleHighlight(entry.name)}
+                style={active ? { borderColor: categoryColors[entry.name], backgroundColor: `color-mix(in srgb, ${categoryColors[entry.name]} 12%, transparent)` } : undefined}
+                className={`flex items-center justify-between gap-3 bg-background px-3 py-2 rounded-xl border border-border text-left transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${highlightCategory && !active ? 'opacity-60' : ''}`}
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: categoryColors[entry.name] }} />
-                  <span className="text-xs font-medium text-secondary truncate">{entry.name}</span>
+                  <span className={`text-xs truncate ${active ? 'font-bold text-textMain' : 'font-medium text-secondary'}`}>{entry.name}</span>
                 </div>
                 <span className="text-[10px] font-bold text-textMain whitespace-nowrap">{percent}%</span>
-              </div>
+              </button>
             );
           })}
         </div>

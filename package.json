@@ -31,6 +31,7 @@
     "test:tax": "node scripts/test-tax.mjs",
     "test:tax:browser": "node scripts/test-tax-browser.mjs",
     "test:cross-tab:browser": "node scripts/test-cross-tab-browser.mjs",
+    "test:expense-highlight:browser": "node scripts/test-expense-highlight-browser.mjs",
     "test:insurance:browser": "node scripts/test-insurance-browser.mjs",
     "test:valuations:browser": "node scripts/test-valuation-browser.mjs",
     "catalog:build": "node scripts/build-service-catalog.mjs",
