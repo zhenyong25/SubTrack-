@@ -5,10 +5,15 @@ import { DocumentsEditor, StoredDocuments } from './InsuranceDocuments';
 import { readPolicyDocument, removePolicyDocuments, uploadPolicyDocument } from '../services/insuranceDocumentService';
 import {
   DONATION_MULTIPLIER, LIMITS, RATE_TABLE, RELIEF_CAP, RELIEF_CHECKLIST, RELIEF_FIELDS, REBATES, computeTax, currentYa, emptyYear,
-  employmentFromIncomes, estimateCpf, incomeYear, savings, type ReliefKey, type TaxDocument, type TaxYear,
+  employmentFromIncomes, estimateCpf, incomeYear, marginalRate, savings, type ReliefKey, type TaxDocument, type TaxYear, type TaxNoaSummary,
 } from '../services/sgTaxService';
 import { deleteTaxYear, loadTaxYears, saveTaxYear } from '../services/taxRecordService';
 import { useRemoteRefresh } from '../services/crossTabSync';
+import TaxProjection from './TaxProjection';
+import TaxBreakdown from './TaxBreakdown';
+import TaxNoaImport from './TaxNoaImport';
+import TaxNoaLibrary from './TaxNoaLibrary';
+import { documentStorageAvailable } from '../services/insuranceDocumentService';
 
 const box = 'rounded-2xl border border-border bg-surface p-5';
 const input = 'mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-textMain outline-none focus:border-primary';
@@ -17,7 +22,7 @@ const pct = (n: number) => `${(n * 100).toLocaleString(undefined, { maximumFract
 const errorText = (e: unknown) => e instanceof Error ? e.message : 'Something went wrong. Please try again.';
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const STATUS_STYLE: Record<TaxYear['status'], string> = { Estimate: 'bg-blue-500/10 text-blue-500', Filed: 'bg-amber-500/10 text-amber-500', Assessed: 'bg-emerald-500/10 text-emerald-500' };
-const SECTIONS = [['Overview', 'Overview'], ['Records', 'Records'], ['Save', 'Save tax'], ['Learn', 'Learn']] as const;
+const SECTIONS = [['Overview', 'Overview'], ['Projections', 'Projections'], ['Records', 'Records & NOAs'], ['Save', 'Save tax'], ['Learn', 'Learn']] as const;
 const readTaxDocument = (doc: TaxDocument) => readPolicyDocument(doc, 'tax');
 
 export default function TaxTab({ incomes }: { incomes: Income[]; key?: string }) {
@@ -26,8 +31,10 @@ export default function TaxTab({ incomes }: { incomes: Income[]; key?: string })
   const [years, setYears] = useState<TaxYear[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [section, setSection] = useState<typeof SECTIONS[number][0]>('Overview');
   const [ya, setYa] = useState(0);
-  const [form, setForm] = useState<{ year: TaxYear; isNew: boolean } | null>(null);
+  const [form, setForm] = useState<{ year: TaxYear; isNew: boolean; importNoa?: boolean } | null>(null);
   const [deleting, setDeleting] = useState<TaxYear | null>(null); const [busy, setBusy] = useState(false);
+  const [pickRequest, setPickRequest] = useState(0); // opens the NOA file picker
+  const uploadNoas = () => { setSection('Records'); setPickRequest(n => n + 1); };
   const load = async () => { setLoading(true); setError(''); try { setYears(await loadTaxYears()); } catch (e) { setError(errorText(e)); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
   useRemoteRefresh(['tax_years'], () => { loadTaxYears().then(setYears).catch(() => undefined); });
@@ -46,23 +53,27 @@ export default function TaxTab({ incomes }: { incomes: Income[]; key?: string })
   return <div className="space-y-5 pb-8">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="flex items-center gap-2 text-2xl font-extrabold"><Receipt className="text-primary" />Tax</h1><p className="mt-1 text-sm text-secondary">Singapore income tax: yearly records, estimates and ways to pay less.</p></div>
-      <button onClick={() => create(nextNewYa)} disabled={loading || !!error} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"><Plus size={16} />Add YA {nextNewYa}</button>
+      <div className="flex flex-wrap gap-2"><button onClick={uploadNoas} disabled={loading || !!error} className="rounded-xl border border-primary px-4 py-2.5 text-sm font-bold text-primary disabled:opacity-40">Upload NOA</button><button onClick={() => create(nextNewYa)} disabled={loading || !!error} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"><Plus size={16} />Add YA {nextNewYa}</button></div>
     </div>
     {error && <div role="alert" className={`${box} text-sm text-red-400`}>{error}<button onClick={load} className="ml-3 inline-flex items-center gap-1 text-primary"><RefreshCw size={14} />Retry</button></div>}
     {loading ? <p role="status" className="py-10 text-center text-secondary">Loading tax records…</p> : !error && <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Tax sections" className="flex flex-wrap gap-1 rounded-xl bg-surface p-1">{SECTIONS.map(([id, label]) => <button key={id} role="tab" aria-selected={section === id} onClick={() => setSection(id)} className={`rounded-lg px-4 py-2 text-xs font-bold ${section === id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>{label}</button>)}</div>
-        {selected && section !== 'Learn' && section !== 'Records' && <label className="flex items-center gap-2 text-xs text-secondary">Year of Assessment<select aria-label="Year of Assessment" className="rounded-lg border border-border bg-surface p-2 text-textMain" value={selected.ya} onChange={e => setYa(Number(e.target.value))}>{sorted.map(y => <option key={y.id} value={y.ya}>YA {y.ya} · {incomeYear(y.ya)} income</option>)}</select></label>}
+        {selected && section !== 'Learn' && section !== 'Records' && section !== 'Projections' && <label className="flex items-center gap-2 text-xs text-secondary">Year of Assessment<select aria-label="Year of Assessment" className="rounded-lg border border-border bg-surface p-2 text-textMain" value={selected.ya} onChange={e => setYa(Number(e.target.value))}>{sorted.map(y => <option key={y.id} value={y.ya}>YA {y.ya} · {incomeYear(y.ya)} income</option>)}</select></label>}
       </div>
-      {section === 'Learn' ? <Learn today={today} /> : !selected ? <div className={`${box} py-12 text-center`}>
+      {section === 'Projections' ? <TaxProjection incomes={incomes} years={sorted} today={today} onReview={y => setForm({ year: y, isNew: !years.some(row => row.id === y.id) })} /> : section === 'Learn' ? <Learn today={today} />
+        : section === 'Records' ? <div className="space-y-5">
+          <TaxNoaLibrary years={sorted} nowYa={nowYa} pickRequest={pickRequest} onSaved={y => { setYears(rows => [...rows.filter(r => r.id !== y.id), y]); setYa(y.ya); }} onOpen={y => setForm({ year: y, isNew: false })} />
+          {sorted.length > 0 && <div><h2 className="mb-3 text-sm font-bold">Year records</h2><Records years={sorted} onEdit={y => setForm({ year: y, isNew: false })} onDelete={setDeleting} /></div>}
+        </div>
+        : !selected ? <div className={`${box} py-12 text-center`}>
         <Receipt size={32} className="mx-auto mb-3 text-secondary" /><h2 className="font-bold">Start your tax records</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-secondary">Add YA {nowYa} to estimate the tax on what you earn in {incomeYear(nowYa)}, and see how much SRS, CPF top-ups or donations would save before 31 December.</p>
-        <button onClick={() => create(nowYa)} className="mt-4 text-sm font-bold text-primary">Add YA {nowYa}</button>
-      </div> : section === 'Overview' ? <Overview year={selected} years={sorted} today={today} onEdit={y => setForm({ year: y, isNew: false })} onSave={() => setSection('Save')} />
-        : section === 'Save' ? <SaveTax year={selected} today={today} onEdit={y => setForm({ year: y, isNew: false })} />
-        : <Records years={sorted} onEdit={y => setForm({ year: y, isNew: false })} onDelete={setDeleting} />}
+        <div className="mt-4 flex flex-wrap justify-center gap-4"><button onClick={() => create(nowYa)} className="text-sm font-bold text-primary">Add YA {nowYa}</button><button onClick={uploadNoas} className="text-sm font-bold text-primary">Upload past Notices of Assessment</button></div>
+      </div> : section === 'Overview' ? <Overview key={selected.id + String(selected.noaSummary?.tax)} year={selected} years={sorted} today={today} onEdit={y => setForm({ year: y, isNew: false })} onSave={() => setSection('Save')} />
+        : <SaveTax year={selected} today={today} onEdit={y => setForm({ year: y, isNew: false })} />}
     </>}
-    {form && <TaxForm year={form.year} isNew={form.isNew} years={years} incomes={incomes} onClose={() => setForm(null)} onSaved={y => { setYears(rows => [...rows.filter(r => r.id !== y.id), y]); setYa(y.ya); setForm(null); }} />}
+    {form && <TaxForm year={form.year} isNew={form.isNew} importNoa={form.importNoa} years={years} incomes={incomes} onClose={() => setForm(null)} onSaved={y => { setYears(rows => [...rows.filter(r => r.id !== y.id), y]); setYa(y.ya); setSection('Overview'); setForm(null); }} />}
     {deleting && <div className={`${box} fixed bottom-24 left-1/2 z-50 w-[calc(100%_-_32px)] max-w-md -translate-x-1/2 shadow-2xl`} role="alertdialog" aria-label="Delete tax year"><p className="text-sm">Delete YA {deleting.ya}? This removes the record{deleting.documents?.length ? ' and its stored documents' : ''}.</p><div className="mt-3 flex justify-end gap-4"><button disabled={busy} onClick={() => setDeleting(null)} className="text-sm text-secondary">Cancel</button><button disabled={busy} onClick={async () => { setBusy(true); try { await deleteTaxYear(deleting.id); await removePolicyDocuments(deleting.documents ?? [], 'tax'); setYears(rows => rows.filter(r => r.id !== deleting.id)); setDeleting(null); } catch (e) { setError(errorText(e)); setDeleting(null); } finally { setBusy(false); } }} className="text-sm font-bold text-red-400">{busy ? 'Deleting…' : 'Delete year'}</button></div></div>}
   </div>;
 }
@@ -71,9 +82,11 @@ export default function TaxTab({ incomes }: { incomes: Income[]; key?: string })
 
 const daysUntil = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
-function Overview({ year, years, today, onEdit, onSave }: { year: TaxYear; years: TaxYear[]; today: string; onEdit: (y: TaxYear) => void; onSave: () => void }) {
+function Overview({ year, years, today, onEdit, onSave }: { year: TaxYear; years: TaxYear[]; today: string; onEdit: (y: TaxYear) => void; onSave: () => void; key?: string }) {
+  const [view, setView] = useState<'Estimate' | 'NOA'>(year.noaSummary ? 'NOA' : 'Estimate');
   const r = computeTax(year);
-  const shown = year.assessedTax ?? r.tax;
+  const noa = view === 'NOA' ? year.noaSummary : undefined;
+  const shown = noa?.tax ?? (year.noaSummary ? r.tax : year.assessedTax ?? r.tax);
   const left = daysUntil(today, `${incomeYear(year.ya)}-12-31`);
   const best = savings(year)[0];
   const rows: Array<[string, number, string?]> = [
@@ -84,18 +97,21 @@ function Overview({ year, years, today, onEdit, onSave }: { year: TaxYear; years
   ];
   const max = Math.max(...years.map(y => y.assessedTax ?? computeTax(y).tax), 1);
   return <div className="space-y-4">
+    {year.noaSummary && <div className="flex flex-wrap gap-2" role="group" aria-label="Tax breakdown source">{(['Estimate', 'NOA'] as const).map(label => <button key={label} onClick={() => setView(label)} aria-pressed={view === label} className={`rounded-xl border px-4 py-2 text-xs font-bold ${view === label ? 'border-primary bg-primary text-white' : 'border-border text-secondary'}`}>{label === 'NOA' ? 'Uploaded NOA' : 'Calculated estimate'}</button>)}</div>}
+    <TaxBreakdown year={year} assessment={view === 'NOA'} />
+    {!!year.documents?.length && <div className={box}><h2 className="text-sm font-bold">NOA & tax documents</h2><StoredDocuments docs={year.documents} read={readTaxDocument} /></div>}
     {left >= 0 && year.status === 'Estimate' && <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm">
       <CalendarClock size={18} className="shrink-0 text-primary" />
       <p className="min-w-0 flex-1"><b>{left} day{left === 1 ? '' : 's'} left</b> to lower YA {year.ya} tax: SRS contributions, CPF cash top-ups and donations must be made by 31 Dec {incomeYear(year.ya)}.{best ? ` Biggest saving: ${best.title.toLowerCase()} (up to ${sgd(best.saving)}).` : ''}</p>
       <button onClick={onSave} className="flex items-center gap-1.5 text-xs font-bold text-primary"><Lightbulb size={14} />See ways to save</button>
     </div>}
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
-      [year.assessedTax !== undefined ? 'Tax assessed' : 'Estimated tax', sgd(shown, 2), year.assessedTax !== undefined ? `Estimate was ${sgd(r.tax, 2)}` : r.rebateKnown ? 'After rebates' : 'No rebate assumed yet'],
-      ['Chargeable income', sgd(r.chargeable), `${sgd(r.totalIncome)} income − deductions and reliefs`],
-      ['Effective rate', pct(r.effectiveRate), 'Tax ÷ total income'],
-      ['Top rate you pay', pct(r.marginal), 'On your next dollar of income'],
+      [noa || (!year.noaSummary && year.assessedTax !== undefined) ? 'Tax assessed' : 'Estimated tax', sgd(shown, 2), noa ? 'Reported on uploaded NOA' : year.assessedTax !== undefined ? `Assessed ${sgd(year.assessedTax, 2)}` : r.rebateKnown ? 'After rebates' : 'No rebate assumed yet'],
+      ['Chargeable income', sgd(noa?.chargeable ?? r.chargeable), `${sgd(noa?.income ?? r.totalIncome)} income − deductions and reliefs`],
+      ['Effective rate', pct(noa ? noa.income ? noa.tax / noa.income : 0 : r.effectiveRate), 'Tax ÷ total income'],
+      ['Top rate you pay', pct(noa ? marginalRate(noa.chargeable) : r.marginal), 'Resident-band illustration'],
     ].map(([label, value, note]) => <div key={label} className={box}><p className="text-xs text-secondary">{label}</p><p className="mt-2 text-xl font-extrabold tabular-nums">{value}</p><p className="mt-1 text-[11px] text-secondary">{note}</p></div>)}</div>
-    <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+    {noa ? <p className={`${box} text-sm text-secondary`}>NOA totals are kept independently from your detailed estimate. Switch to Calculated estimate to review income and individual reliefs. The detailed record currently estimates {sgd(r.tax, 2)}; uploading a summary does not infer relief eligibility or mark tax as paid.</p> : <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
       <div className={box}>
         <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">YA {year.ya} breakdown</h2><p className="mt-1 text-xs text-secondary">Income earned in {incomeYear(year.ya)} · {year.residency} · {year.status}</p></div><button onClick={() => onEdit(year)} className="flex items-center gap-1 text-xs font-semibold text-primary"><Pencil size={13} />Edit</button></div>
         {year.residency === 'Non-resident' ? <p className="mt-4 text-sm text-secondary">Non-residents pay the higher of 15% or resident rates on employment income and 24% on other income, with no reliefs. Total income {sgd(r.totalIncome)} → tax {sgd(r.tax, 2)}.</p> : <dl className="mt-4 divide-y divide-border text-sm">
@@ -121,7 +137,7 @@ function Overview({ year, years, today, onEdit, onSave }: { year: TaxYear; years
           <ul className="mt-3 space-y-2 text-xs">{[...years].sort((a, b) => a.ya - b.ya).map(y => { const t = y.assessedTax ?? computeTax(y).tax; return <li key={y.id} className="grid grid-cols-[56px_1fr_auto] items-center gap-2"><span className={y.ya === year.ya ? 'font-bold' : 'text-secondary'}>YA {y.ya}</span><span className="h-2 overflow-hidden rounded-full bg-background"><span className={`block h-full rounded-full ${y.assessedTax !== undefined ? 'bg-primary' : 'bg-primary/40'}`} style={{ width: `${(t / max) * 100}%` }} /></span><span className="tabular-nums">{sgd(t)}{y.assessedTax === undefined && <span className="text-secondary"> est.</span>}</span></li>; })}</ul>
         </div>
       </div>
-    </div>
+    </div>}
   </div>;
 }
 
@@ -131,8 +147,8 @@ function Records({ years, onEdit, onDelete }: { years: TaxYear[]; onEdit: (y: Ta
   return <div className="grid gap-4 lg:grid-cols-2">{years.map(y => { const r = computeTax(y); return <article key={y.id} className={`${box} flex flex-col`}>
     <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">YA {y.ya}</h3><p className="text-xs text-secondary">Income earned in {incomeYear(y.ya)} · {y.residency}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${STATUS_STYLE[y.status]}`}>{y.status}</span></div>
     <dl className="mt-4 grid grid-cols-2 gap-4 text-xs">
-      <div><dt className="text-secondary">Total income</dt><dd className="mt-1 font-bold tabular-nums">{sgd(r.totalIncome)}</dd></div>
-      <div><dt className="text-secondary">Chargeable income</dt><dd className="mt-1 font-bold tabular-nums">{sgd(r.chargeable)}</dd></div>
+      <div><dt className="text-secondary">Total income{y.noaSummary ? ' · NOA' : ''}</dt><dd className="mt-1 font-bold tabular-nums">{sgd(y.noaSummary?.income ?? r.totalIncome)}</dd></div>
+      <div><dt className="text-secondary">Chargeable income{y.noaSummary ? ' · NOA' : ''}</dt><dd className="mt-1 font-bold tabular-nums">{sgd(y.noaSummary?.chargeable ?? r.chargeable)}</dd></div>
       <div><dt className="text-secondary">{y.assessedTax !== undefined ? 'Tax assessed' : 'Estimated tax'}</dt><dd className="mt-1 font-bold tabular-nums">{sgd(y.assessedTax ?? r.tax, 2)}</dd></div>
       <div><dt className="text-secondary">Paid</dt><dd className="mt-1 tabular-nums">{y.paidTax !== undefined ? `${sgd(y.paidTax, 2)}${y.paymentMethod ? ` · ${y.paymentMethod}` : ''}` : 'Not recorded'}</dd></div>
     </dl>
@@ -211,12 +227,18 @@ function Learn({ today }: { today: string }) {
 
 // ---------- Editor ----------
 
-function TaxForm({ year, isNew, years, incomes, onClose, onSaved }: { year: TaxYear; isNew: boolean; years: TaxYear[]; incomes: Income[]; onClose: () => void; onSaved: (y: TaxYear) => void }) {
+function TaxForm({ year, isNew, importNoa = false, years, incomes, onClose, onSaved }: { year: TaxYear; isNew: boolean; importNoa?: boolean; years: TaxYear[]; incomes: Income[]; onClose: () => void; onSaved: (y: TaxYear) => void }) {
   const [draft, setDraft] = useState(year); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [pending, setPending] = useState<File[]>([]); const [removed, setRemoved] = useState<TaxDocument[]>([]);
   const [cpfHelp, setCpfHelp] = useState({ open: false, salary: 0, bonus: 0 });
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const d = ref.current!; d.showModal(); const o = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { d.close(); document.body.style.overflow = o; }; }, []);
+  const applyNoa = (summary: TaxNoaSummary, file?: File) => {
+    if (!isNew && summary.ya !== draft.ya) throw new Error(`This record is YA ${draft.ya}. Open or add YA ${summary.ya} to attach this NOA.`);
+    if (isNew && years.some(y => y.ya === summary.ya)) throw new Error(`YA ${summary.ya} already exists. Open that record and upload the NOA there.`);
+    setDraft(d => ({ ...d, ya: summary.ya, status: 'Assessed', noaSummary: summary, assessedTax: summary.tax, noaDate: summary.date }));
+    if (file && documentStorageAvailable()) setPending(files => files.some(f => f.name === file.name && f.size === file.size) ? files : [...files, file]);
+  };
   const result = computeTax(draft);
   const prefill = employmentFromIncomes(incomes, incomeYear(draft.ya));
   const num = (label: string, value: number | undefined, set: (v: number) => void, hint?: string) => <label className="text-xs font-semibold text-secondary">{label}<input className={input} type="number" min={0} step="0.01" value={value ?? ''} placeholder="0" onChange={e => set(e.target.value === '' ? 0 : Number(e.target.value))} />{hint && <span className="mt-1 block font-normal">{hint}</span>}</label>;
@@ -229,6 +251,7 @@ function TaxForm({ year, isNew, years, incomes, onClose, onSaved }: { year: TaxY
       const clean: TaxYear = { ...draft, notes: draft.notes.trim(), documents: [...(draft.documents ?? []), ...uploaded], reliefs: Object.fromEntries(Object.entries(draft.reliefs).filter(([, v]) => v)) };
       await saveTaxYear(clean, years); await removePolicyDocuments(removed, 'tax'); onSaved(clean);
     } catch (err) { await removePolicyDocuments(uploaded, 'tax'); setError(errorText(err)); } finally { setBusy(false); } }}>
+      {importNoa && <TaxNoaImport initial={draft.noaSummary} busy={busy} onApply={applyNoa} />}
       <fieldset disabled={busy} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="text-xs font-semibold text-secondary">Year of Assessment<input className={input} type="number" min={2000} max={2100} required value={draft.ya} disabled={!isNew} onChange={e => setDraft({ ...draft, ya: Number(e.target.value) })} /></label>
         <label className="text-xs font-semibold text-secondary">Status<select className={input} value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as TaxYear['status'] })}>{['Estimate', 'Filed', 'Assessed'].map(s => <option key={s}>{s}</option>)}</select></label>
@@ -250,7 +273,8 @@ function TaxForm({ year, isNew, years, incomes, onClose, onSaved }: { year: TaxY
         <details className="sm:col-span-2"><summary className="cursor-pointer text-xs font-semibold text-secondary">Personal tax rebate for this YA ({draft.rebateOverride ? `${pct(draft.rebateOverride.rate)} up to ${sgd(draft.rebateOverride.cap)}` : REBATES[draft.ya] ? `${pct(REBATES[draft.ya].rate)} up to ${sgd(REBATES[draft.ya].cap)}` : 'none'})</summary>
           <div className="mt-2 grid grid-cols-2 gap-3">{num('Rebate % of tax', draft.rebateOverride ? draft.rebateOverride.rate * 100 : undefined, v => setDraft({ ...draft, rebateOverride: v ? { rate: Math.min(100, v) / 100, cap: draft.rebateOverride?.cap ?? 200 } : undefined }))}{num('Rebate cap', draft.rebateOverride?.cap, v => setDraft({ ...draft, rebateOverride: draft.rebateOverride ? { ...draft.rebateOverride, cap: v } : undefined }))}</div></details>
         {heading('Notice of Assessment')}
-        {num('Tax assessed', draft.assessedTax, v => setDraft({ ...draft, assessedTax: v || undefined }), 'Leave blank until you receive it.')}
+        {!importNoa && <details className="sm:col-span-2"><summary className="cursor-pointer text-xs font-bold text-primary">Upload NOA or enter its reported totals</summary><div className="mt-3"><TaxNoaImport initial={draft.noaSummary} busy={busy} onApply={applyNoa} /></div></details>}
+        <label className="text-xs font-semibold text-secondary">Tax assessed<input className={input} type="number" min="0" step="0.01" value={draft.assessedTax ?? ''} onChange={e => { const value = e.target.value === '' ? undefined : Number(e.target.value); setDraft({ ...draft, assessedTax: value, noaSummary: draft.noaSummary && value !== undefined ? { ...draft.noaSummary, tax: value } : undefined }); }} /><span className="mt-1 block font-normal">Leave blank until assessed; zero is a valid assessment.</span></label>
         <label className="text-xs font-semibold text-secondary">Notice date<input className={input} type="date" value={draft.noaDate ?? ''} onChange={e => setDraft({ ...draft, noaDate: e.target.value || undefined })} /></label>
         {num('Tax paid so far', draft.paidTax, v => setDraft({ ...draft, paidTax: v || undefined }))}
         <label className="text-xs font-semibold text-secondary">Payment method<select className={input} value={draft.paymentMethod ?? ''} onChange={e => setDraft({ ...draft, paymentMethod: (e.target.value || undefined) as TaxYear['paymentMethod'] })}><option value="">Not recorded</option><option>GIRO (monthly)</option><option>GIRO (one-off)</option><option>Other</option></select></label>

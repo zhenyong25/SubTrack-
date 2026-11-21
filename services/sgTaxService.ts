@@ -36,6 +36,13 @@ export const RELIEF_FIELDS = [
 export type ReliefKey = typeof RELIEF_FIELDS[number][0];
 
 export interface TaxDocument { path: string; name: string; size: number; type: string; uploadedAt: string }
+/** Reported totals from a reviewed NOA; kept apart from the calculated estimate. */
+export interface TaxNoaSummary {
+  ya: number; income: number; deductions: number; chargeable: number; tax: number; date?: string;
+  /** Line items read from the NOA, e.g. Employment under income and Earned Income under reliefs. */
+  lines?: NoaLine[];
+}
+export interface NoaLine { kind: 'income' | 'relief' | 'donation' | 'rebate'; label: string; amount: number }
 export interface TaxYear {
   id: string; ya: number; status: TaxStatus; residency: Residency; citizenship: Citizenship;
   /** Age on 31 Dec of the income year; sets earned income relief. */
@@ -59,6 +66,7 @@ export interface TaxYear {
   /** From the Notice of Assessment. */
   assessedTax?: number; noaDate?: string; paidTax?: number; paymentMethod?: 'GIRO (monthly)' | 'GIRO (one-off)' | 'Other';
   notes: string; documents?: TaxDocument[];
+  noaSummary?: TaxNoaSummary;
 }
 
 export const incomeYear = (ya: number) => ya - 1;
@@ -201,4 +209,25 @@ export function validateTaxYear(y: TaxYear) {
     if (!Number.isFinite(v) || (v as number) < 0) throw new Error('Amounts must be zero or greater.');
   }
   if ((y.documents ?? []).length > 10) throw new Error('A year can store up to 10 documents.');
+  if (y.noaSummary) {
+    if (y.noaSummary.ya !== y.ya) throw new Error('The NOA Year of Assessment must match the record.');
+    for (const value of [y.noaSummary.income, y.noaSummary.deductions, y.noaSummary.chargeable, y.noaSummary.tax, ...(y.noaSummary.lines ?? []).map(l => l.amount)]) if (!Number.isFinite(value) || value < 0) throw new Error('NOA amounts must be zero or greater.');
+  }
+}
+
+// ---------- NOA-style tax computation ----------
+
+export interface ComputationLine { label: string; amount: number; rate?: number }
+/**
+ * The tax computation as an IRAS Notice of Assessment sets it out: tax on the first part of
+ * chargeable income up to a band edge (cumulative), then the rest at that band's rate.
+ */
+export function taxComputation(chargeable: number): { lines: ComputationLine[]; gross: number } {
+  const c = Math.max(0, Math.floor(chargeable));
+  const band = RATE_TABLE.find(b => c <= b.upTo)!;
+  const lines: ComputationLine[] = [];
+  if (band.from > 0) lines.push({ label: `Tax on the first ${'$'}${band.from.toLocaleString()}`, amount: residentTax(band.from) });
+  const rest = c - band.from;
+  if (rest > 0) lines.push({ label: `Tax on the next ${'$'}${rest.toLocaleString()}`, rate: band.rate, amount: Math.round(rest * band.rate * 100) / 100 });
+  return { lines, gross: residentTax(c) };
 }

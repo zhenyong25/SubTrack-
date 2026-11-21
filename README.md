@@ -16,6 +16,7 @@
 | **Cards** | Manage credit, debit, and multi-currency cards; track linked spending, limits, expiry dates, miles, points, and cashback rules. Browse Singapore/Malaysia card catalogues and plan a monthly card mix on the card board. |
 | **Expenses** | Record and search spending, review a monthly calendar and category charts, set total/category budgets, and import statement CSVs with duplicate checks. Reconcile card PDF statements against recorded expenses. |
 | **Income** | Track recurring and one-time income, active/passive sources, categories, and annual trends. Store and view payslips by pay month when authenticated file storage is configured. |
+| **Tax** | Estimate Singapore tax by YA, visualize income minus deductions and reliefs, and project up to 15 years from active SGD income schedules with editable growth, bonus and relief assumptions. Review locally extracted NOA PDF totals separately from estimates and keep private cloud attachments. |
 | **Investments** | Track holdings, brokerage/margin accounts, long and short stock positions, transactions, value history, and portfolio allocation. Review money-weighted returns, dividends, and FIFO tax lots. Crypto, Pokémon cards, and poker have dedicated views. |
 | **Trade — beta** | Plan position sizes and risk, explore Time Machine simulations, scan watchlists and in-play stocks, review earnings, study candlestick patterns, and keep stock/options journals. |
 | **Net worth** | Combine recorded cash-account balances, investments, and EPF/CPF retirement funds. Explore balance trends, 30/60/90-day forecasts, safe-to-spend estimates, and monthly financial reviews. |
@@ -130,6 +131,7 @@ Feature migrations live in the root as `supabase_*.sql`. They are incremental mi
 | Trading and options journals | [Trading schema](supabase_trading_schema.sql), [options setup](docs/options.md) |
 | Loans and receivables | [Loan schema](supabase_loans_schema.sql), [money owed to me](docs/receivables.md) |
 | Savings and insurance | [Savings setup](docs/savings-goals.md), [insurance setup](docs/insurance.md) |
+| Tax records and NOAs | [Tax schema](supabase_tax_schema.sql); NOA files use the existing private `account-statements` bucket under the signed-in user's `tax/` folder. |
 | Crypto, Pokémon, and poker | [Crypto schema](supabase_crypto_schema.sql), [Pokémon setup](docs/pokemon-cards.md), [Pokémon extras](supabase_pokemon_extras_schema.sql), [poker schema](supabase_poker_schema.sql) |
 | My City | [City setup and behavior](docs/finance-world.md), [save schema](supabase_city_game_schema.sql) |
 | Tags and notifications | [Search/tags](docs/global-search.md), [notification schema](supabase_notifications_schema.sql), [push subscriptions](supabase_push_subscriptions_schema.sql) |
