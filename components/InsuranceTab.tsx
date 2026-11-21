@@ -18,6 +18,16 @@ const dateText = (date: string) => date ? new Date(`${date}T12:00:00`).toLocaleD
 const errorText = (e: unknown) => e instanceof Error ? e.message : 'Something went wrong. Please try again.';
 const STATUS_STYLE: Record<PolicyStatus, string> = { Active: 'bg-emerald-500/10 text-emerald-500', Upcoming: 'bg-blue-500/10 text-blue-500', Expired: 'bg-red-500/10 text-red-400', Archived: 'bg-background text-secondary' };
 // "Current" covers both labels for a policy in force: Active (recurring) and Current (one-time).
+// Sections grouped under a few top-level tabs; each entry is [section id, label shown]. Section ids
+// stay stable because other parts of the tab (and its tests) navigate by them.
+const NAV: Array<{ label: string; items: Array<[string, string]> }> = [
+  { label: 'Overview', items: [['Overview', 'Overview']] },
+  { label: 'Policies', items: [['Policies', 'Register'], ['Compare', 'Compare'], ['People', 'People']] },
+  { label: 'Costs', items: [['Costs', 'Premiums & payments'], ['Budget', 'Budget'], ['Review', 'Yearly review']] },
+  { label: 'Claims', items: [['Claims', 'Claim tracker'], ['Ask', 'Am I covered?'], ['Simulator', 'Payout simulator']] },
+  { label: 'Planning', items: [['Gaps', 'Protection gaps'], ['Trips', 'Travel check'], ['Emergency', 'Emergency card']] },
+  { label: 'Learn', items: [['Learn', 'Learn']] },
+];
 const STATUS_FILTERS: Array<[string, PolicyStatus | null]> = [['All', null], ['Current', 'Active'], ['Upcoming', 'Upcoming'], ['Expired', 'Expired'], ['Archived', 'Archived']];
 
 function PolicyForm({ policy, isNew, startWithImport, onClose, onSaved }: { policy: InsurancePolicy; isNew: boolean; startWithImport: boolean; onClose: () => void; onSaved: (p: InsurancePolicy) => void }) {
@@ -80,6 +90,9 @@ type LinkedData = Pick<ExtrasProps, 'incomes' | 'subscriptions' | 'expenses' | '
 export default function InsuranceTab({ baseCurrency, linked }: { baseCurrency: string; key?: string; linked?: LinkedData }) {
   const [section, setSection] = useState('Overview'); const [lesson, setLesson] = useState('');
   const learn = (id: string) => { setLesson(id); setSection('Learn'); };
+  // On narrow screens the tab bar scrolls sideways; keep the selected tab visible without moving the page.
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => { const nav = navRef.current; const tab = nav?.querySelector<HTMLElement>('[aria-current="page"]'); if (!nav || !tab) return; if (tab.offsetLeft < nav.scrollLeft || tab.offsetLeft + tab.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: tab.offsetLeft - 16, behavior: 'smooth' }); }, [section]);
   const [policies, setPolicies] = useState<InsurancePolicy[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [view, setView] = useState('All'); const [status, setStatus] = useState('All'); const [query, setQuery] = useState(''); const [currency, setCurrency] = useState(baseCurrency);
   const [form, setForm] = useState<{ policy: InsurancePolicy; isNew: boolean; startWithImport: boolean } | null>(null); const [deleting, setDeleting] = useState<InsurancePolicy | null>(null); const [busy, setBusy] = useState(false);
@@ -103,8 +116,14 @@ export default function InsuranceTab({ baseCurrency, linked }: { baseCurrency: s
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-extrabold"><ShieldCheck className="text-primary" />Insurance</h1><p className="mt-1 text-sm text-secondary">Your policies, protection and travel cover in one place.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => create(true)} disabled={loading || !!error} className="flex items-center gap-2 rounded-xl border border-primary px-4 py-2.5 text-sm font-bold text-primary disabled:opacity-40"><Sparkles size={16} />Import from link or PDF</button><button onClick={() => create()} disabled={loading || !!error} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"><Plus size={16} />Add policy</button></div></div>
     {error && <div role="alert" className={`${box} text-sm text-red-400`}>{error}<button onClick={refresh} className="ml-3 inline-flex items-center gap-1 text-primary"><RefreshCw size={14} />Retry</button></div>}
     {loading ? <p role="status" className="py-10 text-center text-secondary">Loading insurance…</p> : !error && <>
-      <div className="flex flex-wrap items-center justify-between gap-3">{['Overview', 'Policies'].includes(section) && <div className="flex gap-1 rounded-xl bg-surface p-1">{['All', 'Personal', 'Travel'].map(v => <button key={v} aria-pressed={view === v} onClick={() => setView(v)} className={`rounded-lg px-4 py-2 text-xs font-bold ${view === v ? 'bg-primary text-white' : 'text-secondary'}`}>{v === 'All' ? 'All policies' : v}</button>)}</div>}<label className="flex items-center gap-2 text-xs text-secondary">Metrics currency<select className="rounded-lg border border-border bg-surface p-2 text-textMain" value={currency} onChange={e => setCurrency(e.target.value)}>{[...new Set([baseCurrency, ...policies.map(p => p.currency)])].map(c => <option key={c}>{c}</option>)}</select></label></div>
-      <nav aria-label="Insurance sections" className="flex flex-wrap gap-2">{['Overview', 'Policies', 'Costs', 'Learn', 'Compare', 'Simulator', 'People', 'Claims', 'Review', ...EXTRA_SECTIONS].map(s => <button key={s} aria-pressed={section === s} onClick={() => setSection(s)} className={`rounded-xl border px-4 py-2 text-sm font-semibold ${section === s ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-secondary'}`}>{s}</button>)}</nav>
+      <nav ref={navRef} aria-label="Insurance sections" className="overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><div className="flex min-w-max gap-1">{NAV.map(g => { const on = g.items.some(([id]) => id === section); return <button key={g.label} data-sections={g.items.map(([id]) => id).join(' ')} aria-current={on ? 'page' : undefined} onClick={() => { if (!on) setSection(g.items[0][0]); }} className={`shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-primary text-primary' : 'border-transparent text-secondary hover:text-textMain'}`}>{g.label}</button>; })}</div></nav>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {(() => { const group = NAV.find(g => g.items.some(([id]) => id === section)); return group && group.items.length > 1 ? <div role="tablist" aria-label={`${group.label} views`} className="flex flex-wrap gap-1 rounded-xl bg-surface p-1">{group.items.map(([id, label]) => <button key={id} role="tab" data-section={id} aria-selected={section === id} onClick={() => setSection(id)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${section === id ? 'bg-primary text-white' : 'text-secondary hover:text-textMain'}`}>{label}</button>)}</div> : <span />; })()}
+        <div className="flex flex-wrap items-center gap-3">
+          {['Overview', 'Policies'].includes(section) && <label className="flex items-center gap-2 text-xs text-secondary">Show<select aria-label="Policy type" className="rounded-lg border border-border bg-surface p-2 text-textMain" value={view} onChange={e => setView(e.target.value)}>{['All', 'Personal', 'Travel'].map(v => <option key={v} value={v}>{v === 'All' ? 'All policies' : v}</option>)}</select></label>}
+          <label className="flex items-center gap-2 text-xs text-secondary">Currency<select aria-label="Metrics currency" className="rounded-lg border border-border bg-surface p-2 text-textMain" value={currency} onChange={e => setCurrency(e.target.value)}>{[...new Set([baseCurrency, ...policies.map(p => p.currency)])].map(c => <option key={c}>{c}</option>)}</select></label>
+        </div>
+      </div>
       {['Overview', 'Policies'].includes(section) ? <>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
         ['Active policies', String(metrics.active), `In ${currency}`], ['Annual premiums', money(metrics.annual, currency), `${money(metrics.annual / 12, currency)} / month equivalent`], ['Due within 30 days', String(metrics.due), 'Includes overdue dates'], ['Travel premiums', money(metrics.travel, currency), 'One-time · current and upcoming policies'],

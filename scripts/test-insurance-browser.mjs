@@ -35,13 +35,19 @@ try {
     assert.equal(await evaluate(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(scope)})].find(b => b.textContent.trim() === ${JSON.stringify(text)}); if (!b) return false; b.click(); return true; })()`), true, 'button: ' + text);
     await new Promise(r => setTimeout(r, 70));
   };
+  const go = async section => {
+    assert.equal(await evaluate(`(() => { const g = [...document.querySelectorAll('nav[aria-label="Insurance sections"] button')].find(b => b.dataset.sections.split(' ').includes(${JSON.stringify(section)})); if (!g) return false; g.click(); return true; })()`), true, 'section group: ' + section);
+    await new Promise(r => setTimeout(r, 70));
+    await evaluate(`document.querySelector('[data-section=${JSON.stringify(section)}]')?.click()`);
+    await new Promise(r => setTimeout(r, 70));
+  };
   const fill = async (label, value) => {
     await evaluate(`(() => { const l = [...document.querySelectorAll('label')].find(l => l.textContent.trim().startsWith(${JSON.stringify(label)})); const el = l?.querySelector('input,select,textarea'); if (!el) throw new Error('Missing field: ' + ${JSON.stringify(label)}); const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el, ${JSON.stringify(String(value))}); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); })()`);
     await new Promise(r => setTimeout(r, 50));
   };
   const stored = () => evaluate(`JSON.parse(localStorage.getItem('subtrack_insurance_v1')).find(p => p.id === 'medical')`);
   const text = () => evaluate('document.body.innerText');
-  await click('Costs');
+  await go('Costs');
   await until(`document.body.innerText.includes('Premium history')`, 'costs');
   await fill('Effective date', '2025-01-01');
   await click('Add premium entry');
@@ -55,22 +61,22 @@ try {
   await until(`JSON.parse(localStorage.getItem('subtrack_insurance_v1')).find(p => p.id === 'medical').payments?.length === 1`, 'payment saved');
   assert.equal((await stored()).payments[0].amount, 235);
   assert.notEqual((await stored()).paymentDueDate, await evaluate('insuranceTestToday'), 'payment schedule advances');
-  await click('Compare');
+  await go('Compare');
   await evaluate(`document.querySelectorAll('label input[type=checkbox]').forEach(x => x.click())`);
   await until(`!!document.querySelector('table')`, 'comparison table');
   assert.ok((await text()).includes('Quotation')); assert.ok((await text()).includes('Not recorded'));
-  await click('Simulator');
+  await go('Simulator');
   assert.ok((await text()).includes('MYR 8,550')); assert.ok((await text()).includes('MYR 1,450'));
   await fill('Excluded / ineligible costs', 20000);
   await until(`!!document.querySelector('[role=alert]')`, 'simulator rejects invalid exclusion');
-  await click('People'); assert.ok((await text()).includes('Alex')); assert.ok((await text()).includes('Sam'));
+  await go('People'); assert.ok((await text()).includes('Alex')); assert.ok((await text()).includes('Sam'));
   assert.equal(await evaluate(`document.querySelectorAll('h3').length`), 2, 'quotations excluded from person coverage');
-  await click('Claims'); await fill('Claim title', 'Hospital reimbursement'); await fill('Requested', 1000); await fill('Follow-up tasks', 'Send receipt'); await click('Save claim');
+  await go('Claims'); await fill('Claim title', 'Hospital reimbursement'); await fill('Requested', 1000); await fill('Follow-up tasks', 'Send receipt'); await click('Save claim');
   await until(`JSON.parse(localStorage.getItem('subtrack_insurance_v1')).find(p => p.id === 'medical').claims?.length === 1`, 'claim saved');
   await click('Edit claim'); await fill('Status', 'Approved'); await fill('Approved', 800); await click('Save claim');
   await until(`JSON.parse(localStorage.getItem('subtrack_insurance_v1')).find(p => p.id === 'medical').claims?.[0].approved === 800`, 'claim updated');
   assert.equal((await stored()).claims.length, 1, 'editing does not duplicate claim');
-  await click('Review');
+  await go('Review');
   await evaluate(`document.querySelector('input[type=checkbox]').click()`); await fill('Review notes & questions', 'Ask about shared limits');
   await click('Save ' + await evaluate('insuranceTestToday.slice(0,4)') + ' review');
   await until(`Object.keys(JSON.parse(localStorage.getItem('subtrack_insurance_v1')).find(p => p.id === 'medical').reviews || {}).length === 1`, 'review saved');
@@ -80,13 +86,13 @@ try {
   for (let i = 0; i < 100 && !readdirSync(downloads).some(f => f.endsWith('.txt')); i++) await new Promise(r => setTimeout(r, 50));
   const reviewFile = readdirSync(downloads).find(f => f.endsWith('.txt')); assert.ok(reviewFile, 'review export downloaded');
   assert.ok(readFileSync(path.join(downloads, reviewFile), 'utf8').includes('Ask about shared limits'));
-  await click('Costs'); await click('Export calendar reminders');
+  await go('Costs'); await click('Export calendar reminders');
   for (let i = 0; i < 100 && !readdirSync(downloads).some(f => f.endsWith('.ics')); i++) await new Promise(r => setTimeout(r, 50));
   const calendarFile = readdirSync(downloads).find(f => f.endsWith('.ics')); assert.ok(calendarFile, 'calendar export downloaded');
   assert.ok(readFileSync(path.join(downloads, calendarFile), 'utf8').includes('BEGIN:VALARM'));
-  await click('Learn'); await until(`document.body.innerText.includes('How companies set the price')`, 'learning hub');
+  await go('Learn'); await until(`document.body.innerText.includes('How companies set the price')`, 'learning hub');
   await evaluate(`document.querySelector('input[type=range]').value = 200; document.querySelector('input[type=range]').dispatchEvent(new Event('input', {bubbles:true}))`);
-  await click('Policies'); await click('Edit', 'article button');
+  await go('Policies'); await click('Edit', 'article button');
   await until(`!!document.querySelector('dialog[open]')`, 'policy editor');
   await fill('Waiting period', '30 days'); await fill('Exclusions', 'Pre-existing conditions as stated'); await fill('Limit basis', 'Annual');
   await click('Deductibles & co-payments ↗'); assert.ok((await text()).includes('A deductible or excess'));
@@ -95,8 +101,8 @@ try {
   await send('Page.reload'); await until(`!!document.querySelector('nav[aria-label="Insurance sections"]')`, 'reload');
   assert.equal((await stored()).claims[0].approved, 800); assert.equal((await stored()).payments.length, 1);
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  for (const section of ['Overview', 'Policies', 'Costs', 'Learn', 'Compare', 'Simulator', 'People', 'Claims', 'Review']) {
-    await click(section); assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth + 1'), false, section + ' mobile overflow');
+  for (const section of ['Overview', 'Policies', 'Costs', 'Learn', 'Compare', 'Simulator', 'People', 'Claims', 'Review', 'Budget', 'Gaps', 'Trips', 'Ask', 'Emergency']) {
+    await go(section); assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth + 1'), false, section + ' mobile overflow');
   }
   mkdirSync('artifacts/insurance', { recursive: true });
   writeFileSync('artifacts/insurance/mobile-review.png', Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
