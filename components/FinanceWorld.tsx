@@ -10,8 +10,11 @@ import {
   ALL_DONE_BONUS, BUILDINGS, HALL, LIGHT_COST, STOP_KINDS, TIER_UNLOCK, addStop, removeStop, type StopKind, MAP, MAX_BUILDING_LEVEL, ROAD_KINDS, ROAD_KIND_IDS, TIMBER_COINS, WEEKLY_REWARDS, roadKindAt, type RoadKind,
   addLights, build, buildRoads, buyChunk, clearTrees, chunkCost, cityStats, claimMission, claimWeekly, collect, dailyMissions, demolish, demolishRefund, financeActivity, getBuilding,
   household, levelProgress, maxChunks, recordAgentReport, staffRoster, move, rotate, frontQuarter, occupancy, pendingCoins, removeLight, removeRoad, terrainMap, tileIndex, treesAt, upgrade, upgradeCost,
+  currentStreak, levelForXp, streakBonus,
   type BuildingCategory, type CityState, type Mission,
 } from '../services/cityGameService';
+import { achievements, awaySummary, claimAchievement, currentEvent, resolveEvent } from '../services/cityFunService';
+import { AchievementsPanel, Celebration, CoinBurst, EventCard, LiveCoins, StreakCard, WelcomeBack } from './CityFun';
 import { loadCity, saveCityToCloud, writeLocal, type CloudStatus } from '../services/cityGameStore';
 import type { SceneFocus, SceneMode } from './CityScene3D';
 import CityAccountantOffice from './CityAccountantOffice';
@@ -118,6 +121,10 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
   const [agentOpen, setAgentOpen] = useState<AgentId | null>(null);
   const [review, setReview] = useState([false, false, false]);
   const [focus, setFocus] = useState<SceneFocus | null>(null);
+  const [burst, setBurst] = useState(0); // coin shower when coins come in
+  const [celebration, setCelebration] = useState<{ title: string; detail?: string } | null>(null);
+  const [welcome, setWelcome] = useState<{ text: string; coins: number } | null>(null);
+  const closeCelebration = useCallback(() => setCelebration(null), []);
   const saveTimer = useRef<number>();
   const cityRef = useRef<CityState | null>(null);
 
@@ -129,6 +136,9 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
         setCity(result.state);
         cityRef.current = result.state;
         setStatus(result.status);
+        const at = Date.now();
+        const away = awaySummary(result.state, Object.values(pendingCoins(result.state, at)).reduce((sum, value) => sum + value, 0), at);
+        if (away) setWelcome(away);
         try { writeLocal(owner, result.state); } catch { /* storage full - the cloud copy still saves */ }
       })
       .catch(reason => { if (!cancelled) setLoadError(reason instanceof Error ? reason.message : 'Your city could not be loaded.'); });
@@ -149,6 +159,14 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
 
   // Saves on this device immediately; the account copy a moment later, so rapid taps batch up.
   const commit = useCallback((next: CityState, message?: string) => {
+    const previous = cityRef.current;
+    if (previous && levelForXp(next.xp) > levelForXp(previous.xp)) {
+      const reached = levelForXp(next.xp);
+      const unlocked = BUILDINGS.filter(type => type.unlock === reached).map(type => type.name);
+      setCelebration({ title: `Level ${reached} · ${TITLES[reached] || 'City'}!`, detail: unlocked.length ? `Unlocked: ${unlocked.slice(0, 5).join(', ')}${unlocked.length > 5 ? ` and ${unlocked.length - 5} more` : ''}` : 'More land is now available to buy.' });
+      setBurst(Date.now());
+    }
+    setNow(Date.now());
     setCity(next);
     cityRef.current = next;
     try { writeLocal(owner, next); } catch { setToast({ text: 'Could not save on this device - storage may be full.', tone: 'bad' }); }
@@ -214,7 +232,9 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
   const handleCollect = (id?: string) => {
     const result = collect(city, Date.now(), today, id);
     if (result.coins === 0) { setToast({ text: 'Nothing to collect yet - buildings fill up over time.', tone: 'bad' }); return; }
-    commit(result.state, `+${result.coins} coins collected`);
+    commit(result.state, `+${result.coins.toLocaleString()} coins collected`);
+    setBurst(Date.now());
+    if (!id) setWelcome(null);
   };
 
   const handleTile = (x: number, z: number) => {
@@ -259,8 +279,31 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
   const handleMission = (mission: Mission | 'bonus') => {
     const id = mission === 'bonus' ? 'bonus' : mission.id;
     const reward = mission === 'bonus' ? ALL_DONE_BONUS : mission;
-    report(claimMission(city, missions, id, Date.now(), today), `+${reward.coins} coins · +${reward.xp} XP`);
+    const streakNote = id === 'log1' ? ` · 🔥 ${currentStreak(city, today) > 0 && city.streak?.lastDay !== today ? currentStreak(city, today) + 1 : 1}-day streak` : '';
+    report(claimMission(city, missions, id, Date.now(), today), `+${reward.coins} coins · +${reward.xp} XP${streakNote}`);
   };
+
+  const event = currentEvent(city, stats, now);
+  const achievementList = achievements(city, stats, today);
+  const streakNow = currentStreak(city, today);
+  const loggedToday = city.daily.day === today && city.daily.claimed.includes('log1');
+  const streakShown = streakNow + (loggedToday ? 0 : activity.expensesToday >= 1 ? 1 : 0);
+  const goToEvent = () => {
+    const building = city.buildings.find(item => item.id === event.buildingId);
+    const size = building ? getBuilding(building.type)!.size : HALL.size;
+    setFocus({ x: (building ? building.x : HALL.x) + size / 2, z: (building ? building.z : HALL.z) + size / 2, key: Date.now() });
+    setSelectedId(event.buildingId);
+    setMode({ kind: 'idle' });
+  };
+  const chooseEvent = (choice: number) => {
+    const option = event.choices[choice];
+    if (report(resolveEvent(city, event, choice, Date.now(), today), `${event.icon} ${option.label} · +${option.coins.toLocaleString()} coins · +${option.xp} XP`)) setBurst(Date.now());
+  };
+  const claimBadge = (id: string) => {
+    const result = claimAchievement(city, stats, id, Date.now(), today);
+    if (report(result, `🏆 Achievement unlocked · +${result.reward?.coins.toLocaleString()} coins · +${result.reward?.xp} XP`)) setBurst(Date.now());
+  };
+  const rawPendingTotal = Object.values(rawPending).reduce((sum, value) => sum + value, 0);
 
   const reviewed = city.weekly.some(item => item.week === worldWeek(today) && item.quest === 'review');
   const weekly: Array<{ id: QuestId; title: string; note: string; ratio: number; eligible: boolean; destination: Destination }> = [
@@ -357,6 +400,8 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
         })}
       </div>
 
+      {welcome && <WelcomeBack text={welcome.text} coins={welcome.coins} onCollect={() => handleCollect()} onDismiss={() => setWelcome(null)} />}
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
         <div className="col-span-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 sm:col-span-1">
           <p className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-300">Coins</p>
@@ -401,9 +446,11 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
             </div>
             {mode.kind === 'idle' && totalPending >= 1 && (
               <button type="button" onClick={() => handleCollect()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-2.5 text-sm font-black text-amber-950 shadow-lg hover:bg-amber-300">
-                <Coins size={16} /> Collect {coinText(totalPending)}
+                <Coins size={16} /> Collect <LiveCoins base={rawPendingTotal} ratePerHour={stats.incomePerHour} since={now} />
               </button>
             )}
+            <CoinBurst trigger={burst} />
+            {celebration && <Celebration title={celebration.title} detail={celebration.detail} onClose={closeCelebration} />}
             {toast && (
               <p role="status" className={`absolute left-1/2 top-24 -translate-x-1/2 rounded-full px-4 py-1.5 text-xs font-bold shadow-lg ${toast.tone === 'good' ? 'bg-emerald-500 text-white' : 'bg-slate-950/90 text-white'}`}>{toast.text}</p>
             )}
@@ -561,10 +608,15 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
             </section>
           )}
 
+          <EventCard event={event} now={now} here={selectedId === event.buildingId} onGo={goToEvent} onChoose={chooseEvent} />
+
           <section className={box}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-bold text-textMain"><Gift size={16} className="text-amber-500" /> Daily missions</h2>
               <span className="text-[10px] text-secondary">Resets at midnight</span>
+            </div>
+            <div className="mt-3">
+              <StreakCard count={streakShown} best={city.streak?.best || 0} bonus={streakBonus(streakShown)} recordedToday={activity.expensesToday >= 1} claimedToday={loggedToday} onRecord={() => onOpen('expenses')} />
             </div>
             <div className="mt-3 space-y-2">
               {missions.map(mission => (
@@ -620,10 +672,13 @@ const FinanceWorld: React.FC<Props> = ({ owner, expenses, incomes, subscriptions
             </div>
           </section>
 
+          <AchievementsPanel items={achievementList} onClaim={claimBadge} />
+
           <section className={box}>
             <h2 className="text-sm font-bold text-textMain">City guide</h2>
             <ul className="mt-2 space-y-1.5 text-[11px] text-secondary">
               {tips.map(tip => <li key={tip}>💡 {tip}</li>)}
+              <li>⏳ Buildings keep earning while you're away - there's no limit, so collect whenever you like. Earnings are banked at the old rates whenever you change the city.</li>
               <li>💡 {city.lights.length} street light{city.lights.length === 1 ? '' : 's'}: every 4 add 1 happiness (up to +12), and they light the streets at night.</li>
               <li>🌲 Bulldoze wild trees on your land for {TIMBER_COINS} 🪙 a tree - building or laying road over them pays too.</li>
               <li>🗺️ You own {city.chunks.length} of 100 plots; level {level} allows {maxChunks(level)}. The next costs {chunkCost(city)} 🪙.</li>

@@ -565,3 +565,21 @@
     animation: none;
   }
 }
+
+/* My City: coin bursts, event and achievement cues, celebrations. */
+@keyframes city-coin-burst {
+  0% { transform: translate(0, 0) rotate(0deg) scale(0.6); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(1); opacity: 0; }
+}
+.city-coin-burst { animation: city-coin-burst 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+@keyframes city-event-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.city-event-bounce { animation: city-event-bounce 1.2s ease-in-out infinite; }
+@keyframes city-achievement-glow { 0%, 100% { box-shadow: 0 0 0 0 rgb(245 158 11 / 0); } 50% { box-shadow: 0 0 0 4px rgb(245 158 11 / 0.25); } }
+.city-achievement-ready { animation: city-achievement-glow 1.8s ease-in-out infinite; }
+@keyframes city-celebrate { 0% { transform: translate(-50%, -12px) scale(0.92); opacity: 0; } 100% { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+.city-celebrate { animation: city-celebrate 0.35s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .city-event-bounce, .city-achievement-ready, .city-celebrate { animation: none; }
+  .city-coin-burst { display: none; }
+}

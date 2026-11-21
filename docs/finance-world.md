@@ -14,13 +14,20 @@ A 100×100 tile map, the same for everyone: a coastline, a river and a lake from
 - **Street lights**: dragged along roads (10 coins each, 4 back when removed). Every 4 lit road tiles add 1 happiness, up to +12, and at night they cast warm pools of light.
 - **Wild trees** grow on grass (thick in forests). Bulldozing them on your land pays 4 coins a tree; building or laying road over them clears them and pays the same.
 - **Happiness** (0-100) multiplies income from 0.75× to 1.25×. Greenery, schools, clinics and landmarks raise it; workshops, factories and power plants lower it, and so do many homes without parks or services.
-- **Income** fills each building for up to 8 hours; collect per building or all at once (whole coins; the fraction keeps filling). Upgrades go to level 3 (1.5× then 2.5× the build cost; 1.7× and 2.6× output). Removing returns half of everything spent.
+- **Income** builds up continuously with no cap; collect per building or all at once (whole coins; the fraction keeps filling). Whenever the city changes (building, upgrading, moving, roads, lights), each building's earnings so far are banked at the rates that applied, so a new rate only counts from then on. Upgrades go to level 3 (1.5× then 2.5× the build cost; 1.7× and 2.6× output). Removing returns half of everything spent.
 - **Levels** (1-15) come from XP: a quarter of what's spent on buildings, a point per road tile, 20 per plot, plus missions. They unlock buildings and more land.
 - **Buildings**: homes (cottage, townhouse, apartments 2×2, residential tower 2×2), business (café, corner shop, market hall, office block, bank), industry (workshop, factory), utilities (power plant, wind turbine, solar farm, water tower, pumping station), services (trees, park, plaza fountain, school, clinic, lighthouse - by the water).
 
 ## Missions
 
 Daily (reset at local midnight): *Visit your city* and *Record an expense* every day, one of *Keep a full record* (3 expenses) / *Pay yourself first* (a savings contribution) / *Track what comes in* (income dated today), and one of *Run the city* (collect) / *Build something* (building, upgrade or road). All four open an 80-coin bonus. Weekly (Monday-Sunday): expenses on three days, a savings contribution, and the three review steps.
+
+## Streak, events and achievements
+
+- **Habit streak**: consecutive days on which *Record an expense* is claimed. Each day after the first adds 10% to mission coins, up to +50%. Missing a day resets it; the best is kept.
+- **City events**: one every 3 hours (the same in every tab), held at a working building (festival, rush hour, lost wallet, repairs, harvest) or the Town Hall. *Go there* flies the camera to it; pick one of two responses for coins (about half an hour of city income) or more XP.
+- **Achievements**: residents, buildings, roads, happiness, coins earned, streak, level, events and land, each in four tiers claimed one at a time (150 to 10,000 coins).
+- A welcome-back card shows what the city earned after an hour or more away; collecting shows a coin shower, and level-ups a banner with what unlocked.
 
 ## Saving
 

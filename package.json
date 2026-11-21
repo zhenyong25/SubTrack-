@@ -10,6 +10,7 @@
     "test:cards:planner:browser": "node scripts/test-card-planner-browser.mjs",
     "test:auth:browser": "node scripts/test-auth-refresh-browser.mjs",
     "test:city:browser": "node scripts/test-city-expansion-browser.mjs",
+    "test:city:fun:browser": "node scripts/test-city-fun-browser.mjs",
     "test:city:vehicles:browser": "node scripts/test-city-expansion-browser.mjs --vehicles",
     "test:city:animals:browser": "node scripts/test-city-expansion-browser.mjs --animals",
     "test:city:ambience": "node scripts/test-city-game.mjs --ambience",

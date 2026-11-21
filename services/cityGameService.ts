@@ -13,7 +13,6 @@ export const CITY_PREFIX = 'subtrack_city_v1:';
 export const MAP = 100; // tiles per side
 export const CHUNK = 10; // land is bought in 10×10 plots
 export const CHUNKS = MAP / CHUNK;
-export const INCOME_CAP_HOURS = 8; // buildings stop filling after this long - visit to collect
 export const STARTING_COINS = 300;
 export const ROAD_COST = 5;
 export const ROAD_REFUND = 2;
@@ -252,6 +251,9 @@ export interface PlacedBuilding {
   z: number;
   level: number;
   collectedAt: number; // ms; production since then is waiting to be collected
+  // Coins earned before the last change to the city, at the rates that applied then. Earnings
+  // are banked whenever the city changes, so a new rate never applies to time already passed.
+  banked?: number;
   // Which way the front faces, in quarter turns: 0 south (+z), 1 east (+x), 2 north (-z),
   // 3 west (-x). Unset: towards the nearest road, as buildings always did.
   rotation?: number;
@@ -289,7 +291,14 @@ export interface CityState {
   cleared: number[]; // tiles whose wild trees were cut down
   chunks: number[]; // owned 10×10 plots
   hallCollectedAt: number;
+  hallBanked?: number;
   daily: { day: string; claimed: string[]; collected: boolean; built: boolean };
+  // Days in a row with an expense recorded (the "Record an expense" mission claimed).
+  streak?: { count: number; lastDay: string; best: number };
+  // City events helped with, and the event windows already handled.
+  events?: { helped: number; resolved: string[] };
+  achievements?: string[]; // claimed achievement tiers, "id:tier"
+
   weekly: Array<{ week: string; quest: QuestId }>;
   lifetimeCoins: number;
   updatedAt: number;
@@ -365,6 +374,12 @@ export const parseCity = (raw: string | null): CityState | null => {
     weekly: data.weekly.filter((r: any) => r && isDay(r.week) && Object.hasOwn(QUEST_REWARDS, r.quest)),
     lifetimeCoins: finite(data.lifetimeCoins) ? data.lifetimeCoins : 0,
     updatedAt: finite(data.updatedAt) ? data.updatedAt : 0,
+    ...(finite(data.hallBanked) && data.hallBanked > 0 ? { hallBanked: data.hallBanked } : {}),
+    ...(data.streak && Number.isInteger(data.streak.count) && data.streak.count > 0 && isDay(data.streak.lastDay)
+      ? { streak: { count: data.streak.count, lastDay: data.streak.lastDay, best: Math.max(data.streak.count, Number.isInteger(data.streak.best) ? data.streak.best : 0) } } : {}),
+    ...(data.events && Number.isInteger(data.events.helped) && Array.isArray(data.events.resolved)
+      ? { events: { helped: Math.max(0, data.events.helped), resolved: data.events.resolved.filter((key: unknown) => typeof key === 'string').slice(-50) } } : {}),
+    ...(Array.isArray(data.achievements) ? { achievements: [...new Set<string>(data.achievements.filter((key: unknown) => typeof key === 'string' && /^[a-z]+:\d$/.test(key)))] } : {}),
   };
   if (data.version === 1) {
     // The map grew from an 11×11 island to 100×100 with roads, so old buildings are refunded
@@ -375,7 +390,10 @@ export const parseCity = (raw: string | null): CityState | null => {
   const chunks = Array.isArray(data.chunks) ? [...new Set<number>(data.chunks.filter((c: unknown) => Number.isInteger(c) && (c as number) >= 0 && (c as number) < CHUNKS * CHUNKS))] : [...START_CHUNKS];
   const roads = Array.isArray(data.roads) ? [...new Set<number>(data.roads.filter((r: unknown) => Number.isInteger(r) && (r as number) >= 0 && (r as number) < MAP * MAP))] : starterRoads();
   const buildings = data.buildings.filter((b: any) => b && typeof b.id === 'string' && getBuilding(b.type) && Number.isInteger(b.x) && Number.isInteger(b.z) && Number.isInteger(b.level) && b.level >= 1 && b.level <= MAX_BUILDING_LEVEL && finite(b.collectedAt))
-    .map((b: any) => { const { rotation, ...rest } = b; return Number.isInteger(rotation) && rotation >= 0 && rotation <= 3 ? { ...rest, rotation } : rest; });
+    .map((b: any) => {
+      const { rotation, banked, ...rest } = b;
+      return { ...rest, ...(Number.isInteger(rotation) && rotation >= 0 && rotation <= 3 ? { rotation } : {}), ...(finite(banked) && banked > 0 ? { banked } : {}) };
+    });
   const tileList = (value: unknown) => (Array.isArray(value) ? [...new Set<number>(value.filter((r: unknown) => Number.isInteger(r) && (r as number) >= 0 && (r as number) < MAP * MAP))] : []);
   const roadSet = new Set(roads);
   const lights = tileList(data.lights).filter(index => roadSet.has(index));
@@ -528,8 +546,12 @@ export const cityStats = (state: CityState, now: number): CityStats => {
     status.set(building.id, { road, serviced: factor, rate, residents: Math.round(scale(type.residents, building.level)), staff: Math.round(jobsHere * factor * staffing), jobs: Math.round(jobsHere) });
   });
   const incomePerHour = [...status.values()].reduce((sum, item) => sum + item.rate, 0);
-  const since = (id: string) => (id === 'hall' ? state.hallCollectedAt : state.buildings.find(b => b.id === id)?.collectedAt ?? now);
-  const pending = [...status.entries()].reduce((sum, [id, item]) => sum + Math.min(INCOME_CAP_HOURS, Math.max(0, now - since(id)) / 3600000) * item.rate, 0);
+  const byId = new Map(state.buildings.map(b => [b.id, b]));
+  const pending = [...status.entries()].reduce((sum, [id, item]) => {
+    const since = id === 'hall' ? state.hallCollectedAt : byId.get(id)?.collectedAt ?? now;
+    const banked = id === 'hall' ? state.hallBanked || 0 : byId.get(id)?.banked || 0;
+    return sum + banked + (Math.max(0, now - since) / 3600000) * item.rate;
+  }, 0);
   return {
     residents: Math.round(residents), jobs: Math.round(jobs), staffing, happiness, happinessBonus,
     power: { supply: Math.round(powerSupply), demand: Math.round(powerDemand) },
@@ -541,39 +563,52 @@ export const cityStats = (state: CityState, now: number): CityStats => {
 // Coins waiting at each building (and 'hall').
 export const pendingCoins = (state: CityState, now: number, stats = cityStats(state, now)) => {
   const result: Record<string, number> = {};
-  const hours = (since: number) => Math.min(INCOME_CAP_HOURS, Math.max(0, now - since) / 3600000);
-  result.hall = hours(state.hallCollectedAt) * stats.status.get('hall')!.rate;
-  state.buildings.forEach(building => { result[building.id] = hours(building.collectedAt) * (stats.status.get(building.id)?.rate || 0); });
+  const hours = (since: number) => Math.max(0, now - since) / 3600000;
+  result.hall = (state.hallBanked || 0) + hours(state.hallCollectedAt) * stats.status.get('hall')!.rate;
+  state.buildings.forEach(building => { result[building.id] = (building.banked || 0) + hours(building.collectedAt) * (stats.status.get(building.id)?.rate || 0); });
   return result;
 };
 export const pendingAt = (state: CityState, id: string, now: number) => pendingCoins(state, now)[id] || 0;
 
-const touch = (state: CityState, now: number, today: string): CityState =>
+// Banks everything earned so far at the current rates and restarts the clocks. Called before any
+// change that can alter rates (building, roads, lights...), so earnings stay continuous and fair.
+// Only a positive bank is stored, so a save looks the same as before when nothing is banked.
+const withBank = <T extends object>(item: T, key: 'banked' | 'hallBanked', amount: number): T => {
+  const { [key]: _old, ...rest } = item as Record<string, unknown>;
+  return (amount > 0 ? { ...rest, [key]: amount } : rest) as T;
+};
+export const settle = (state: CityState, now: number): CityState => {
+  const waiting = pendingCoins(state, now);
+  return {
+    ...withBank(state, 'hallBanked', waiting.hall || 0),
+    hallCollectedAt: now,
+    buildings: state.buildings.map(building => ({ ...withBank(building, 'banked', waiting[building.id] || 0), collectedAt: now })),
+  };
+};
+
+export const touch = (state: CityState, now: number, today: string): CityState =>
   state.daily.day === today ? { ...state, updatedAt: now } : { ...state, daily: { day: today, claimed: [], collected: false, built: false }, updatedAt: now };
 
-const earn = (state: CityState, coins: number, xp: number): CityState => ({ ...state, coins: state.coins + coins, xp: state.xp + xp, lifetimeCoins: state.lifetimeCoins + coins });
+export const earn = (state: CityState, coins: number, xp: number): CityState => ({ ...state, coins: state.coins + coins, xp: state.xp + xp, lifetimeCoins: state.lifetimeCoins + coins });
 const markBuilt = (state: CityState): CityState => ({ ...state, daily: { ...state.daily, built: true } });
 
 // Collect from one building, or everything when no id is given. Whole coins only - the
 // fraction stays and keeps filling.
 export const collect = (state: CityState, now: number, today: string, id?: string): { state: CityState; coins: number } => {
-  const stats = cityStats(state, now);
-  const waiting = pendingCoins(state, now, stats);
+  const waiting = pendingCoins(state, now);
   const ids = id ? [id] : Object.keys(waiting);
   let total = 0;
-  const collectedAt = new Map<string, number>();
+  const left = new Map<string, number>(); // the fraction of a coin that stays and keeps filling
   for (const target of ids) {
     const amount = Math.floor(waiting[target] || 0);
     if (amount < 1) continue;
     total += amount;
-    const rate = stats.status.get(target)!.rate; // coins per hour
-    collectedAt.set(target, now - ((waiting[target] - amount) / rate) * 3600000);
+    left.set(target, waiting[target] - amount);
   }
   if (total === 0) return { state, coins: 0 };
   let next: CityState = {
-    ...state,
-    hallCollectedAt: collectedAt.get('hall') ?? state.hallCollectedAt,
-    buildings: state.buildings.map(building => (collectedAt.has(building.id) ? { ...building, collectedAt: collectedAt.get(building.id)! } : building)),
+    ...(left.has('hall') ? { ...withBank(state, 'hallBanked', left.get('hall')!), hallCollectedAt: now } : state),
+    buildings: state.buildings.map(building => (left.has(building.id) ? { ...withBank(building, 'banked', left.get(building.id)!), collectedAt: now } : building)),
   };
   next = touch(earn(next, total, Math.floor(total / 10)), now, today);
   return { state: { ...next, daily: { ...next.daily, collected: true } }, coins: total };
@@ -582,6 +617,7 @@ export const collect = (state: CityState, now: number, today: string, id?: strin
 export type BuildResult = { state: CityState; error?: undefined } | { state?: undefined; error: string };
 
 export const build = (state: CityState, typeId: string, x: number, z: number, now: number, today: string, id: string, rotation?: number): BuildResult => {
+  state = settle(state, now);
   const type = getBuilding(typeId);
   if (!type) return { error: 'Unknown building.' };
   if (levelForXp(state.xp) < type.unlock) return { error: `${type.name} unlocks at city level ${type.unlock}.` };
@@ -599,6 +635,7 @@ export const upgradeCost = (building: PlacedBuilding) => {
 
 // Upgrading collects first, so nothing earned at the old rate is lost.
 export const upgrade = (state: CityState, id: string, now: number, today: string): BuildResult => {
+  state = settle(state, now);
   const building = state.buildings.find(item => item.id === id);
   if (!building) return { error: 'That building is gone.' };
   const cost = upgradeCost(building);
@@ -616,6 +653,7 @@ export const upgrade = (state: CityState, id: string, now: number, today: string
 };
 
 export const move = (state: CityState, id: string, x: number, z: number, now: number, today: string, rotation?: number): BuildResult => {
+  state = settle(state, now);
   const building = state.buildings.find(item => item.id === id);
   if (!building) return { error: 'That building is gone.' };
   const place = canPlace(state, building.type, x, z, id);
@@ -628,6 +666,7 @@ export const move = (state: CityState, id: string, x: number, z: number, now: nu
 // Turning a building a quarter turn clockwise (seen from above) costs nothing.
 const isQuarter = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 3;
 export const rotate = (state: CityState, id: string, now: number, today: string): BuildResult => {
+  state = settle(state, now);
   const building = state.buildings.find(item => item.id === id);
   if (!building) return { error: 'That building is gone.' };
   const rotation = (frontQuarter(new Set(state.roads), building, getBuilding(building.type)!.size) + 1) % 4;
@@ -643,6 +682,7 @@ export const demolishRefund = (building: PlacedBuilding) => {
 
 // Half of everything spent on it comes back, plus whatever it had produced.
 export const demolish = (state: CityState, id: string, now: number, today: string): BuildResult => {
+  state = settle(state, now);
   const building = state.buildings.find(item => item.id === id);
   if (!building) return { error: 'That building is gone.' };
   const { state: collected } = collect(state, now, today, id);
@@ -701,6 +741,7 @@ const withKinds = (state: CityState, tiles: number[], kind: RoadKind) => {
 };
 
 export const buildRoads = (state: CityState, tiles: number[], now: number, today: string, kind: RoadKind = 'street'): BuildResult => {
+  state = settle(state, now);
   if (levelForXp(state.xp) < ROAD_KINDS[kind].unlock) return { error: `${ROAD_KINDS[kind].name}s unlock at level ${ROAD_KINDS[kind].unlock}.` };
   const plan = planRoads(state, tiles, kind);
   if (plan.fresh.length === 0) return { error: plan.blocked ? 'Roads can only go on empty land you own.' : "There's already a road there." };
@@ -712,6 +753,7 @@ export const buildRoads = (state: CityState, tiles: number[], now: number, today
 
 // Removing a road takes its street light with it.
 export const removeRoad = (state: CityState, index: number, now: number, today: string): BuildResult => {
+  state = settle(state, now);
   if (!state.roads.includes(index)) return { error: 'No road there.' };
   const lit = state.lights.includes(index), refund = ROAD_KINDS[roadKindAt(state, index)].refund;
   const stops = (state.stops || []).filter(stop => stop.road === index), stopRefund = stops.reduce((sum, stop) => sum + STOP_KINDS[stop.kind].refund, 0);
@@ -751,6 +793,7 @@ export const planLights = (state: CityState, tiles: number[]) => {
 };
 
 export const addLights = (state: CityState, tiles: number[], now: number, today: string): BuildResult => {
+  state = settle(state, now);
   const plan = planLights(state, tiles);
   if (plan.fresh.length === 0) return { error: tiles.some(index => state.roads.includes(index)) ? 'Those streets are already lit.' : 'Street lights go along roads.' };
   if (state.coins < plan.cost) return { error: `You need ${plan.cost - state.coins} more coins for ${plan.fresh.length} street lights.` };
@@ -758,6 +801,7 @@ export const addLights = (state: CityState, tiles: number[], now: number, today:
 };
 
 export const removeLight = (state: CityState, index: number, now: number, today: string): BuildResult => {
+  state = settle(state, now);
   if (!state.lights.includes(index)) return { error: 'No street light there.' };
   return { state: touch({ ...state, coins: state.coins + LIGHT_REFUND, lights: state.lights.filter(light => light !== index) }, now, today) };
 };
@@ -838,10 +882,24 @@ export const dailyMissions = (state: CityState, activity: FinanceActivity, today
   };
   const extra = ['log3', 'save', 'income'][seed % 3];
   const game = ['collect', 'build'][Math.floor(seed / 3) % 2];
-  return ['checkin', 'log1', extra, game].map(id => ({ ...all[id], claimed: daily.claimed.includes(id) }));
+  const bonus = streakBonus(currentStreak(state, today) + (daily.claimed.includes('log1') ? 0 : activity.expensesToday >= 1 ? 1 : 0));
+  return ['checkin', 'log1', extra, game].map(id => ({ ...all[id], coins: Math.round(all[id].coins * (1 + bonus)), claimed: daily.claimed.includes(id) }));
 };
 
 export const ALL_DONE_BONUS = { coins: 80, xp: 30 } as const;
+
+const dayBefore = (day: string) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+/** The streak still counting today: recorded today or yesterday. */
+export const currentStreak = (state: CityState, today: string) =>
+  state.streak && (state.streak.lastDay === today || state.streak.lastDay === dayBefore(today)) ? state.streak.count : 0;
+/** Mission coins grow 10% for each day of the streak after the first, up to +50%. */
+export const streakBonus = (streak: number) => Math.min(0.5, Math.max(0, streak - 1) * 0.1);
+export const recordStreakDay = (state: CityState, today: string): CityState => {
+  const previous = state.streak;
+  if (previous?.lastDay === today) return state;
+  const count = previous && previous.lastDay === dayBefore(today) ? previous.count + 1 : 1;
+  return { ...state, streak: { count, lastDay: today, best: Math.max(previous?.best || 0, count) } };
+};
 
 export const claimMission = (state: CityState, missions: Mission[], id: string, now: number, today: string): BuildResult => {
   const current = touch(state, now, today);
@@ -853,7 +911,7 @@ export const claimMission = (state: CityState, missions: Mission[], id: string, 
   const mission = missions.find(item => item.id === id);
   if (!mission || !mission.done) return { error: 'Not done yet.' };
   if (current.daily.claimed.includes(id)) return { error: 'Already claimed today.' };
-  const earned = earn(current, mission.coins, mission.xp);
+  const earned = earn(id === 'log1' ? recordStreakDay(current, today) : current, mission.coins, mission.xp);
   return { state: { ...earned, daily: { ...earned.daily, claimed: [...earned.daily.claimed, id] } } };
 };
 

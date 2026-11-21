@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ALL_DONE_BONUS, CHUNKS, HALL, INCOME_CAP_HOURS, LIGHT_COST, LIGHT_REFUND, MAP, ROAD_COST, ROAD_REFUND, STARTING_COINS, START_CHUNKS, TIMBER_COINS,
+  ALL_DONE_BONUS, CHUNKS, HALL, LIGHT_COST, LIGHT_REFUND, MAP, ROAD_COST, ROAD_REFUND, STARTING_COINS, START_CHUNKS, TIMBER_COINS,
   addLights, build, buildRoads, buyChunk, clearTrees, household, staffRoster, canPlace, chunkAvailable, chunkCost, cityFromWorld, cityStats, claimMission, claimWeekly, collect,
   dailyMissions, demolish, demolishRefund, financeActivity, hasRoadAccess, levelForXp, levelProgress, maxChunks, move, newCity, newerCity,
   parseCity, pendingAt, planRoads, removeLight, removeRoad, treesAt, wildTrees, roadPath, starterRoads, terrainAt, terrainMap, tileIndex, upgrade, upgradeCost, type CityState,
@@ -100,7 +100,9 @@ test('shops need workers, greenery cheers people up, income fills to a cap', () 
   assert.equal(cityStats(city, T0).happiness, before + 2);
   const rate = cityStats(city, T0).status.get('cafe')!.rate;
   assert.ok(Math.abs(pendingAt(city, 'cafe', T0 + 2 * HOUR) - 2 * rate) < 1e-6);
-  assert.ok(Math.abs(pendingAt(city, 'cafe', T0 + 30 * HOUR) - INCOME_CAP_HOURS * rate) < 1e-6);
+  // No cap: a building keeps earning until it's collected.
+  assert.ok(Math.abs(pendingAt(city, 'cafe', T0 + 30 * HOUR) - 30 * rate) < 1e-6);
+  assert.ok(Math.abs(pendingAt(city, 'cafe', T0 + 24 * 30 * HOUR) - 24 * 30 * rate) < 1e-4);
 });
 
 test('collecting takes whole coins and keeps the fraction filling', () => {
