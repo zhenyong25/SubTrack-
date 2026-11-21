@@ -3,6 +3,7 @@ import { Eye, EyeOff, PiggyBank, Pencil, Plus, Trash2, TrendingDown, TrendingUp,
 import { RetirementBalanceEntry, RetirementFund, RetirementScheme } from '../types';
 import { getCurrencySymbol } from '../services/storageService';
 import { balancesAsOf, dayOf, sumBalances } from '../services/retirementService';
+import RetirementAccountGuide from './RetirementAccountGuide';
 
 interface RetirementFundsPanelProps {
   funds: RetirementFund[];
@@ -331,6 +332,8 @@ const RetirementFundsPanel: React.FC<RetirementFundsPanelProps> = ({
                   </div>
                 </div>
 
+                <RetirementAccountGuide scheme={fund.scheme} />
+
                 {fundEntries.length === 0 ? (
                   <div className="mt-4 text-center py-6 border border-dashed border-border rounded-xl">
                     <p className="text-xs text-secondary">No balance logged yet.</p>
@@ -358,6 +361,9 @@ const RetirementFundsPanel: React.FC<RetirementFundsPanelProps> = ({
                         {deltaPct !== null && ` (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)`}
                         <span className="text-secondary font-normal">since {formatLongDate(previousDate!)}</span>
                       </div>
+                    )}
+                    {delta !== null && delta !== 0 && !amountsHidden && (
+                      <p className="mt-1 text-center text-[10px] text-secondary">Balance change includes contributions and withdrawals; this is not your investment return.</p>
                     )}
 
                     <div className="mt-4 space-y-3">
