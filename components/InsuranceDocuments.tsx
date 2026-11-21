@@ -7,7 +7,8 @@ const errorText = (e: unknown) => e instanceof Error ? e.message : 'Something we
 const sizeText = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 /** Saved documents plus files picked in the form that upload when the policy is saved. */
-export function DocumentsEditor({ saved, pending, onRemoveSaved, onAdd, onRemovePending }: {
+export function DocumentsEditor({ saved, pending, onRemoveSaved, onAdd, onRemovePending, title = 'Policy documents', emptyText = 'No documents yet. Attach the policy wording or certificate so you can open it later.' }: {
+  title?: string; emptyText?: string;
   saved: InsuranceDocument[]; pending: File[]; onRemoveSaved: (doc: InsuranceDocument) => void; onAdd: (file: File) => void; onRemovePending: (file: File) => void;
 }) {
   const [error, setError] = useState('');
@@ -16,7 +17,7 @@ export function DocumentsEditor({ saved, pending, onRemoveSaved, onAdd, onRemove
   const row = 'flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs';
   return <div className="sm:col-span-2">
     <div className="flex items-center justify-between gap-3">
-      <p className="text-xs font-semibold text-secondary">Policy documents <span className="font-normal">· PDF or image, up to 15 MB</span></p>
+      <p className="text-xs font-semibold text-secondary">{title} <span className="font-normal">· PDF or image, up to 15 MB</span></p>
       {available && <label className={`flex cursor-pointer items-center gap-1 text-xs font-bold text-primary ${full ? 'pointer-events-none opacity-40' : ''}`}>
         <Paperclip size={13} />Attach file
         <input type="file" className="sr-only" disabled={full} accept={DOCUMENT_TYPES.join(',')} onChange={e => {
@@ -26,8 +27,8 @@ export function DocumentsEditor({ saved, pending, onRemoveSaved, onAdd, onRemove
         }} />
       </label>}
     </div>
-    {!available ? <p className="mt-2 rounded-lg bg-background p-3 text-xs text-secondary">Storing documents needs cloud sync. Sign in to keep policy PDFs with your records.</p>
-      : !saved.length && !pending.length ? <p className="mt-2 rounded-lg bg-background p-3 text-xs text-secondary">No documents yet. Attach the policy wording or certificate so you can open it later.</p>
+    {!available ? <p className="mt-2 rounded-lg bg-background p-3 text-xs text-secondary">Storing documents needs cloud sync. Sign in to keep PDFs with your records.</p>
+      : !saved.length && !pending.length ? <p className="mt-2 rounded-lg bg-background p-3 text-xs text-secondary">{emptyText}</p>
       : <ul className="mt-2 space-y-2">
         {saved.map(doc => <li key={doc.path} className={row}><FileText size={14} className="shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{doc.name}</span><span className="text-secondary">{sizeText(doc.size)}</span><button type="button" aria-label={`Remove ${doc.name}`} onClick={() => onRemoveSaved(doc)} className="p-1 text-secondary"><X size={14} /></button></li>)}
         {pending.map((file, i) => <li key={`${file.name}-${i}`} className={row}><FileText size={14} className="shrink-0 text-secondary" /><span className="min-w-0 flex-1 truncate">{file.name}</span><span className="text-secondary">{sizeText(file.size)} · uploads on save</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => onRemovePending(file)} className="p-1 text-secondary"><X size={14} /></button></li>)}
@@ -38,7 +39,11 @@ export function DocumentsEditor({ saved, pending, onRemoveSaved, onAdd, onRemove
 
 /** A policy's stored documents on its register card, each with view and download. */
 export function DocumentsList({ policy }: { policy: InsurancePolicy }) {
-  const docs = policy.documents ?? [];
+  return <StoredDocuments docs={policy.documents ?? []} read={doc => readPolicyDocument(doc)} />;
+}
+
+/** Stored documents with view and download; `read` fetches a file from storage. */
+export function StoredDocuments({ docs, read }: { docs: InsuranceDocument[]; read: (doc: InsuranceDocument) => Promise<Blob> }) {
   const [busy, setBusy] = useState(''); const [error, setError] = useState('');
   if (!docs.length) return null;
   const view = async (doc: InsuranceDocument) => {
@@ -46,7 +51,7 @@ export function DocumentsList({ policy }: { policy: InsurancePolicy }) {
     const tab = window.open('', '_blank');
     setBusy(doc.path); setError('');
     try {
-      const url = URL.createObjectURL(await readPolicyDocument(doc));
+      const url = URL.createObjectURL(await read(doc));
       if (tab) tab.location.href = url; else window.location.assign(url);
       window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
     } catch (e) { tab?.close(); setError(errorText(e)); } finally { setBusy(''); }
@@ -54,7 +59,7 @@ export function DocumentsList({ policy }: { policy: InsurancePolicy }) {
   const download = async (doc: InsuranceDocument) => {
     setBusy(doc.path); setError('');
     try {
-      const url = URL.createObjectURL(await readPolicyDocument(doc));
+      const url = URL.createObjectURL(await read(doc));
       const link = document.createElement('a'); link.href = url; link.download = doc.name; document.body.appendChild(link); link.click(); link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) { setError(errorText(e)); } finally { setBusy(''); }

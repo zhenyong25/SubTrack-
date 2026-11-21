@@ -13,7 +13,8 @@ import SubscriptionDetail from './components/SubscriptionDetail';
 import Settings from './components/Settings';
 import SavingsGoalsTab from './components/SavingsGoalsTab';
 import InsuranceTab from './components/InsuranceTab';
-import { ShieldCheck } from 'lucide-react';
+import TaxTab from './components/TaxTab';
+import { Receipt, ShieldCheck } from 'lucide-react';
 import CardDetail from './components/CardDetail';
 import CardEditModal from './components/CardEditModal';
 import CardsTab from './components/CardsTab';
@@ -46,6 +47,7 @@ enum Tab {
   Debts = 'Debts',
   Goals = 'Goals',
   Insurance = 'Insurance',
+  Tax = 'Tax',
   World = 'World',
   Settings = 'Settings'
 }
@@ -1487,6 +1489,7 @@ function App() {
 
         {activeTab === Tab.Goals && <SavingsGoalsTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} focusGoalId={focusGoalId} onFocusHandled={() => setFocusGoalId(null)} />}
         {activeTab === Tab.Insurance && <InsuranceTab key={session?.user.id || 'local'} baseCurrency={userProfile.currency} linked={{ incomes, subscriptions, expenses, onAddSubscription: handleAddSubscriptionFromInsurance, onAddExpense: handleAddExpenseFromStatement }} />}
+        {activeTab === Tab.Tax && <TaxTab key={session?.user.id || 'local'} incomes={incomes} />}
         {activeTab === Tab.World && <FinanceWorld key={session?.user.id || 'local'} owner={session?.user.id || 'local'} expenses={expenses} incomes={incomes} subscriptions={subscriptions} loans={loans} loanPayments={loanPayments} onOpen={destination => { setWorldReviewRequested(destination === 'review'); setActiveTab(destination === 'goals' ? Tab.Goals : destination === 'expenses' ? Tab.Expenses : destination === 'income' ? Tab.Income : destination === 'debts' ? Tab.Debts : destination === 'subscriptions' ? Tab.Dashboard : Tab.CashFlow); }} />}
 
         {activeTab === Tab.Settings && (
@@ -1631,6 +1634,15 @@ function App() {
         >
           <div className={`p-1 rounded-lg ${activeTab === Tab.Insurance ? 'bg-primary/10' : 'bg-transparent'}`}><ShieldCheck size={20} /></div>
           <span className="app-nav-label">Insurance</span>
+        </button>
+        <button
+          aria-label="Tax"
+          aria-current={activeTab === Tab.Tax ? 'page' : undefined}
+          onClick={() => setActiveTab(Tab.Tax)}
+          className={`flex flex-col items-center space-y-1 transition-all duration-200 ${activeTab === Tab.Tax ? 'text-primary scale-110' : 'text-secondary hover:text-textMain'}`}
+        >
+          <div className={`p-1 rounded-lg ${activeTab === Tab.Tax ? 'bg-primary/10' : 'bg-transparent'}`}><Receipt size={20} /></div>
+          <span className="app-nav-label">Tax</span>
         </button>
         <button
           aria-label="My City"
